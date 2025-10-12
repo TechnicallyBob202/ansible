@@ -8,7 +8,7 @@
     proxmox_host: 192.168.33.21  # Testing on nuc-1
     proxmox_node: semperis-nuc-1
     proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
 
     # Template
@@ -35,7 +35,7 @@
       assert:
         that:
           - proxmox_password != ''
-        fail_msg: "PROXMOX_PASSWORD environment variable must be set in Semaphore"
+        fail_msg: "proxmox-root-password secret must be set in Semaphore Key Store"
         success_msg: "Proxmox authentication configured"
 
     - name: Display test deployment info
