@@ -12,7 +12,7 @@
     validate_certs: no
 
     # Template
-    template_id: 9000
+    template_id: 9001
 
     # Network configuration - VLAN 35
     network_bridge: vmbr0
