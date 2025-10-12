@@ -71,10 +71,10 @@
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
-        clone: "{{ template_id }}"
+        node: "{{ proxmox_node }}"
+        clone: "Server-Windows-2022"
         newid: "{{ test_vm.vmid }}"
         name: "{{ test_vm.name }}"
-        node: "{{ proxmox_node }}"
         description: "{{ test_vm.description }}"
         full: yes
         timeout: 300
