@@ -6,7 +6,3 @@
   tasks:
     - name: Ping test
       ping:
-
-    - name: Display host information
-      debug:
-        msg: "{{ inventory_hostname }} is running {{ ansible_distribution }} {{ ansible_distribution_version }}"
