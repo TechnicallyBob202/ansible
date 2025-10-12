@@ -1,48 +1,33 @@
 ---
-- name: Test Deploy Single VM - Semperis Lab
+- name: Test Deploy Single VM - No Cloud-Init
   hosts: localhost
   gather_facts: no
 
   vars:
     # Proxmox connection details
-    proxmox_host: 192.168.33.21  # Testing on nuc-1
+    proxmox_host: 192.168.33.21
     proxmox_node: semperis-nuc-1
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
 
-    # Template
+    # Template (clean Windows without cloudbase-init)
     template_id: 9001
 
     # Network configuration - VLAN 35
     network_bridge: vmbr0
     network_vlan: 35
-    network_gateway: 192.168.35.1
-    dns_servers: "192.168.33.6,192.168.33.7"
 
     # Test VM details
     test_vm:
       name: TEST-VM01
       vmid: 3599
-      ip: 192.168.35.99
       cores: 2
       memory: 4096
       disk_size: 80G
-      description: "Test VM - Single Deploy"
+      description: "Test VM - No Cloud-Init"
 
   tasks:
-    - name: Ensure proxmoxer Python library is installed
-      pip:
-        name:
-          - proxmoxer
-          - requests
-        state: present
-        executable: pip3
-        break_system_packages: yes
-      delegate_to: localhost
-      become: yes
-      ignore_errors: yes  # In case we don't have sudo access
-
     - name: Check Proxmox password is set
       assert:
         that:
@@ -54,11 +39,10 @@
       debug:
         msg:
           - "=========================================="
-          - "Single VM Test Deployment"
+          - "Single VM Test Deployment (No Cloud-Init)"
           - "=========================================="
           - "VM Name: {{ test_vm.name }}"
           - "VM ID: {{ test_vm.vmid }}"
-          - "IP Address: {{ test_vm.ip }}"
           - "Host: {{ proxmox_host }}"
           - "Node: {{ proxmox_node }}"
           - "Template: {{ template_id }}"
@@ -87,7 +71,7 @@
 
     - name: Wait for clone to complete
       pause:
-        seconds: 10
+        seconds: 5
 
     - name: Configure network interface with VLAN tag
       community.general.proxmox_nic:
@@ -139,24 +123,6 @@
       debug:
         msg: "Disk resize: {{ 'Success' if disk_result is succeeded else 'Failed' }}"
 
-    - name: Configure network settings via cloud-init
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ test_vm.vmid }}"
-        node: "{{ proxmox_node }}"
-        ipconfig:
-          ipconfig0: "ip={{ test_vm.ip }}/24,gw={{ network_gateway }}"
-        nameservers: "{{ dns_servers }}"
-        update: yes
-      register: cloudinit_result
-
-    - name: Display cloud-init configuration result
-      debug:
-        msg: "Cloud-init config: {{ 'Success' if cloudinit_result is succeeded else 'Failed' }}"
-
     - name: Start the VM
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
@@ -172,10 +138,10 @@
       debug:
         msg: "VM start: {{ 'Success' if start_result is succeeded else 'Failed' }}"
 
-    - name: Wait for VM to boot and cloud-init to run
+    - name: Wait for VM to boot
       pause:
         seconds: 30
-        prompt: "Waiting 30 seconds for VM to boot and cloud-init to configure..."
+        prompt: "Waiting 30 seconds for VM to boot..."
 
     - name: Display test completion summary
       debug:
@@ -187,24 +153,21 @@
           - "VM Details:"
           - "  Name: {{ test_vm.name }}"
           - "  VM ID: {{ test_vm.vmid }}"
-          - "  IP Address: {{ test_vm.ip }}"
           - "  vCPU: {{ test_vm.cores }}"
           - "  RAM: {{ test_vm.memory }}MB"
           - "  Disk: {{ test_vm.disk_size }}"
+          - "  VLAN: {{ network_vlan }}"
           - ""
           - "Next Steps:"
-          - "  1. Verify VM is running on Proxmox"
-          - "  2. Ping {{ test_vm.ip }}"
-          - "  3. RDP to {{ test_vm.ip }}"
-          - "  4. Login: Administrator / [your password]"
-          - "  5. Check hostname: should be {{ test_vm.name }}"
-          - "  6. Check IP: should be {{ test_vm.ip }}"
-          - "  7. Check DNS: should be {{ dns_servers }}"
+          - "  1. VM will boot with DHCP IP"
+          - "  2. Check Proxmox console for VM status"
+          - "  3. Find DHCP IP: ssh root@{{ proxmox_host }} 'qm guest cmd {{ test_vm.vmid }} network-get-interfaces'"
+          - "  4. RDP to DHCP IP with Administrator / [your password]"
+          - "  5. Verify hostname (should be random until we configure it)"
+          - "  6. Run IP configuration playbook to set static IP"
           - ""
           - "Verification Commands:"
           - "  ssh root@{{ proxmox_host }} 'qm status {{ test_vm.vmid }}'"
-          - "  ping {{ test_vm.ip }}"
-          - "  rdesktop {{ test_vm.ip }}"
           - ""
           - "If everything works, run full deployment!"
           - "=========================================="
@@ -215,5 +178,3 @@
           - ""
           - "To cleanup this test VM:"
           - "  ssh root@{{ proxmox_host }} 'qm stop {{ test_vm.vmid }} && qm destroy {{ test_vm.vmid }}'"
-          - ""
-          - "Or run: ansible-playbook cleanup-test-vm.yml"
