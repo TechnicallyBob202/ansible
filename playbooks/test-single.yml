@@ -8,6 +8,7 @@
     proxmox_host: 192.168.33.21  # Testing on nuc-1
     proxmox_node: semperis-nuc-1
     proxmox_user: root@pam
+    proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
     validate_certs: no
 
     # Template
@@ -30,6 +31,13 @@
       description: "Test VM - Single Deploy"
 
   tasks:
+    - name: Check Proxmox password is set
+      assert:
+        that:
+          - proxmox_password != ''
+        fail_msg: "PROXMOX_PASSWORD environment variable must be set in Semaphore"
+        success_msg: "Proxmox authentication configured"
+
     - name: Display test deployment info
       debug:
         msg:
@@ -49,6 +57,7 @@
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         clone: "{{ template_id }}"
         vmid: "{{ test_vm.vmid }}"
@@ -71,6 +80,7 @@
       community.general.proxmox_nic:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ test_vm.vmid }}"
         interface: net0
@@ -86,6 +96,7 @@
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ test_vm.vmid }}"
         node: "{{ proxmox_node }}"
@@ -103,6 +114,7 @@
       community.general.proxmox_disk:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ test_vm.vmid }}"
         disk: scsi0
@@ -118,6 +130,7 @@
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ test_vm.vmid }}"
         node: "{{ proxmox_node }}"
@@ -135,6 +148,7 @@
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ test_vm.vmid }}"
         node: "{{ proxmox_node }}"
@@ -189,4 +203,4 @@
           - "To cleanup this test VM:"
           - "  ssh root@{{ proxmox_host }} 'qm stop {{ test_vm.vmid }} && qm destroy {{ test_vm.vmid }}'"
           - ""
-          - "Or in Semaphore, create a cleanup playbook"
+          - "Or run: ansible-playbook cleanup-test-vm.yml"
