@@ -2,12 +2,12 @@
 ansible_user=root
 ansible_python_interpreter=/usr/bin/python3
 
-[hapa-proxmox]
+[hapa_proxmox]
 hapa-pve ansible_host=192.168.33.10
 hapa-pve-2 ansible_host=192.168.33.11
 hapa-pve-3 ansible_host=192.168.33.12
 
-[semperis-proxmox]
+[semperis_proxmox]
 semperis-nuc-1 ansible_host=192.168.33.21
 semperis-nuc-2 ansible_host=192.168.33.22
 
@@ -19,7 +19,7 @@ hapa-plex ansible_host=192.168.33.16
 hapa-syslog ansible_host=192.168.33.17
 hapa-ansible ansible_host=192.168.33.18
 
-[hapa-vms]
+[hapa_vms]
 hapa-splunk ansible_host=192.168.33.14
 hapa-torrent ansible_host=192.168.33.15
 
