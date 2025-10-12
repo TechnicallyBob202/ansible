@@ -1,0 +1,146 @@
+---
+- name: Migrate DNS to AD Domain Controllers
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    # Local admin credentials
+    local_admin_user: Administrator
+    local_admin_password: "{{ lookup('env', 'WIN_ADMIN_PASSWORD') }}"
+
+    # New DNS servers (AD DCs)
+    primary_dns: 192.168.35.20   # KOA-DC01
+    secondary_dns: 192.168.35.30  # GRANITE-DC01
+
+    # All VMs to update
+    vms:
+      # Infrastructure
+      - { name: "ATLAS", ip: "192.168.35.10" }
+      - { name: "SUMMIT", ip: "192.168.35.11" }
+      - { name: "PEAK", ip: "192.168.35.12" }
+      - { name: "RIDGE", ip: "192.168.35.13" }
+      - { name: "CREST", ip: "192.168.35.14" }
+      - { name: "SLOPE", ip: "192.168.35.19" }
+      # arbor.lab DCs
+      - { name: "KOA-DC01", ip: "192.168.35.20" }
+      - { name: "OAK-DC01", ip: "192.168.35.21" }
+      # alpine.lab DCs
+      - { name: "GRANITE-DC01", ip: "192.168.35.30" }
+      - { name: "BASALT-DC01", ip: "192.168.35.31" }
+      - { name: "SLATE-DC01", ip: "192.168.35.32" }
+      - { name: "SHALE-DC01", ip: "192.168.35.33" }
+      - { name: "MARBLE-DC01", ip: "192.168.35.34" }
+      - { name: "QUARTZ-DC01", ip: "192.168.35.35" }
+      # Recovery VMs
+      - { name: "MESA-R01", ip: "192.168.35.50" }
+      - { name: "BLUFF-R01", ip: "192.168.35.51" }
+      - { name: "CLIFF-R01", ip: "192.168.35.52" }
+
+  tasks:
+    - name: Display DNS migration plan
+      debug:
+        msg:
+          - "=========================================="
+          - "DNS Migration to AD Domain Controllers"
+          - "=========================================="
+          - ""
+          - "Old DNS: 192.168.33.6, 192.168.33.7"
+          - "New DNS: {{ primary_dns }}, {{ secondary_dns }}"
+          - ""
+          - "Updating {{ vms | length }} VMs..."
+          - "=========================================="
+
+    - name: Update DNS servers on all VMs
+      win_dns_client:
+        adapter_names: "Ethernet*"
+        dns_servers:
+          - "{{ primary_dns }}"
+          - "{{ secondary_dns }}"
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ vms }}"
+      register: dns_updates
+      ignore_errors: yes  # Some VMs might be off or unreachable
+
+    - name: Flush DNS cache on all VMs
+      win_command: ipconfig /flushdns
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ vms }}"
+      ignore_errors: yes
+
+    - name: Verify DNS configuration on all VMs
+      win_shell: |
+        Get-DnsClientServerAddress -InterfaceAlias "Ethernet*" -AddressFamily IPv4 |
+        Select-Object InterfaceAlias, ServerAddresses | ConvertTo-Json
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ vms }}"
+      register: dns_verification
+      ignore_errors: yes
+
+    - name: Test DNS resolution for arbor.lab
+      win_shell: Resolve-DnsName arbor.lab -ErrorAction SilentlyContinue
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ vms }}"
+      register: arbor_dns_test
+      ignore_errors: yes
+
+    - name: Test DNS resolution for alpine.lab
+      win_shell: Resolve-DnsName alpine.lab -ErrorAction SilentlyContinue
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ vms }}"
+      register: alpine_dns_test
+      ignore_errors: yes
+
+    - name: Display migration results
+      debug:
+        msg:
+          - "=========================================="
+          - "DNS Migration Complete!"
+          - "=========================================="
+          - ""
+          - "Successfully updated: {{ dns_updates.results | selectattr('failed', 'undefined') | list | length }} VMs"
+          - "Failed updates: {{ dns_updates.results | selectattr('failed', 'defined') | selectattr('failed', 'equalto', true) | list | length }} VMs"
+          - ""
+          - "All VMs now using:"
+          - "  Primary DNS: {{ primary_dns }} (KOA-DC01)"
+          - "  Secondary DNS: {{ secondary_dns }} (GRANITE-DC01)"
+          - ""
+          - "Verify manually if needed:"
+          - "  RDP to any VM"
+          - "  Run: Get-DnsClientServerAddress"
+          - "=========================================="
+
+    - name: List any failed updates
+      debug:
+        msg: "Failed to update {{ item.item.name }} ({{ item.item.ip }}): {{ item.msg | default('Unknown error') }}"
+      loop: "{{ dns_updates.results }}"
+      when: item.failed is defined and item.failed

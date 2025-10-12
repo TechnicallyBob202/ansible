@@ -1,0 +1,509 @@
+---
+- name: Deploy Active Directory Forests - Semperis Lab
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    # Credentials
+    local_admin_user: Administrator
+    local_admin_password: "{{ lookup('env', 'WIN_ADMIN_PASSWORD') }}"
+
+    # Domain credentials (will be created during first DC promotion)
+    domain_admin_user: Administrator
+    domain_admin_password: "{{ lookup('env', 'DOMAIN_ADMIN_PASSWORD') }}"
+
+    # DSRM (Directory Services Restore Mode) password
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') }}"
+
+    # Forest configurations
+    arbor_forest:
+      domain_name: arbor.lab
+      netbios_name: ARBOR
+      forest_mode: WinThreshold  # Windows Server 2016+ functional level
+      domain_mode: WinThreshold
+      first_dc: 192.168.35.20    # KOA-DC01
+      replica_dc: 192.168.35.21   # OAK-DC01
+
+    alpine_forest:
+      domain_name: alpine.lab
+      netbios_name: ALPINE
+      forest_mode: WinThreshold
+      domain_mode: WinThreshold
+      first_dc: 192.168.35.30    # GRANITE-DC01
+      replica_dc: 192.168.35.31   # BASALT-DC01
+      child_domains:
+        - name: mauna.alpine.lab
+          netbios_name: MAUNA
+          first_dc: 192.168.35.32  # SLATE-DC01
+          replica_dc: 192.168.35.33 # SHALE-DC01
+        - name: rainier.alpine.lab
+          netbios_name: RAINIER
+          first_dc: 192.168.35.34  # MARBLE-DC01
+          replica_dc: 192.168.35.35 # QUARTZ-DC01
+
+  tasks:
+    - name: Validate environment variables are set
+      assert:
+        that:
+          - lookup('env', 'WIN_ADMIN_PASSWORD') != ''
+          - lookup('env', 'DOMAIN_ADMIN_PASSWORD') != ''
+          - lookup('env', 'DSRM_PASSWORD') != ''
+        fail_msg: "Required environment variables not set. Set WIN_ADMIN_PASSWORD, DOMAIN_ADMIN_PASSWORD, and DSRM_PASSWORD"
+
+    - name: Display deployment plan
+      debug:
+        msg:
+          - "=========================================="
+          - "Active Directory Deployment Plan"
+          - "=========================================="
+          - ""
+          - "Phase 1: arbor.lab Forest (Single Domain)"
+          - "  - KOA-DC01 (192.168.35.20): Forest Root PDC"
+          - "  - OAK-DC01 (192.168.35.21): Replica DC"
+          - ""
+          - "Phase 2: alpine.lab Forest (Multi-Domain)"
+          - "  - GRANITE-DC01 (192.168.35.30): Forest Root PDC"
+          - "  - BASALT-DC01 (192.168.35.31): Replica DC"
+          - "  - SLATE-DC01 (192.168.35.32): mauna.alpine.lab PDC"
+          - "  - SHALE-DC01 (192.168.35.33): mauna.alpine.lab Replica"
+          - "  - MARBLE-DC01 (192.168.35.34): rainier.alpine.lab PDC"
+          - "  - QUARTZ-DC01 (192.168.35.35): rainier.alpine.lab Replica"
+          - ""
+          - "Phase 3: DNS Updates"
+          - "  - Update all VMs to use new DNS servers"
+          - "=========================================="
+
+    #
+    # PHASE 1: ARBOR.LAB FOREST (Single Domain)
+    #
+
+    - name: "PHASE 1: Deploy arbor.lab Forest"
+      debug:
+        msg: "Starting arbor.lab forest deployment..."
+
+    - name: Install AD-Domain-Services on KOA-DC01
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ arbor_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+
+    - name: Promote KOA-DC01 as arbor.lab forest root
+      win_domain:
+        dns_domain_name: "{{ arbor_forest.domain_name }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        domain_netbios_name: "{{ arbor_forest.netbios_name }}"
+        domain_mode: "{{ arbor_forest.domain_mode }}"
+        forest_mode: "{{ arbor_forest.forest_mode }}"
+        install_dns: yes
+      delegate_to: "{{ arbor_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      register: arbor_promotion
+
+    - name: Reboot KOA-DC01 after promotion
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ arbor_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      when: arbor_promotion.reboot_required
+
+    - name: Wait for KOA-DC01 to be fully operational
+      wait_for:
+        host: "{{ arbor_forest.first_dc }}"
+        port: 5985
+        delay: 30
+        timeout: 600
+
+    - name: Verify arbor.lab forest is operational
+      win_shell: |
+        Get-ADDomain | Select-Object -ExpandProperty DNSRoot
+      delegate_to: "{{ arbor_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ domain_admin_user }}@{{ arbor_forest.domain_name }}"
+        ansible_password: "{{ domain_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: kerberos
+        ansible_winrm_server_cert_validation: ignore
+      register: arbor_verify
+      retries: 10
+      delay: 30
+      until: arbor_verify.stdout is search(arbor_forest.domain_name)
+
+    - name: Install AD-Domain-Services on OAK-DC01
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ arbor_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+
+    - name: Promote OAK-DC01 as arbor.lab replica DC
+      win_domain_controller:
+        dns_domain_name: "{{ arbor_forest.domain_name }}"
+        domain_admin_user: "{{ domain_admin_user }}@{{ arbor_forest.domain_name }}"
+        domain_admin_password: "{{ domain_admin_password }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        state: domain_controller
+        install_dns: yes
+      delegate_to: "{{ arbor_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      register: oak_promotion
+
+    - name: Reboot OAK-DC01 after promotion
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ arbor_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      when: oak_promotion.reboot_required
+
+    - name: Display arbor.lab forest completion
+      debug:
+        msg:
+          - "✓ arbor.lab Forest Deployed Successfully"
+          - "  - Domain: {{ arbor_forest.domain_name }}"
+          - "  - KOA-DC01: Forest Root PDC"
+          - "  - OAK-DC01: Replica DC"
+
+    #
+    # PHASE 2: ALPINE.LAB FOREST (Root Domain)
+    #
+
+    - name: "PHASE 2: Deploy alpine.lab Forest"
+      debug:
+        msg: "Starting alpine.lab forest deployment..."
+
+    - name: Install AD-Domain-Services on GRANITE-DC01
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ alpine_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+
+    - name: Promote GRANITE-DC01 as alpine.lab forest root
+      win_domain:
+        dns_domain_name: "{{ alpine_forest.domain_name }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        domain_netbios_name: "{{ alpine_forest.netbios_name }}"
+        domain_mode: "{{ alpine_forest.domain_mode }}"
+        forest_mode: "{{ alpine_forest.forest_mode }}"
+        install_dns: yes
+      delegate_to: "{{ alpine_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      register: alpine_promotion
+
+    - name: Reboot GRANITE-DC01 after promotion
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ alpine_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      when: alpine_promotion.reboot_required
+
+    - name: Wait for GRANITE-DC01 to be fully operational
+      wait_for:
+        host: "{{ alpine_forest.first_dc }}"
+        port: 5985
+        delay: 30
+        timeout: 600
+
+    - name: Install AD-Domain-Services on BASALT-DC01
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ alpine_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+
+    - name: Promote BASALT-DC01 as alpine.lab replica DC
+      win_domain_controller:
+        dns_domain_name: "{{ alpine_forest.domain_name }}"
+        domain_admin_user: "{{ domain_admin_user }}@{{ alpine_forest.domain_name }}"
+        domain_admin_password: "{{ domain_admin_password }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        state: domain_controller
+        install_dns: yes
+      delegate_to: "{{ alpine_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      register: basalt_promotion
+
+    - name: Reboot BASALT-DC01 after promotion
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ alpine_forest.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      when: basalt_promotion.reboot_required
+
+    #
+    # PHASE 3: ALPINE.LAB CHILD DOMAINS
+    #
+
+    - name: "PHASE 3: Deploy alpine.lab Child Domains"
+      debug:
+        msg: "Starting child domain deployment..."
+
+    # Loop through each child domain
+    - name: Install AD-Domain-Services on child domain DCs
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ item.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ alpine_forest.child_domains }}"
+
+    - name: Create child domains and promote first DCs
+      win_domain:
+        create_dns_delegation: yes
+        dns_domain_name: "{{ item.name }}"
+        parent_domain_name: "{{ alpine_forest.domain_name }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        domain_admin_user: "{{ domain_admin_user }}@{{ alpine_forest.domain_name }}"
+        domain_admin_password: "{{ domain_admin_password }}"
+        domain_netbios_name: "{{ item.netbios_name }}"
+        domain_mode: "{{ alpine_forest.domain_mode }}"
+        install_dns: yes
+      delegate_to: "{{ item.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ alpine_forest.child_domains }}"
+      register: child_promotions
+
+    - name: Reboot child domain first DCs
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ item.item.first_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ child_promotions.results }}"
+      when: item.reboot_required
+
+    - name: Wait for child domain DCs to be operational
+      wait_for:
+        host: "{{ item.first_dc }}"
+        port: 5985
+        delay: 30
+        timeout: 600
+      loop: "{{ alpine_forest.child_domains }}"
+
+    # Promote replica DCs for child domains
+    - name: Install AD-Domain-Services on child domain replica DCs
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+          - DNS
+        include_management_tools: yes
+        state: present
+      delegate_to: "{{ item.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ alpine_forest.child_domains }}"
+
+    - name: Promote child domain replica DCs
+      win_domain_controller:
+        dns_domain_name: "{{ item.name }}"
+        domain_admin_user: "{{ domain_admin_user }}@{{ item.name }}"
+        domain_admin_password: "{{ domain_admin_password }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        state: domain_controller
+        install_dns: yes
+      delegate_to: "{{ item.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ alpine_forest.child_domains }}"
+      register: child_replica_promotions
+
+    - name: Reboot child domain replica DCs
+      win_reboot:
+        reboot_timeout: 600
+      delegate_to: "{{ item.item.replica_dc }}"
+      vars:
+        ansible_user: "{{ local_admin_user }}"
+        ansible_password: "{{ local_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ child_replica_promotions.results }}"
+      when: item.reboot_required
+
+    #
+    # PHASE 4: POST-DEPLOYMENT CONFIGURATION
+    #
+
+    - name: "PHASE 4: Post-Deployment Configuration"
+      debug:
+        msg: "Configuring DNS forwarders and finalizing setup..."
+
+    - name: Configure DNS forwarders on arbor.lab DCs
+      win_shell: |
+        Add-DnsServerForwarder -IPAddress 192.168.33.6 -PassThru
+        Add-DnsServerForwarder -IPAddress 192.168.33.7 -PassThru
+      delegate_to: "{{ item }}"
+      vars:
+        ansible_user: "{{ domain_admin_user }}@{{ arbor_forest.domain_name }}"
+        ansible_password: "{{ domain_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: kerberos
+        ansible_winrm_server_cert_validation: ignore
+      loop:
+        - "{{ arbor_forest.first_dc }}"
+        - "{{ arbor_forest.replica_dc }}"
+      ignore_errors: yes  # May already exist
+
+    - name: Configure DNS forwarders on alpine.lab DCs
+      win_shell: |
+        Add-DnsServerForwarder -IPAddress 192.168.33.6 -PassThru
+        Add-DnsServerForwarder -IPAddress 192.168.33.7 -PassThru
+      delegate_to: "{{ item }}"
+      vars:
+        ansible_user: "{{ domain_admin_user }}@{{ alpine_forest.domain_name }}"
+        ansible_password: "{{ domain_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: kerberos
+        ansible_winrm_server_cert_validation: ignore
+      loop:
+        - "{{ alpine_forest.first_dc }}"
+        - "{{ alpine_forest.replica_dc }}"
+      ignore_errors: yes
+
+    - name: Create reverse DNS zones for VLAN 35
+      win_shell: |
+        Add-DnsServerPrimaryZone -NetworkID "192.168.35.0/24" -ReplicationScope "Forest"
+      delegate_to: "{{ arbor_forest.first_dc }}"
+      vars:
+        ansible_user: "{{ domain_admin_user }}@{{ arbor_forest.domain_name }}"
+        ansible_password: "{{ domain_admin_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: kerberos
+        ansible_winrm_server_cert_validation: ignore
+      ignore_errors: yes
+
+    - name: Display deployment completion summary
+      debug:
+        msg:
+          - "=========================================="
+          - "✓ Active Directory Deployment Complete!"
+          - "=========================================="
+          - ""
+          - "arbor.lab Forest:"
+          - "  Domain: {{ arbor_forest.domain_name }}"
+          - "  PDC: KOA-DC01 ({{ arbor_forest.first_dc }})"
+          - "  Replica: OAK-DC01 ({{ arbor_forest.replica_dc }})"
+          - ""
+          - "alpine.lab Forest:"
+          - "  Root Domain: {{ alpine_forest.domain_name }}"
+          - "  PDC: GRANITE-DC01 ({{ alpine_forest.first_dc }})"
+          - "  Replica: BASALT-DC01 ({{ alpine_forest.replica_dc }})"
+          - ""
+          - "  Child: mauna.alpine.lab"
+          - "    PDC: SLATE-DC01 (192.168.35.32)"
+          - "    Replica: SHALE-DC01 (192.168.35.33)"
+          - ""
+          - "  Child: rainier.alpine.lab"
+          - "    PDC: MARBLE-DC01 (192.168.35.34)"
+          - "    Replica: QUARTZ-DC01 (192.168.35.35)"
+          - ""
+          - "Next Steps:"
+          - "  1. Run DNS migration playbook"
+          - "  2. Join SLOPE to arbor.lab domain"
+          - "  3. Install SQL Server on PEAK"
+          - "  4. Install ADFR on ATLAS"
+          - "  5. Install DSP on SUMMIT"
+          - "=========================================="
