@@ -31,6 +31,18 @@
       description: "Test VM - Single Deploy"
 
   tasks:
+    - name: Ensure proxmoxer Python library is installed
+      pip:
+        name:
+          - proxmoxer
+          - requests
+        state: present
+        executable: pip3
+        break_system_packages: yes
+      delegate_to: localhost
+      become: yes
+      ignore_errors: yes  # In case we don't have sudo access
+
     - name: Check Proxmox password is set
       assert:
         that:
@@ -60,7 +72,7 @@
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         clone: "{{ template_id }}"
-        vmid: "{{ test_vm.vmid }}"
+        newid: "{{ test_vm.vmid }}"
         name: "{{ test_vm.name }}"
         node: "{{ proxmox_node }}"
         description: "{{ test_vm.description }}"
