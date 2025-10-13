@@ -1,0 +1,236 @@
+---
+- name: Promote Domain Controllers
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') | default('P@ssw0rd123!', true) }}"
+
+    # Domain structure
+    forest_root:
+      hostname: "KOA-DC01"
+      ip: "192.168.35.20"
+      domain_name: "arbor.lab"
+      netbios_name: "ARBOR"
+
+    child_domains:
+      - { hostname: "GRANITE-DC01", ip: "192.168.35.30", domain_name: "granite.arbor.lab", netbios_name: "GRANITE", parent: "arbor.lab" }
+      - { hostname: "BASALT-DC01", ip: "192.168.35.31", domain_name: "basalt.arbor.lab", netbios_name: "BASALT", parent: "arbor.lab" }
+      - { hostname: "SLATE-DC01", ip: "192.168.35.32", domain_name: "slate.arbor.lab", netbios_name: "SLATE", parent: "arbor.lab" }
+      - { hostname: "SHALE-DC01", ip: "192.168.35.33", domain_name: "shale.arbor.lab", netbios_name: "SHALE", parent: "arbor.lab" }
+      - { hostname: "MARBLE-DC01", ip: "192.168.35.34", domain_name: "marble.arbor.lab", netbios_name: "MARBLE", parent: "arbor.lab" }
+      - { hostname: "QUARTZ-DC01", ip: "192.168.35.35", domain_name: "quartz.arbor.lab", netbios_name: "QUARTZ", parent: "arbor.lab" }
+
+    secondary_dcs:
+      - { hostname: "OAK-DC01", ip: "192.168.35.21", domain_name: "arbor.lab" }
+
+  tasks:
+    - name: Display promotion plan
+      debug:
+        msg:
+          - "=========================================="
+          - "Domain Controller Promotion Plan"
+          - "=========================================="
+          - "Step 1: Promote forest root (KOA-DC01)"
+          - "  Domain: arbor.lab"
+          - ""
+          - "Step 2: Promote child domain DCs (6 domains)"
+          - "  - granite.arbor.lab"
+          - "  - basalt.arbor.lab"
+          - "  - slate.arbor.lab"
+          - "  - shale.arbor.lab"
+          - "  - marble.arbor.lab"
+          - "  - quartz.arbor.lab"
+          - ""
+          - "Step 3: Promote secondary DCs"
+          - "  - OAK-DC01 (arbor.lab)"
+          - "=========================================="
+
+- name: Step 1 - Promote Forest Root DC
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') | default('P@ssw0rd123!', true) }}"
+    forest_root:
+      hostname: "KOA-DC01"
+      ip: "192.168.35.20"
+      domain_name: "arbor.lab"
+      netbios_name: "ARBOR"
+
+  tasks:
+    - name: Install AD DS features on forest root
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+        state: present
+      delegate_to: "{{ forest_root.ip }}"
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: basic
+        ansible_winrm_server_cert_validation: ignore
+      register: feature_install
+
+    - name: Promote to forest root domain controller
+      win_domain:
+        dns_domain_name: "{{ forest_root.domain_name }}"
+        domain_netbios_name: "{{ forest_root.netbios_name }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+      delegate_to: "{{ forest_root.ip }}"
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: basic
+        ansible_winrm_server_cert_validation: ignore
+      register: forest_result
+
+    - name: Wait for forest root to come back online
+      wait_for:
+        host: "{{ forest_root.ip }}"
+        port: 5985
+        delay: 60
+        timeout: 600
+      when: forest_result.reboot_required
+
+    - name: Verify forest root is ready
+      win_ping:
+      delegate_to: "{{ forest_root.ip }}"
+      vars:
+        ansible_user: "{{ forest_root.netbios_name }}\\Administrator"
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      retries: 10
+      delay: 30
+      register: forest_ping
+      until: forest_ping is success
+
+    - name: Display forest root status
+      debug:
+        msg: "Forest root {{ forest_root.domain_name }} is online and ready!"
+
+- name: Step 2 - Promote Child Domain DCs
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') | default('P@ssw0rd123!', true) }}"
+
+    child_domains:
+      - { hostname: "GRANITE-DC01", ip: "192.168.35.30", domain_name: "granite.arbor.lab", netbios_name: "GRANITE", parent: "arbor.lab" }
+      - { hostname: "BASALT-DC01", ip: "192.168.35.31", domain_name: "basalt.arbor.lab", netbios_name: "BASALT", parent: "arbor.lab" }
+      - { hostname: "SLATE-DC01", ip: "192.168.35.32", domain_name: "slate.arbor.lab", netbios_name: "SLATE", parent: "arbor.lab" }
+      - { hostname: "SHALE-DC01", ip: "192.168.35.33", domain_name: "shale.arbor.lab", netbios_name: "SHALE", parent: "arbor.lab" }
+      - { hostname: "MARBLE-DC01", ip: "192.168.35.34", domain_name: "marble.arbor.lab", netbios_name: "MARBLE", parent: "arbor.lab" }
+      - { hostname: "QUARTZ-DC01", ip: "192.168.35.35", domain_name: "quartz.arbor.lab", netbios_name: "QUARTZ", parent: "arbor.lab" }
+
+  tasks:
+    - name: Install AD DS features on child DCs
+      win_feature:
+        name:
+          - AD-Domain-Services
+          - RSAT-ADDS
+        state: present
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: basic
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ child_domains }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+
+    - name: Promote to child domain controllers
+      win_domain:
+        dns_domain_name: "{{ item.domain_name }}"
+        parent_domain_name: "{{ item.parent }}"
+        domain_netbios_name: "{{ item.netbios_name }}"
+        safe_mode_password: "{{ dsrm_password }}"
+        domain_admin_user: "ARBOR\\Administrator"
+        domain_admin_password: "{{ windows_password }}"
+        create_dns_delegation: yes
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: Administrator
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: basic
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ child_domains }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      register: child_results
+
+    - name: Wait for child DCs to come back online
+      wait_for:
+        host: "{{ item.item.ip }}"
+        port: 5985
+        delay: 60
+        timeout: 600
+      loop: "{{ child_results.results }}"
+      loop_control:
+        label: "{{ item.item.hostname }}"
+      when: item.reboot_required
+
+    - name: Verify child DCs are ready
+      win_ping:
+      delegate_to: "{{ item.ip }}"
+      vars:
+        ansible_user: "{{ item.netbios_name }}\\Administrator"
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: ntlm
+        ansible_winrm_server_cert_validation: ignore
+      loop: "{{ child_domains }}"
+      loop_control:
+        label: "{{ item.hostname }}"
+      retries: 10
+      delay: 30
+      register: child_pings
+      until: child_pings is success
+
+- name: Summary
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display completion
+      debug:
+        msg:
+          - "=========================================="
+          - "Domain Controller Promotion Complete!"
+          - "=========================================="
+          - ""
+          - "Forest Root:"
+          - "  arbor.lab (KOA-DC01)"
+          - ""
+          - "Child Domains:"
+          - "  granite.arbor.lab (GRANITE-DC01)"
+          - "  basalt.arbor.lab (BASALT-DC01)"
+          - "  slate.arbor.lab (SLATE-DC01)"
+          - "  shale.arbor.lab (SHALE-DC01)"
+          - "  marble.arbor.lab (MARBLE-DC01)"
+          - "  quartz.arbor.lab (QUARTZ-DC01)"
+          - ""
+          - "Next steps:"
+          - "  1. Promote secondary DCs (OAK-DC01)"
+          - "  2. Configure AD sites and services"
+          - "  3. Install Semperis products"
+          - "=========================================="
