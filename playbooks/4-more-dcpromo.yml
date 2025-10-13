@@ -1,0 +1,414 @@
+---
+- name: Promote Additional Domain Controllers
+  hosts: additional_domain_controllers
+  gather_facts: yes
+
+  vars_files:
+    - vars/domain_config.yml
+    - vars/credentials.yml
+
+  tasks:
+    - name: Verify we're not targeting the first DC
+      ansible.builtin.assert:
+        that:
+          - inventory_hostname not in groups['forest_root_dc']
+        fail_msg: "This playbook should only run on ADDITIONAL domain controllers, not the first DC!"
+        success_msg: "Confirmed: This is an additional DC"
+
+    # ========================================
+    # Pre-promotion Checks
+    # ========================================
+    - name: Pre-promotion verification
+      block:
+        - name: Check if already a domain controller
+          ansible.windows.win_powershell:
+            script: |
+              $IsDC = (Get-WmiObject -Class Win32_ComputerSystem).DomainRole
+              # DomainRole: 4 = Backup DC, 5 = Primary DC
+              if ($IsDC -ge 4) {
+                Write-Output "Already_DC"
+              } else {
+                Write-Output "Not_DC"
+              }
+          register: dc_check
+
+        - name: Skip if already promoted
+          ansible.builtin.meta: end_host
+          when: dc_check.output[0] == "Already_DC"
+
+        - name: Verify domain connectivity
+          ansible.windows.win_powershell:
+            script: |
+              $Domain = "{{ item.domain_name if item.domain_name is defined else forest_root.domain_name }}"
+              $Result = Test-Connection -ComputerName $Domain -Count 2 -Quiet
+              if ($Result) {
+                Write-Output "Domain $Domain is reachable"
+              } else {
+                throw "Cannot reach domain $Domain"
+              }
+          loop: "{{ [{'domain_name': hostvars[inventory_hostname].target_domain | default(forest_root.domain_name)}] }}"
+
+        - name: Verify DNS resolution
+          ansible.windows.win_powershell:
+            script: |
+              $Domain = "{{ hostvars[inventory_hostname].target_domain | default(forest_root.domain_name) }}"
+              $DCs = Resolve-DnsName -Name $Domain -Type SRV -ErrorAction SilentlyContinue | Where-Object {$_.Name -like "*_ldap*"}
+
+              if ($DCs) {
+                Write-Output "Found $($DCs.Count) domain controllers for $Domain"
+                $DCs | ForEach-Object { Write-Output $_.Name }
+              } else {
+                throw "Cannot resolve domain controllers for $Domain"
+              }
+          register: dns_check
+
+        - name: Check available disk space
+          ansible.windows.win_powershell:
+            script: |
+              $Drive = Get-PSDrive C
+              $FreeSpaceGB = [math]::Round($Drive.Free / 1GB, 2)
+
+              if ($FreeSpaceGB -lt 10) {
+                throw "Insufficient disk space. Only $FreeSpaceGB GB available. Need at least 10 GB."
+              } else {
+                Write-Output "Disk space check passed: $FreeSpaceGB GB available"
+              }
+
+    # ========================================
+    # Install AD DS Role
+    # ========================================
+    - name: Install Active Directory Domain Services role
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        include_sub_features: yes
+        state: present
+      register: adds_install
+
+    - name: Reboot if required after AD DS installation
+      ansible.windows.win_reboot:
+        reboot_timeout: 600
+      when: adds_install.reboot_required
+
+    - name: Wait for system to be ready after reboot
+      ansible.windows.win_ping:
+      retries: 30
+      delay: 10
+      register: ping_result
+      until: ping_result is succeeded
+
+    # ========================================
+    # Promote Additional DCs in Forest Root Domain
+    # ========================================
+    - name: Promote additional domain controllers in forest root
+      block:
+        - name: Promote to forest root domain controller
+          microsoft.ad.domain_controller:
+            dns_domain_name: "{{ forest_root.domain_name }}"
+            domain_admin_user: "{{ forest_root.netbios_name }}\\Administrator"
+            domain_admin_password: "{{ windows_password }}"
+            safe_mode_password: "{{ dsrm_password }}"
+            site_name: "{{ hostvars[inventory_hostname].ad_site | default('Default-First-Site-Name') }}"
+            database_path: C:\Windows\NTDS
+            sysvol_path: C:\Windows\SYSVOL
+            log_path: C:\Windows\NTDS
+            install_dns: yes
+            read_only: no
+            reboot: yes
+          register: dc_promotion_root
+
+        - name: Wait for DC to come back online
+          wait_for_connection:
+            timeout: 900
+            delay: 60
+          when: dc_promotion_root.changed
+
+        - name: Wait for Active Directory Web Services
+          ansible.windows.win_service:
+            name: ADWS
+            state: started
+          retries: 20
+          delay: 30
+          register: adws_service
+          until: adws_service is succeeded
+
+      when:
+        - hostvars[inventory_hostname].dc_type is defined
+        - hostvars[inventory_hostname].dc_type == 'forest_root_additional'
+
+    # ========================================
+    # Promote Additional DCs in Child Domains
+    # ========================================
+    - name: Promote additional domain controllers in child domains
+      block:
+        - name: Set child domain variables
+          ansible.builtin.set_fact:
+            target_domain: "{{ hostvars[inventory_hostname].target_domain }}"
+            target_netbios: "{{ hostvars[inventory_hostname].target_netbios }}"
+            parent_domain: "{{ hostvars[inventory_hostname].parent_domain | default(forest_root.domain_name) }}"
+
+        - name: Promote to child domain controller
+          microsoft.ad.domain_controller:
+            dns_domain_name: "{{ target_domain }}"
+            domain_admin_user: "{{ forest_root.netbios_name }}\\Administrator"
+            domain_admin_password: "{{ windows_password }}"
+            safe_mode_password: "{{ dsrm_password }}"
+            site_name: "{{ hostvars[inventory_hostname].ad_site | default('Default-First-Site-Name') }}"
+            database_path: C:\Windows\NTDS
+            sysvol_path: C:\Windows\SYSVOL
+            log_path: C:\Windows\NTDS
+            install_dns: yes
+            read_only: no
+            reboot: yes
+          register: dc_promotion_child
+
+        - name: Wait for DC to come back online
+          wait_for_connection:
+            timeout: 900
+            delay: 60
+          when: dc_promotion_child.changed
+
+        - name: Wait for Active Directory Web Services
+          ansible.windows.win_service:
+            name: ADWS
+            state: started
+          retries: 20
+          delay: 30
+          register: adws_service_child
+          until: adws_service_child is succeeded
+
+      when:
+        - hostvars[inventory_hostname].dc_type is defined
+        - hostvars[inventory_hostname].dc_type == 'child_domain_additional'
+
+    # ========================================
+    # Read-Only Domain Controllers (RODC)
+    # ========================================
+    - name: Promote Read-Only Domain Controllers
+      block:
+        - name: Pre-create RODC account in AD
+          ansible.windows.win_powershell:
+            script: |
+              $RODCName = "{{ inventory_hostname.split('.')[0] }}"
+              $Domain = "{{ hostvars[inventory_hostname].target_domain | default(forest_root.domain_name) }}"
+              $Site = "{{ hostvars[inventory_hostname].ad_site | default('Default-First-Site-Name') }}"
+
+              # Check if RODC account already exists
+              $ExistingRODC = Get-ADDomainController -Filter "Name -eq '$RODCName'" -ErrorAction SilentlyContinue
+
+              if (-not $ExistingRODC) {
+                Add-ADDSReadOnlyDomainControllerAccount `
+                  -DomainControllerAccountName $RODCName `
+                  -DomainName $Domain `
+                  -SiteName $Site `
+                  -DelegatedAdministratorAccountName "{{ rodc_admin_account | default('Domain Admins') }}" `
+                  -InstallDns:$true
+
+                Write-Output "RODC account created: $RODCName"
+              } else {
+                Write-Output "RODC account already exists: $RODCName"
+              }
+          delegate_to: "{{ groups['forest_root_dc'][0] }}"
+          run_once: yes
+
+        - name: Promote server to RODC
+          microsoft.ad.domain_controller:
+            dns_domain_name: "{{ hostvars[inventory_hostname].target_domain | default(forest_root.domain_name) }}"
+            domain_admin_user: "{{ forest_root.netbios_name }}\\Administrator"
+            domain_admin_password: "{{ windows_password }}"
+            safe_mode_password: "{{ dsrm_password }}"
+            site_name: "{{ hostvars[inventory_hostname].ad_site | default('Default-First-Site-Name') }}"
+            database_path: C:\Windows\NTDS
+            sysvol_path: C:\Windows\SYSVOL
+            log_path: C:\Windows\NTDS
+            install_dns: yes
+            read_only: yes
+            reboot: yes
+          register: rodc_promotion
+
+        - name: Wait for RODC to come back online
+          wait_for_connection:
+            timeout: 900
+            delay: 60
+          when: rodc_promotion.changed
+
+      when:
+        - hostvars[inventory_hostname].dc_type is defined
+        - hostvars[inventory_hostname].dc_type == 'rodc'
+
+    # ========================================
+    # Post-Promotion Configuration
+    # ========================================
+    - name: Post-promotion configuration
+      block:
+        - name: Verify domain controller promotion
+          ansible.windows.win_powershell:
+            script: |
+              $DCInfo = Get-ADDomainController -Identity $env:COMPUTERNAME
+              [PSCustomObject]@{
+                Hostname = $DCInfo.HostName
+                Domain = $DCInfo.Domain
+                Forest = $DCInfo.Forest
+                Site = $DCInfo.Site
+                IsGlobalCatalog = $DCInfo.IsGlobalCatalog
+                IsReadOnly = $DCInfo.IsReadOnly
+                IPv4Address = $DCInfo.IPv4Address
+                OperatingSystem = $DCInfo.OperatingSystem
+                Enabled = $DCInfo.Enabled
+              }
+          register: dc_verification
+
+        - name: Display DC information
+          ansible.builtin.debug:
+            var: dc_verification.output
+
+        - name: Configure as Global Catalog if needed
+          ansible.windows.win_powershell:
+            script: |
+              $NtdsSettings = Get-ADObject "CN=NTDS Settings,CN=$env:COMPUTERNAME,CN=Servers,CN={{ hostvars[inventory_hostname].ad_site | default('Default-First-Site-Name') }},CN=Sites,CN=Configuration,{{ forest_root.distinguished_name }}"
+
+              if ($NtdsSettings.options -band 1) {
+                Write-Output "Already configured as Global Catalog"
+              } else {
+                Set-ADObject -Identity $NtdsSettings.DistinguishedName -Replace @{options='1'}
+                Write-Output "Configured as Global Catalog - restart required"
+              }
+          when:
+            - hostvars[inventory_hostname].global_catalog | default(true)
+            - hostvars[inventory_hostname].dc_type != 'rodc'
+          register: gc_config
+
+        - name: Restart for Global Catalog change
+          ansible.windows.win_reboot:
+            reboot_timeout: 600
+          when:
+            - gc_config.changed
+            - "'restart required' in gc_config.output[0]"
+
+        - name: Configure DNS settings
+          ansible.windows.win_powershell:
+            script: |
+              # Set preferred DNS to first forest DC
+              $FirstDC = "{{ hostvars[groups['forest_root_dc'][0]]['ansible_host'] }}"
+              $Adapters = Get-NetAdapter | Where-Object {$_.Status -eq "Up"}
+
+              foreach ($Adapter in $Adapters) {
+                Set-DnsClientServerAddress -InterfaceIndex $Adapter.InterfaceIndex -ServerAddresses @($FirstDC, "127.0.0.1")
+                Write-Output "DNS configured on adapter: $($Adapter.Name)"
+              }
+
+        - name: Configure time synchronization
+          ansible.windows.win_powershell:
+            script: |
+              # Sync with domain hierarchy (not external source)
+              w32tm /config /syncfromflags:domhier /update
+              Restart-Service w32time
+              Start-Sleep -Seconds 5
+              w32tm /resync /force
+
+              $TimeStatus = w32tm /query /status
+              Write-Output $TimeStatus
+
+        - name: Force replication from first DC
+          ansible.windows.win_powershell:
+            script: |
+              $FirstDC = "{{ groups['forest_root_dc'][0].split('.')[0] }}"
+
+              # Force replication
+              repadmin /syncall /AdeP
+
+              # Replicate from specific DC
+              repadmin /replicate $env:COMPUTERNAME $FirstDC "DC={{ forest_root.domain_name.split('.') | join(',DC=') }}"
+
+              Write-Output "Replication initiated from $FirstDC"
+          register: replication_result
+          retries: 3
+          delay: 30
+          until: replication_result is succeeded
+
+        - name: Check replication status
+          ansible.windows.win_powershell:
+            script: |
+              # Check replication partners
+              $ReplPartners = repadmin /showrepl
+              Write-Output $ReplPartners
+
+              # Check for replication errors
+              $ReplErrors = repadmin /showrepl | Select-String "fail|error"
+              if ($ReplErrors) {
+                Write-Output "WARNING: Replication errors detected:"
+                Write-Output $ReplErrors
+              } else {
+                Write-Output "No replication errors detected"
+              }
+          register: repl_status
+
+        - name: Run DCDiag
+          ansible.windows.win_powershell:
+            script: |
+              dcdiag /v
+          register: dcdiag_output
+          failed_when: false
+
+        - name: Check for DCDiag failures
+          ansible.builtin.debug:
+            msg: "WARNING: DCDiag found issues - review output above"
+          when: "'failed' in dcdiag_output.output | lower"
+
+    # ========================================
+    # Final Health Check
+    # ========================================
+    - name: Final health verification
+      block:
+        - name: Verify SYSVOL replication
+          ansible.windows.win_powershell:
+            script: |
+              $SysvolPath = "C:\Windows\SYSVOL\domain"
+              if (Test-Path $SysvolPath) {
+                $ItemCount = (Get-ChildItem $SysvolPath -Recurse | Measure-Object).Count
+                Write-Output "SYSVOL replicated: $ItemCount items found"
+              } else {
+                throw "SYSVOL folder not found - replication may have failed"
+              }
+          register: sysvol_check
+
+        - name: Verify NETLOGON share
+          ansible.windows.win_powershell:
+            script: |
+              $NetlogonShare = Get-SmbShare -Name NETLOGON -ErrorAction SilentlyContinue
+              if ($NetlogonShare) {
+                Write-Output "NETLOGON share is available: $($NetlogonShare.Path)"
+              } else {
+                throw "NETLOGON share not found"
+              }
+
+        - name: Test domain authentication
+          ansible.windows.win_powershell:
+            script: |
+              $TestUser = "{{ forest_root.netbios_name }}\Administrator"
+              $Domain = "{{ hostvars[inventory_hostname].target_domain | default(forest_root.domain_name) }}"
+
+              # Try to query AD
+              try {
+                $Users = Get-ADUser -Filter * -SearchBase "{{ forest_root.distinguished_name }}" -ResultSetSize 1
+                Write-Output "Successfully queried AD. Domain authentication working."
+              } catch {
+                throw "Failed to query AD: $_"
+              }
+
+        - name: Display final status
+          ansible.builtin.debug:
+            msg: |
+              ========================================
+              Additional DC Promotion Complete!
+              ========================================
+              Hostname: {{ inventory_hostname }}
+              Domain: {{ dc_verification.output[0].Domain }}
+              Forest: {{ dc_verification.output[0].Forest }}
+              Site: {{ dc_verification.output[0].Site }}
+              Global Catalog: {{ dc_verification.output[0].IsGlobalCatalog }}
+              Read-Only: {{ dc_verification.output[0].IsReadOnly }}
+              IP Address: {{ dc_verification.output[0].IPv4Address }}
+              SYSVOL: {{ sysvol_check.output[0] }}
+              Replication: Check output above for details
+              ========================================
