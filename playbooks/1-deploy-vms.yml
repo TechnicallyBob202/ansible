@@ -1,5 +1,5 @@
 ---
-- name: Deploy Semperis Lab - 17 VMs
+- name: Deploy Semperis Lab - 17 VMs (Async/Parallel)
   hosts: localhost
   gather_facts: no
 
@@ -48,13 +48,17 @@
       debug:
         msg:
           - "=========================================="
-          - "Deploying 17 VMs to Semperis Lab"
+          - "Deploying 17 VMs to Semperis Lab (ASYNC)"
           - "=========================================="
           - "Host 1 ({{ proxmox_host1 }}): 9 VMs"
           - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
+          - "All VMs will be cloned in parallel!"
           - "=========================================="
 
-    - name: Clone VMs from templates
+    # ============================================
+    # PHASE 1: Clone VMs (ALL IN PARALLEL)
+    # ============================================
+    - name: Clone VMs from templates (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -68,13 +72,33 @@
         full: yes
         timeout: 600
       loop: "{{ vms }}"
+      async: 600  # Max 10 minutes per clone
+      poll: 0     # Don't wait, launch all in parallel
+      register: clone_jobs
+
+    - name: Display clone jobs launched
+      debug:
+        msg: "Launched {{ clone_jobs.results | length }} clone jobs in parallel. Waiting for completion..."
+
+    - name: Wait for all clone jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
       register: clone_results
+      until: clone_results.finished
+      retries: 120  # 120 retries * 5 seconds = 10 minutes max
+      delay: 5
+      loop: "{{ clone_jobs.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
-    - name: Wait for clones to complete
-      pause:
-        seconds: 10
+    - name: Display clone completion
+      debug:
+        msg: "All VMs cloned successfully!"
 
-    - name: Configure VLAN tags on network interfaces
+    # ============================================
+    # PHASE 2: Configure VLAN tags (parallel)
+    # ============================================
+    - name: Configure VLAN tags on network interfaces (async/parallel)
       community.general.proxmox_nic:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -85,8 +109,29 @@
         bridge: "{{ network_bridge }}"
         tag: "{{ network_vlan }}"
       loop: "{{ vms }}"
+      async: 60
+      poll: 0
+      register: vlan_jobs
 
-    - name: Configure VM hardware
+    - name: Wait for all VLAN configuration jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: vlan_results
+      until: vlan_results.finished
+      retries: 30
+      delay: 2
+      loop: "{{ vlan_jobs.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Display VLAN configuration completion
+      debug:
+        msg: "All VLAN tags configured!"
+
+    # ============================================
+    # PHASE 3: Configure VM hardware (parallel)
+    # ============================================
+    - name: Configure VM hardware (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -99,8 +144,29 @@
         memory: "{{ item.memory }}"
         update: yes
       loop: "{{ vms }}"
+      async: 60
+      poll: 0
+      register: hardware_jobs
 
-    - name: Resize VM disks
+    - name: Wait for all hardware configuration jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: hardware_results
+      until: hardware_results.finished
+      retries: 30
+      delay: 2
+      loop: "{{ hardware_jobs.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Display hardware configuration completion
+      debug:
+        msg: "All VM hardware configured!"
+
+    # ============================================
+    # PHASE 4: Resize disks (parallel)
+    # ============================================
+    - name: Resize VM disks (async/parallel)
       community.general.proxmox_disk:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -111,8 +177,29 @@
         size: "{{ item.disk }}"
         state: resized
       loop: "{{ vms }}"
+      async: 120
+      poll: 0
+      register: disk_jobs
 
-    - name: Start all VMs
+    - name: Wait for all disk resize jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: disk_results
+      until: disk_results.finished
+      retries: 60
+      delay: 2
+      loop: "{{ disk_jobs.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Display disk resize completion
+      debug:
+        msg: "All VM disks resized!"
+
+    # ============================================
+    # PHASE 5: Start VMs (parallel)
+    # ============================================
+    - name: Start all VMs (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -122,7 +209,28 @@
         node: "{{ item.node }}"
         state: started
       loop: "{{ vms }}"
+      async: 60
+      poll: 0
+      register: start_jobs
 
+    - name: Wait for all VM start jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: start_results
+      until: start_results.finished
+      retries: 30
+      delay: 2
+      loop: "{{ start_jobs.results }}"
+      loop_control:
+        label: "{{ item.item.name }}"
+
+    - name: Display VM start completion
+      debug:
+        msg: "All VMs started!"
+
+    # ============================================
+    # Wait for VMs to boot
+    # ============================================
     - name: Wait for VMs to boot
       pause:
         seconds: 60
@@ -132,11 +240,15 @@
       debug:
         msg:
           - "=========================================="
-          - "VM Deployment Complete!"
+          - "VM Deployment Complete! (Async Mode)"
           - "=========================================="
           - ""
           - "All 17 VMs have been deployed and started."
           - "VMs are booting with DHCP addresses."
+          - ""
+          - "Performance improvement:"
+          - "  - VMs cloned in parallel (much faster!)"
+          - "  - All configuration steps parallelized"
           - ""
           - "Next step:"
           - "  Run playbook: 2-configure-ips.yml"
