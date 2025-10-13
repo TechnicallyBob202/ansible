@@ -43,11 +43,12 @@
           - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
           - "=========================================="
           - "WARNING: This will permanently delete all VMs!"
+          - "Starting cleanup in 5 seconds..."
           - "=========================================="
 
-    - name: Pause for confirmation
+    - name: Wait 5 seconds before cleanup
       pause:
-        prompt: "Press ENTER to continue with cleanup, or Ctrl+C then A to abort"
+        seconds: 5
 
     - name: Stop VMs on Host 1
       community.general.proxmox_kvm:
