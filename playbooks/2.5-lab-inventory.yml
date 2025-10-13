@@ -117,7 +117,7 @@
 
           [all:vars]
           ansible_user=Administrator
-          ansible_password={{ windows_password }}
+          ansible_password={{ "{{" }} lookup('env', 'WINDOWS_PASSWORD') {{ "}}" }}
           ansible_connection=winrm
           ansible_winrm_transport=ntlm
           ansible_winrm_server_cert_validation=ignore
@@ -209,7 +209,7 @@
     - name: Write inventory file
       ansible.builtin.copy:
         content: "{{ inventory_content }}"
-        dest: "{{ playbook_dir }}/inventories/adfr-lab.ini"
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab"
         mode: '0644'
 
     - name: Create inventory metadata
@@ -227,7 +227,7 @@
           {% for server in all_discovered | sort(attribute='hostname') %}
           - {{ server.hostname }}: {{ server.ip_address }} ({{ server.dc_role }})
           {% endfor %}
-        dest: "{{ playbook_dir }}/inventories/adfr-lab-metadata.txt"
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab.meta"
         mode: '0644'
 
     - name: Generate summary report
@@ -237,8 +237,8 @@
           ADFR Lab Inventory Generated!
           ========================================
 
-          📁 Location: {{ playbook_dir }}/inventories/adfr-lab.ini
-          📊 Metadata: {{ playbook_dir }}/inventories/adfr-lab-metadata.txt
+          📁 Location: {{ playbook_dir }}/../inventory/adfr-lab
+          📊 Metadata: {{ playbook_dir }}/../inventory/adfr-lab.meta
 
           📈 Summary:
           - Total Servers Discovered: {{ all_discovered | length }}
@@ -248,9 +248,11 @@
           - Child Domain Additional DCs: {{ child_domain_additional | length }}
 
           🎯 Next Steps:
-          1. Review the generated inventory file
-          2. Update Semaphore to use: inventories/adfr-lab.ini
-          3. Run remaining playbooks (3-6) with new inventory
+          1. Commit and push to git (see next task)
+          2. In Semaphore: Create new inventory "ADFR Lab"
+             - Type: File
+             - Path: inventory/adfr-lab
+          3. Update tasks 3-6 to use "ADFR Lab" inventory
 
           ✅ This inventory contains ONLY the ADFR/DSP lab servers
           ✅ No Proxmox hosts or halehapa infrastructure included
@@ -260,3 +262,94 @@
       ansible.builtin.debug:
         msg: "{{ inventory_content.split('\n')[0:50] | join('\n') }}"
         verbosity: 1
+
+    - name: Display full inventory for Semaphore
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          📋 COPY THIS INVENTORY TO SEMAPHORE
+          ========================================
+
+          Go to Semaphore UI:
+          1. Inventory → New Inventory
+          2. Name: ADFR & DSP Lab
+          3. Type: File
+          4. Path: inventory/adfr-lab
+          5. Save
+
+          ========================================
+          {{ inventory_content }}
+          ========================================
+
+          File saved to: {{ playbook_dir }}/../inventory/adfr-lab
+
+    # ========================================
+    # GIT COMMIT AND PUSH
+    # ========================================
+    - name: Configure git user
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git config user.name "Semaphore Ansible" || true
+        git config user.email "ansible@semaphore.local" || true
+      changed_when: false
+
+    - name: Add inventory files to git
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git add inventory/adfr-lab
+        git add inventory/adfr-lab.meta 2>/dev/null || true
+      register: git_add
+      changed_when: true
+
+    - name: Check if there are changes to commit
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git diff --cached --quiet
+      register: git_diff
+      failed_when: false
+      changed_when: false
+
+    - name: Show what will be committed
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git diff --cached --name-status
+      register: git_changes
+      when: git_diff.rc != 0
+      changed_when: false
+
+    - name: Commit inventory file
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git commit -m "Add ADFR Lab inventory for DC promotion"
+      register: git_commit
+      when: git_diff.rc != 0
+      changed_when: true
+
+    - name: Push to git repository
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git push origin $(git branch --show-current)
+      register: git_push
+      when: git_diff.rc != 0
+      changed_when: true
+
+    - name: Display git operation results
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          GIT OPERATIONS COMPLETE
+          ========================================
+          {% if git_diff.rc != 0 %}
+          ✅ Changes committed and pushed to git
+
+          Files changed:
+          {{ git_changes.stdout }}
+
+          Commit: {{ git_commit.stdout if git_commit is defined else 'N/A' }}
+          Push: {{ git_push.stdout if git_push is defined else 'N/A' }}
+          {% else %}
+          ℹ️  No changes to commit (inventory unchanged)
+          {% endif %}
+
+          Repository: git@github.com:TechnicallyBob202/ansible.git
+          ========================================
