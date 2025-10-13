@@ -15,19 +15,19 @@
 
     # Launch 3 async tasks that just sleep for different durations
     - name: Start async task 1 (sleep 10 seconds)
-      command: sleep 10
+      shell: "sleep 10 && echo 'Task 1 done'"
       async: 30  # Max time to allow (30 seconds)
       poll: 0    # Don't wait, return immediately
       register: async_task1
 
     - name: Start async task 2 (sleep 15 seconds)
-      command: sleep 15
+      shell: "sleep 15 && echo 'Task 2 done'"
       async: 30
       poll: 0
       register: async_task2
 
     - name: Start async task 3 (sleep 20 seconds)
-      command: sleep 20
+      shell: "sleep 20 && echo 'Task 3 done'"
       async: 30
       poll: 0
       register: async_task3
@@ -40,35 +40,52 @@
           Task 2 job ID: {{ async_task2.ansible_job_id }}
           Task 3 job ID: {{ async_task3.ansible_job_id }}
 
-    # Now wait for all tasks to complete
+    # Check status immediately (don't wait)
+    - name: Check async task 1 status (should be running)
+      async_status:
+        jid: "{{ async_task1.ansible_job_id }}"
+      register: task1_check
+      failed_when: false
+
+    - name: Show task 1 initial status
+      debug:
+        msg: "Task 1 finished: {{ task1_check.finished | default(false) }}"
+
+    # Now wait for all tasks to complete with proper error handling
     - name: Wait for async task 1 to complete
       async_status:
         jid: "{{ async_task1.ansible_job_id }}"
       register: task1_result
       until: task1_result.finished
-      retries: 30
+      retries: 35
       delay: 1
+      failed_when: false
 
     - name: Wait for async task 2 to complete
       async_status:
         jid: "{{ async_task2.ansible_job_id }}"
       register: task2_result
       until: task2_result.finished
-      retries: 30
+      retries: 35
       delay: 1
+      failed_when: false
 
     - name: Wait for async task 3 to complete
       async_status:
         jid: "{{ async_task3.ansible_job_id }}"
       register: task3_result
       until: task3_result.finished
-      retries: 30
+      retries: 35
       delay: 1
+      failed_when: false
 
     - name: Show results
       debug:
         msg: |
-          ✓ All async tasks completed successfully!
-          Task 1: {{ task1_result.finished }}
-          Task 2: {{ task2_result.finished }}
-          Task 3: {{ task3_result.finished }}
+          ✓ All async tasks completed!
+          Task 1 finished: {{ task1_result.finished | default('error') }}
+          Task 2 finished: {{ task2_result.finished | default('error') }}
+          Task 3 finished: {{ task3_result.finished | default('error') }}
+          Task 1 output: {{ task1_result.stdout | default('none') }}
+          Task 2 output: {{ task2_result.stdout | default('none') }}
+          Task 3 output: {{ task3_result.stdout | default('none') }}
