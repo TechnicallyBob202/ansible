@@ -207,7 +207,7 @@
         msg: "VM {{ final_vm_id }} started: {{ start_result.stdout }}"
 
     - name: Wait for VM to start
-      shell: qm status {{ final_vm_id }} | grep -q "status: running"
+      shell: "qm status {{ final_vm_id }} | grep -q 'status: running'"
       register: vm_status
       retries: 12
       delay: 5
