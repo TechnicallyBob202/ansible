@@ -3,6 +3,9 @@
   hosts: localhost
   gather_facts: no
 
+  environment:
+    ANSIBLE_ASYNC_DIR: "/tmp/semaphore/.ansible_async"
+
   vars:
     # Proxmox connection details
     proxmox_host1: 192.168.33.21
@@ -79,6 +82,11 @@
     - name: Display clone jobs launched
       debug:
         msg: "Launched {{ clone_jobs.results | length }} clone jobs in parallel. Waiting for completion..."
+
+    - name: Brief pause to let async jobs initialize
+      pause:
+        seconds: 2
+        prompt: "Giving async jobs a moment to start..."
 
     - name: Wait for all clone jobs to complete
       async_status:

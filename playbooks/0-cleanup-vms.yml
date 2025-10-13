@@ -1,7 +1,10 @@
 ---
-- name: Cleanup All Lab VMs
+- name: Cleanup All Lab VMs (Async)
   hosts: localhost
   gather_facts: no
+
+  environment:
+    ANSIBLE_ASYNC_DIR: "/tmp/semaphore/.ansible_async"
 
   vars:
     proxmox_host1: 192.168.33.21
@@ -37,7 +40,7 @@
       debug:
         msg:
           - "=========================================="
-          - "CLEANUP: Destroying All Lab VMs"
+          - "CLEANUP: Destroying All Lab VMs (ASYNC)"
           - "=========================================="
           - "Host 1 ({{ proxmox_host1 }}): {{ vm_ids_host1 | length }} VMs"
           - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
@@ -50,7 +53,10 @@
       pause:
         seconds: 5
 
-    - name: Stop VMs on Host 1
+    # ============================================
+    # PHASE 1: KILL VMs FIRST (parallel, forced)
+    # ============================================
+    - name: Force kill VMs on Host 1 (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host1 }}"
         api_user: "{{ proxmox_user }}"
@@ -61,9 +67,12 @@
         state: stopped
         force: yes
       loop: "{{ vm_ids_host1 }}"
+      async: 30
+      poll: 0
       ignore_errors: yes
+      register: kill_host1_jobs
 
-    - name: Stop VMs on Host 2
+    - name: Force kill VMs on Host 2 (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host2 }}"
         api_user: "{{ proxmox_user }}"
@@ -74,13 +83,57 @@
         state: stopped
         force: yes
       loop: "{{ vm_ids_host2 }}"
+      async: 30
+      poll: 0
       ignore_errors: yes
+      register: kill_host2_jobs
 
-    - name: Wait for VMs to stop
+    - name: Display kill jobs launched
+      debug:
+        msg: "Force-stopping all VMs in parallel. Waiting for completion..."
+
+    - name: Brief pause for kill jobs to initialize
       pause:
-        seconds: 5
+        seconds: 2
 
-    - name: Destroy VMs on Host 1
+    - name: Wait for Host 1 kill jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: kill_host1_results
+      until: kill_host1_results.finished
+      retries: 15
+      delay: 2
+      loop: "{{ kill_host1_jobs.results }}"
+      loop_control:
+        label: "VM {{ item.item }}"
+      ignore_errors: yes
+      failed_when: false
+
+    - name: Wait for Host 2 kill jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: kill_host2_results
+      until: kill_host2_results.finished
+      retries: 15
+      delay: 2
+      loop: "{{ kill_host2_jobs.results }}"
+      loop_control:
+        label: "VM {{ item.item }}"
+      ignore_errors: yes
+      failed_when: false
+
+    - name: Display kill completion
+      debug:
+        msg: "All VMs force-stopped (or were already stopped). Proceeding to deletion..."
+
+    - name: Brief pause before deletion
+      pause:
+        seconds: 3
+
+    # ============================================
+    # PHASE 2: DELETE VMs (parallel)
+    # ============================================
+    - name: Destroy VMs on Host 1 (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host1 }}"
         api_user: "{{ proxmox_user }}"
@@ -90,9 +143,12 @@
         node: semperis-nuc-1
         state: absent
       loop: "{{ vm_ids_host1 }}"
+      async: 60
+      poll: 0
       ignore_errors: yes
+      register: destroy_host1_jobs
 
-    - name: Destroy VMs on Host 2
+    - name: Destroy VMs on Host 2 (async/parallel)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host2 }}"
         api_user: "{{ proxmox_user }}"
@@ -102,14 +158,53 @@
         node: semperis-nuc-2
         state: absent
       loop: "{{ vm_ids_host2 }}"
+      async: 60
+      poll: 0
       ignore_errors: yes
+      register: destroy_host2_jobs
+
+    - name: Display destroy jobs launched
+      debug:
+        msg: "Destroying all VMs in parallel. Waiting for completion..."
+
+    - name: Brief pause for destroy jobs to initialize
+      pause:
+        seconds: 2
+
+    - name: Wait for Host 1 destroy jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: destroy_host1_results
+      until: destroy_host1_results.finished
+      retries: 30
+      delay: 2
+      loop: "{{ destroy_host1_jobs.results }}"
+      loop_control:
+        label: "VM {{ item.item }}"
+      ignore_errors: yes
+      failed_when: false
+
+    - name: Wait for Host 2 destroy jobs to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      register: destroy_host2_results
+      until: destroy_host2_results.finished
+      retries: 30
+      delay: 2
+      loop: "{{ destroy_host2_jobs.results }}"
+      loop_control:
+        label: "VM {{ item.item }}"
+      ignore_errors: yes
+      failed_when: false
 
     - name: Display cleanup results
       debug:
         msg:
           - "=========================================="
-          - "Cleanup Complete!"
+          - "Cleanup Complete! (Async Mode)"
           - "=========================================="
           - "All lab VMs have been destroyed"
+          - "- Phase 1: Force-stopped all VMs"
+          - "- Phase 2: Deleted all VMs"
           - "Ready for fresh deployment"
           - "=========================================="
