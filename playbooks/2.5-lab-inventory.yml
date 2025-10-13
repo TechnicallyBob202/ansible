@@ -119,7 +119,7 @@
 
           [all:vars]
           ansible_user=Administrator
-          ansible_password={{ windows_password }}
+          ansible_password={{ WINDOWS_PASSWORD }}
           ansible_connection=winrm
           ansible_winrm_transport=ntlm
           ansible_winrm_server_cert_validation=ignore
