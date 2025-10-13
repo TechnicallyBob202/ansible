@@ -4,9 +4,6 @@
   gather_facts: no
 
   vars:
-    ansible_async_dir: /tmp/ansible_async  # Fix async path for Semaphore
-
-  vars:
     # Proxmox connection details
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
@@ -57,7 +54,7 @@
           - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
           - "=========================================="
 
-    - name: Clone VMs from templates (parallel)
+    - name: Clone VMs from templates
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
@@ -71,28 +68,7 @@
         full: yes
         timeout: 600
       loop: "{{ vms }}"
-      async: 600
-      poll: 0
-      register: clone_jobs
-      environment:
-        ANSIBLE_ASYNC_DIR: /tmp/ansible_async
-
-    - name: Ensure async directory exists
-      file:
-        path: /tmp/ansible_async
-        state: directory
-        mode: '0755'
-
-    - name: Wait for all clones to complete
-      async_status:
-        jid: "{{ item.ansible_job_id }}"
-      loop: "{{ clone_jobs.results }}"
       register: clone_results
-      until: clone_results.finished
-      retries: 60
-      delay: 10
-      environment:
-        ANSIBLE_ASYNC_DIR: /tmp/ansible_async
 
     - name: Wait for clones to complete
       pause:
