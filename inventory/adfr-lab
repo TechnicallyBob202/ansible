@@ -1,8 +1,17 @@
 # ========================================
 # SEMPERIS ADFR & DSP LAB INVENTORY
 # ========================================
-# Auto-generated: 2025-10-13T23:35:49Z
-# Discovered 0 Windows servers
+# Generated: 2025-10-13 23:48:24
+# Based on lab design specification
+#
+# Lab Architecture:
+# - Forest Root: arbor.local (2 DCs)
+# - Child Domain: koa.arbor.local (2 DCs)
+# - Child Domain: granite.arbor.local (2 DCs)
+# - Child Domain: slate.arbor.local (2 DCs)
+# - Child Domain: marble.arbor.local (2 DCs)
+#
+# Total Domain Controllers: 10
 
 [all:vars]
 ansible_user=Administrator
@@ -16,30 +25,50 @@ ansible_port=5985
 # ALL WINDOWS SERVERS (for steps 1-2)
 # ========================================
 [windows_servers]
+ATLAS ansible_host=192.168.35.10  # forest_root_primary - 8GB RAM
+BASALT-DC01 ansible_host=192.168.35.31  # child_domain_additional - 4GB RAM
+GRANITE-DC01 ansible_host=192.168.35.30  # child_domain_primary - 4GB RAM
+KOA-DC01 ansible_host=192.168.35.20  # child_domain_primary - 4GB RAM
+MARBLE-DC01 ansible_host=192.168.35.34  # child_domain_primary - 4GB RAM
+OAK-DC01 ansible_host=192.168.35.21  # child_domain_additional - 4GB RAM
+QUARTZ-DC01 ansible_host=192.168.35.35  # child_domain_additional - 4GB RAM
+SHALE-DC01 ansible_host=192.168.35.33  # child_domain_additional - 4GB RAM
+SLATE-DC01 ansible_host=192.168.35.32  # child_domain_primary - 4GB RAM
+SUMMIT ansible_host=192.168.35.11  # forest_root_additional - 8GB RAM
 
 # ========================================
-# FOREST ROOT DOMAIN CONTROLLERS
+# FOREST ROOT DOMAIN: arbor.local
 # ========================================
 # First DC - creates the forest (step 3)
 [forest_root_dc]
-# WARNING: No forest root primary DC found! Add one manually.
+ATLAS ansible_host=192.168.35.10 ad_site=Default-First-Site-Name
 
 # Additional DCs in forest root (step 4)
 [forest_root_additional_dcs]
+SUMMIT ansible_host=192.168.35.11 ad_site=Default-First-Site-Name
 
 # ========================================
 # CHILD DOMAIN CONTROLLERS
 # ========================================
 # First DC in each child domain (step 3)
 [child_domain_dcs]
+KOA-DC01 ansible_host=192.168.35.20 target_domain=koa.arbor.local target_netbios=KOA parent_domain=arbor.local ad_site=Default-First-Site-Name
+GRANITE-DC01 ansible_host=192.168.35.30 target_domain=granite.arbor.local target_netbios=GRANITE parent_domain=arbor.local ad_site=Default-First-Site-Name
+SLATE-DC01 ansible_host=192.168.35.32 target_domain=slate.arbor.local target_netbios=SLATE parent_domain=arbor.local ad_site=Default-First-Site-Name
+MARBLE-DC01 ansible_host=192.168.35.34 target_domain=marble.arbor.local target_netbios=MARBLE parent_domain=arbor.local ad_site=Default-First-Site-Name
 
 # ========================================
 # ADDITIONAL DOMAIN CONTROLLERS (step 4)
 # ========================================
 [additional_domain_controllers]
 # Additional forest root DCs
+SUMMIT ansible_host=192.168.35.11 dc_type=forest_root_additional ad_site=Default-First-Site-Name
 
 # Additional child domain DCs
+OAK-DC01 ansible_host=192.168.35.21 dc_type=child_domain_additional target_domain=koa.arbor.local target_netbios=KOA ad_site=Default-First-Site-Name
+BASALT-DC01 ansible_host=192.168.35.31 dc_type=child_domain_additional target_domain=granite.arbor.local target_netbios=GRANITE ad_site=Default-First-Site-Name
+SHALE-DC01 ansible_host=192.168.35.33 dc_type=child_domain_additional target_domain=slate.arbor.local target_netbios=SLATE ad_site=Default-First-Site-Name
+QUARTZ-DC01 ansible_host=192.168.35.35 dc_type=child_domain_additional target_domain=marble.arbor.local target_netbios=MARBLE ad_site=Default-First-Site-Name
 
 # ========================================
 # AGGREGATE GROUPS
@@ -50,19 +79,14 @@ forest_root_additional_dcs
 child_domain_dcs
 additional_domain_controllers
 
-# Semperis Management Server (typically first DC)
+# Semperis Management Server (first DC)
 [semperis_servers:children]
 forest_root_dc
 
 # Distribution Points (first DC in each domain)
 [semperis_distribution_points]
-
-# ========================================
-# DISCOVERED SERVER DETAILS
-# ========================================
-# Total Servers: 0
-# Forest Root Primary: 0
-# Forest Root Additional: 0
-# Child Domain Primary: 0
-# Child Domain Additional: 0
-#
+ATLAS ansible_host=192.168.35.10
+KOA-DC01 ansible_host=192.168.35.20
+GRANITE-DC01 ansible_host=192.168.35.30
+SLATE-DC01 ansible_host=192.168.35.32
+MARBLE-DC01 ansible_host=192.168.35.34
