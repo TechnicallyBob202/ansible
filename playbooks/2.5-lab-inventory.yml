@@ -15,44 +15,74 @@
         domain_name: "arbor.local"
         netbios_name: "ARBOR"
         dcs:
-          - hostname: "dc-arbor-01"
-            ip: "192.168.33.101"
+          - hostname: "ATLAS"
+            ip: "192.168.35.10"
             role: "forest_root_primary"
             memory_gb: 8
             site: "Default-First-Site-Name"
-          - hostname: "dc-arbor-02"
-            ip: "192.168.33.102"
+          - hostname: "SUMMIT"
+            ip: "192.168.35.11"
             role: "forest_root_additional"
             memory_gb: 8
             site: "Default-First-Site-Name"
 
       child_domains:
-        - domain_name: "prod.arbor.local"
-          netbios_name: "PROD"
+        - domain_name: "koa.arbor.local"
+          netbios_name: "KOA"
           parent: "arbor.local"
           dcs:
-            - hostname: "dc-prod-01"
-              ip: "192.168.33.111"
+            - hostname: "KOA-DC01"
+              ip: "192.168.35.20"
               role: "child_domain_primary"
               memory_gb: 4
               site: "Default-First-Site-Name"
-            - hostname: "dc-prod-02"
-              ip: "192.168.33.112"
+            - hostname: "OAK-DC01"
+              ip: "192.168.35.21"
               role: "child_domain_additional"
               memory_gb: 4
               site: "Default-First-Site-Name"
 
-        - domain_name: "dev.arbor.local"
-          netbios_name: "DEV"
+        - domain_name: "granite.arbor.local"
+          netbios_name: "GRANITE"
           parent: "arbor.local"
           dcs:
-            - hostname: "dc-dev-01"
-              ip: "192.168.33.121"
+            - hostname: "GRANITE-DC01"
+              ip: "192.168.35.30"
               role: "child_domain_primary"
               memory_gb: 4
               site: "Default-First-Site-Name"
-            - hostname: "dc-dev-02"
-              ip: "192.168.33.122"
+            - hostname: "BASALT-DC01"
+              ip: "192.168.35.31"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+        - domain_name: "slate.arbor.local"
+          netbios_name: "SLATE"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "SLATE-DC01"
+              ip: "192.168.35.32"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "SHALE-DC01"
+              ip: "192.168.35.33"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+        - domain_name: "marble.arbor.local"
+          netbios_name: "MARBLE"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "MARBLE-DC01"
+              ip: "192.168.35.34"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "QUARTZ-DC01"
+              ip: "192.168.35.35"
               role: "child_domain_additional"
               memory_gb: 4
               site: "Default-First-Site-Name"
