@@ -1,6 +1,6 @@
 ---
 - name: Migrate Windows Server 2022 Templates to VMs
-  hosts: proxmox_hosts
+  hosts: semperis_proxmox
   become: yes
   gather_facts: yes
 
