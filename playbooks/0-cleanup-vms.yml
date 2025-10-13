@@ -46,12 +46,36 @@
           - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
           - "=========================================="
           - "WARNING: This will permanently delete all VMs!"
+          - "This will also kill any running clone operations!"
           - "Starting cleanup in 5 seconds..."
           - "=========================================="
 
     - name: Wait 5 seconds before cleanup
       pause:
         seconds: 5
+
+    # ============================================
+    # PHASE 0: KILL RUNNING CLONE OPERATIONS
+    # ============================================
+    - name: Kill any running qm clone processes on Host 1
+      shell: |
+        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host1 }} \
+          "pkill -9 -f 'qm clone' || true"
+      ignore_errors: yes
+
+    - name: Kill any running qm clone processes on Host 2
+      shell: |
+        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host2 }} \
+          "pkill -9 -f 'qm clone' || true"
+      ignore_errors: yes
+
+    - name: Display kill clone operations completion
+      debug:
+        msg: "Killed any running clone operations. Proceeding to stop VMs..."
+
+    - name: Brief pause after killing clone operations
+      pause:
+        seconds: 2
 
     # ============================================
     # PHASE 1: KILL VMs FIRST (parallel, forced)
