@@ -74,6 +74,14 @@
       async: 600
       poll: 0
       register: clone_jobs
+      environment:
+        ANSIBLE_ASYNC_DIR: /tmp/ansible_async
+
+    - name: Ensure async directory exists
+      file:
+        path: /tmp/ansible_async
+        state: directory
+        mode: '0755'
 
     - name: Wait for all clones to complete
       async_status:
@@ -83,6 +91,8 @@
       until: clone_results.finished
       retries: 60
       delay: 10
+      environment:
+        ANSIBLE_ASYNC_DIR: /tmp/ansible_async
 
     - name: Wait for clones to complete
       pause:
