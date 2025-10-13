@@ -12,8 +12,8 @@
     validate_certs: no
 
     # Template IDs (clean Windows without cloudbase-init)
-    template_host1: 9000
-    template_host2: 9001
+    template_host1: 9001
+    template_host2: 9002
 
     # Network configuration
     network_bridge: vmbr0
