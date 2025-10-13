@@ -90,6 +90,23 @@
       meta: end_host
       when: ping_result is failed
 
+    - name: Get current IP address
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        (Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).IPAddress
+      register: current_ip
+      ignore_errors: yes
+
+    - name: Check if IP is already correct
+      set_fact:
+        ip_already_set: "{{ current_ip.stdout_lines[0] | trim == target_ip }}"
+      when: current_ip is success
+
+    - name: Display IP status
+      debug:
+        msg: "{{ target_hostname }}: Current IP {{ current_ip.stdout_lines[0] | trim }} - {{ 'Already correct, skipping' if ip_already_set | default(false) else 'Needs change to ' + target_ip }}"
+      when: current_ip is success
+
     - name: Configure static IP address (background job)
       win_shell: |
         Start-Job -ScriptBlock {
@@ -101,10 +118,12 @@
         }
       register: ip_result
       ignore_errors: yes
+      when: not (ip_already_set | default(false))
 
     - name: Wait for IP change to propagate
       pause:
         seconds: 10
+      when: not (ip_already_set | default(false))
 
     - name: Reconnect with new static IP
       wait_for:
@@ -113,6 +132,22 @@
         delay: 5
         timeout: 60
       delegate_to: localhost
+      register: reconnect_result
+      ignore_errors: yes
+      when: not (ip_already_set | default(false))
+
+    - name: If reconnect failed, try old DHCP IP
+      debug:
+        msg: "WARNING: Could not connect to {{ target_hostname }} on new IP {{ target_ip }}. It may still be on DHCP IP {{ ansible_host }}. Skipping this VM."
+      when:
+        - not (ip_already_set | default(false))
+        - reconnect_result is failed
+
+    - name: Skip this VM if new IP unreachable
+      meta: end_host
+      when:
+        - not (ip_already_set | default(false))
+        - reconnect_result is failed
 
     - name: Update inventory to use static IP
       set_fact:
