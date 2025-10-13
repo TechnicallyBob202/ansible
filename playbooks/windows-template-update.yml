@@ -1,0 +1,256 @@
+---
+- name: Migrate Windows Server 2022 Templates to VMs
+  hosts: proxmox_hosts
+  become: yes
+  gather_facts: yes
+
+  vars:
+    # Template IDs on each host
+    template_id_nuc1: 9001
+    template_id_nuc2: 9002
+
+    # Temporary template IDs
+    temp_template_id_nuc1: 9901
+    temp_template_id_nuc2: 9902
+
+    # Final VM IDs (will be same as original template IDs)
+    vm_id_nuc1: 9001
+    vm_id_nuc2: 9002
+
+    # VM name for cloning
+    vm_name: "Windows-Server-2022"
+
+  tasks:
+    - name: Set host-specific variables
+      set_fact:
+        current_template_id: "{{ template_id_nuc1 if inventory_hostname == 'semperis-nuc-1' else template_id_nuc2 }}"
+        temp_template_id: "{{ temp_template_id_nuc1 if inventory_hostname == 'semperis-nuc-1' else temp_template_id_nuc2 }}"
+        final_vm_id: "{{ vm_id_nuc1 if inventory_hostname == 'semperis-nuc-1' else vm_id_nuc2 }}"
+
+    - name: Display migration plan
+      debug:
+        msg: |
+          Host: {{ inventory_hostname }}
+          Step 1: Rename template {{ current_template_id }} -> {{ temp_template_id }}
+          Step 2: Clone template {{ temp_template_id }} -> VM {{ final_vm_id }}
+          Step 3: Start VM {{ final_vm_id }}
+          Step 4: Delete template {{ temp_template_id }}
+
+    # ==========================================
+    # STEP 1: Rename template to temporary ID
+    # ==========================================
+    - name: Check if original template exists
+      stat:
+        path: "/etc/pve/qemu-server/{{ current_template_id }}.conf"
+      register: original_template
+
+    - name: Fail if original template doesn't exist
+      fail:
+        msg: "Template {{ current_template_id }} does not exist on {{ inventory_hostname }}"
+      when: not original_template.stat.exists
+
+    - name: Check if temporary template ID is already in use
+      stat:
+        path: "/etc/pve/qemu-server/{{ temp_template_id }}.conf"
+      register: temp_template_exists
+
+    - name: Fail if temporary template ID already exists
+      fail:
+        msg: "Temporary template ID {{ temp_template_id }} already exists. Please clean up first."
+      when: temp_template_exists.stat.exists
+
+    - name: Get storage information from template config
+      shell: |
+        grep -E "^(scsi|virtio|ide|sata)[0-9]+:" /etc/pve/qemu-server/{{ current_template_id }}.conf | head -1 | sed 's/.*:\s*\([^,]*\).*/\1/' | cut -d':' -f1
+      register: storage_info
+      changed_when: false
+
+    - name: Set storage variable
+      set_fact:
+        storage_name: "{{ storage_info.stdout }}"
+
+    - name: Rename template configuration file
+      command: mv /etc/pve/qemu-server/{{ current_template_id }}.conf /etc/pve/qemu-server/{{ temp_template_id }}.conf
+      args:
+        removes: /etc/pve/qemu-server/{{ current_template_id }}.conf
+        creates: /etc/pve/qemu-server/{{ temp_template_id }}.conf
+
+    - name: Check for disk directory in /var/lib/vz/images
+      stat:
+        path: "/var/lib/vz/images/{{ current_template_id }}"
+      register: disk_dir_default
+
+    - name: Check for disk directory in storage path
+      stat:
+        path: "/{{ storage_name }}/{{ current_template_id }}"
+      register: disk_dir_storage
+      when: storage_name != ""
+
+    - name: Rename disk directory (default location)
+      command: mv /var/lib/vz/images/{{ current_template_id }} /var/lib/vz/images/{{ temp_template_id }}
+      when: disk_dir_default.stat.exists and disk_dir_default.stat.isdir
+
+    - name: Rename disk directory (storage location)
+      command: mv /{{ storage_name }}/{{ current_template_id }} /{{ storage_name }}/{{ temp_template_id }}
+      when:
+        - storage_name != ""
+        - disk_dir_storage.stat.exists is defined
+        - disk_dir_storage.stat.exists
+        - disk_dir_storage.stat.isdir
+
+    - name: Update disk references in config file (path-based)
+      replace:
+        path: "/etc/pve/qemu-server/{{ temp_template_id }}.conf"
+        regexp: "{{ current_template_id }}/"
+        replace: "{{ temp_template_id }}/"
+
+    - name: Update VM ID references in config file (LVM-based)
+      replace:
+        path: "/etc/pve/qemu-server/{{ temp_template_id }}.conf"
+        regexp: "vm-{{ current_template_id }}-"
+        replace: "vm-{{ temp_template_id }}-"
+
+    - name: Get LVM volumes for template
+      shell: |
+        lvs --noheadings -o lv_name,vg_name 2>/dev/null | grep "vm-{{ current_template_id }}-" || true
+      register: lvm_volumes
+      changed_when: false
+
+    - name: Rename LVM volumes
+      shell: |
+        echo "{{ item }}" | while read -r lv_name vg_name; do
+          new_lv_name=$(echo "$lv_name" | sed "s/vm-{{ current_template_id }}-/vm-{{ temp_template_id }}-/")
+          lvrename "$vg_name" "$lv_name" "$new_lv_name"
+        done
+      loop: "{{ lvm_volumes.stdout_lines }}"
+      when: lvm_volumes.stdout != ""
+
+    - name: Check if firewall config exists
+      stat:
+        path: "/etc/pve/firewall/{{ current_template_id }}.fw"
+      register: firewall_config
+
+    - name: Rename firewall configuration
+      command: mv /etc/pve/firewall/{{ current_template_id }}.fw /etc/pve/firewall/{{ temp_template_id }}.fw
+      when: firewall_config.stat.exists
+
+    - name: Rename backup files
+      shell: |
+        shopt -s nullglob
+        for ext in vma vma.gz vma.lzo vma.zst; do
+          for backup in /var/lib/vz/dump/vzdump-qemu-{{ current_template_id }}-*.${ext}; do
+            if [ -f "$backup" ]; then
+              new_backup=$(echo "$backup" | sed "s/-{{ current_template_id }}-/-{{ temp_template_id }}-/")
+              mv "$backup" "$new_backup"
+            fi
+          done
+        done
+      args:
+        executable: /bin/bash
+      register: backup_rename
+      changed_when: backup_rename.rc == 0
+
+    - name: Verify template rename completed
+      stat:
+        path: "/etc/pve/qemu-server/{{ temp_template_id }}.conf"
+      register: renamed_template
+
+    - name: Confirm template renamed successfully
+      debug:
+        msg: "Template {{ current_template_id }} successfully renamed to {{ temp_template_id }}"
+      when: renamed_template.stat.exists
+
+    # ==========================================
+    # STEP 2: Clone template to final VM ID
+    # ==========================================
+    - name: Clone template to new VM
+      command: >
+        qm clone {{ temp_template_id }} {{ final_vm_id }}
+        --name {{ vm_name }}-{{ inventory_hostname }}
+        --full
+      register: clone_result
+
+    - name: Display clone result
+      debug:
+        msg: "Clone completed: {{ clone_result.stdout }}"
+
+    - name: Wait for clone to complete
+      wait_for:
+        timeout: 10
+      delegate_to: localhost
+
+    - name: Verify VM was created
+      stat:
+        path: "/etc/pve/qemu-server/{{ final_vm_id }}.conf"
+      register: new_vm
+
+    - name: Fail if VM wasn't created
+      fail:
+        msg: "Failed to create VM {{ final_vm_id }}"
+      when: not new_vm.stat.exists
+
+    - name: Remove template flag from VM (if present)
+      lineinfile:
+        path: "/etc/pve/qemu-server/{{ final_vm_id }}.conf"
+        regexp: "^template:"
+        state: absent
+
+    # ==========================================
+    # STEP 3: Start the new VM
+    # ==========================================
+    - name: Start the new VM
+      command: qm start {{ final_vm_id }}
+      register: start_result
+
+    - name: Display start result
+      debug:
+        msg: "VM {{ final_vm_id }} started: {{ start_result.stdout }}"
+
+    - name: Wait for VM to start
+      shell: qm status {{ final_vm_id }} | grep -q "status: running"
+      register: vm_status
+      retries: 12
+      delay: 5
+      until: vm_status.rc == 0
+
+    - name: Confirm VM is running
+      debug:
+        msg: "VM {{ final_vm_id }} is now running on {{ inventory_hostname }}"
+
+    # ==========================================
+    # STEP 4: Delete temporary template
+    # ==========================================
+    - name: Delete temporary template
+      command: qm destroy {{ temp_template_id }} --purge
+      register: delete_result
+
+    - name: Display deletion result
+      debug:
+        msg: "Temporary template {{ temp_template_id }} deleted: {{ delete_result.stdout }}"
+
+    - name: Verify temporary template was deleted
+      stat:
+        path: "/etc/pve/qemu-server/{{ temp_template_id }}.conf"
+      register: temp_deleted
+
+    - name: Confirm deletion
+      debug:
+        msg: "Temporary template {{ temp_template_id }} successfully removed"
+      when: not temp_deleted.stat.exists
+
+    # ==========================================
+    # FINAL SUMMARY
+    # ==========================================
+    - name: Display final summary
+      debug:
+        msg: |
+          ========================================
+          Migration completed successfully on {{ inventory_hostname }}!
+          ========================================
+          Original template ID: {{ current_template_id }}
+          New VM ID: {{ final_vm_id }}
+          VM Name: {{ vm_name }}-{{ inventory_hostname }}
+          VM Status: Running
+
+          Verify with: qm status {{ final_vm_id }}
+          ========================================
