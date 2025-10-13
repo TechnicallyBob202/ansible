@@ -1,21 +1,28 @@
 ---
-- name: Deploy Semperis Lab - 17 VMs (Parallel via Shell)
+- name: Deploy Semperis Lab - 17 VMs
   hosts: localhost
   gather_facts: no
 
   vars:
+    # Proxmox connection details
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    validate_certs: no
 
-    template_host1: 9001
-    template_host2: 9002
+    # Template IDs (clean Windows without cloudbase-init)
+    # Each host has its own template (no shared storage)
+    template_host1: 9001  # semperis-nuc-1
+    template_host2: 9002  # semperis-nuc-2
+
+    # Network configuration
     network_bridge: vmbr0
     network_vlan: 35
 
+    # VM definitions
     vms:
-      # Host 1 VMs
+      # Host 1 VMs (9 VMs on semperis-nuc-1)
       - { name: "ATLAS", vmid: 3510, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
       - { name: "SUMMIT", vmid: 3511, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
       - { name: "PEAK", vmid: 3512, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 16384, disk: "200G" }
@@ -25,7 +32,8 @@
       - { name: "SLATE-DC01", vmid: 3532, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
       - { name: "MARBLE-DC01", vmid: 3534, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
       - { name: "MESA-R01", vmid: 3550, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-      # Host 2 VMs
+
+      # Host 2 VMs (8 VMs on semperis-nuc-2)
       - { name: "CREST", vmid: 3514, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
       - { name: "SLOPE", vmid: 3519, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
       - { name: "OAK-DC01", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
@@ -40,33 +48,40 @@
       debug:
         msg:
           - "=========================================="
-          - "Deploying 17 VMs (Parallel SSH)"
+          - "Deploying 17 VMs to Semperis Lab"
           - "=========================================="
-          - "Using SSH to Proxmox hosts for true parallelization"
+          - "Host 1 ({{ proxmox_host1 }}): 9 VMs"
+          - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
           - "=========================================="
 
-    # ============================================
-    # Clone ALL VMs in background using qm clone
-    # ============================================
-    - name: Clone VMs in background using SSH (true async)
-      shell: |
-        ssh -o StrictHostKeyChecking=no root@{{ item.host }} \
-          "qm clone {{ item.template }} {{ item.vmid }} --name {{ item.name }} --full 1" &
+    - name: Clone VMs from templates
+      community.general.proxmox_kvm:
+        api_host: "{{ item.host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ validate_certs }}"
+        node: "{{ item.node }}"
+        vmid: "{{ item.template }}"
+        clone: "{{ item.template }}"
+        newid: "{{ item.vmid }}"
+        name: "{{ item.name }}"
+        full: yes
+        timeout: 600
       loop: "{{ vms }}"
+      register: clone_results
       loop_control:
         label: "{{ item.name }}"
 
-    - name: Wait for all clones to complete
+    - name: Wait for clones to complete
       pause:
-        minutes: 3
-        prompt: "Waiting 3 minutes for all VM clones to complete..."
+        seconds: 10
 
-    - name: Configure VLAN tags
+    - name: Configure VLAN tags on network interfaces
       community.general.proxmox_nic:
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
-        validate_certs: no
+        validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
         interface: net0
         bridge: "{{ network_bridge }}"
@@ -80,7 +95,7 @@
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
-        validate_certs: no
+        validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
         node: "{{ item.node }}"
         name: "{{ item.name }}"
@@ -96,7 +111,7 @@
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
-        validate_certs: no
+        validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
         disk: scsi0
         size: "{{ item.disk }}"
@@ -110,7 +125,7 @@
         api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
-        validate_certs: no
+        validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
         node: "{{ item.node }}"
         state: started
@@ -129,6 +144,16 @@
           - "=========================================="
           - "VM Deployment Complete!"
           - "=========================================="
-          - "All 17 VMs deployed and started"
-          - "Next: Run 2-configure-ips.yml"
+          - ""
+          - "All 17 VMs have been deployed and started."
+          - "VMs are booting with DHCP addresses."
+          - ""
+          - "Next step:"
+          - "  Run playbook: 2-configure-ips.yml"
+          - ""
+          - "This will:"
+          - "  1. Find DHCP IPs of all VMs"
+          - "  2. Set static IPs on VLAN 35"
+          - "  3. Configure hostnames"
+          - "  4. Set DNS servers"
           - "=========================================="
