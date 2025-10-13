@@ -75,10 +75,9 @@
       pause:
         seconds: 2
 
-- name: Configure Windows VMs
+- name: Configure Windows VMs - Phase 1: Change IPs
   hosts: windows_vms
   gather_facts: no
-  serial: 1
 
   tasks:
     - name: Test WinRM connectivity
@@ -111,38 +110,41 @@
       win_shell: |
         $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
         New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway 192.168.35.1
+      async: 10
+      poll: 0
       register: ip_result
       ignore_errors: yes
       when: not (ip_already_set | default(false))
 
-    - name: Wait for IP change to propagate
-      pause:
-        seconds: 5
-      when: not (ip_already_set | default(false))
+- name: Wait for all IP changes to complete
+  hosts: localhost
+  gather_facts: no
 
-    - name: Reconnect with new static IP
+  tasks:
+    - name: Wait 15 seconds for all IPs to stabilize
+      pause:
+        seconds: 15
+        prompt: "Waiting for all IP changes to complete and network to stabilize..."
+
+- name: Configure Windows VMs - Phase 2: DNS and Hostname
+  hosts: windows_vms
+  gather_facts: no
+  serial: 1
+
+  tasks:
+    - name: Test connectivity on new static IP
       wait_for:
         host: "{{ target_ip }}"
         port: 5985
-        delay: 5
-        timeout: 60
+        delay: 2
+        timeout: 30
       delegate_to: localhost
       register: reconnect_result
       ignore_errors: yes
-      when: not (ip_already_set | default(false))
 
-    - name: If reconnect failed, try old DHCP IP
-      debug:
-        msg: "WARNING: Could not connect to {{ target_hostname }} on new IP {{ target_ip }}. It may still be on DHCP IP {{ ansible_host }}. Skipping this VM."
-      when:
-        - not (ip_already_set | default(false))
-        - reconnect_result is failed
-
-    - name: Skip this VM if new IP unreachable
+    - name: Skip if new IP unreachable
       meta: end_host
-      when:
-        - not (ip_already_set | default(false))
-        - reconnect_result is failed
+      when: reconnect_result is failed
 
     - name: Update inventory to use static IP
       set_fact:
