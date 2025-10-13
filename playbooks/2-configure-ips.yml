@@ -44,7 +44,7 @@
         fail_msg: "WINDOWS_PASSWORD environment variable must be set"
 
     - name: Get DHCP IPs from all VMs
-      shell: "ssh root@{{ item.pxhost }} 'qm guest cmd {{ item.vmid }} network-get-interfaces' 2>/dev/null | grep -oP '(?<=\"ip-address\":\")[^\"]*' | grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1"
+      shell: "ssh root@{{ item.pxhost }} 'qm guest cmd {{ item.vmid }} network-get-interfaces' 2>/dev/null | grep -oP '(?<=\"ip-address\" : \")[^\"]*' | grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1"
       loop: "{{ vm_configs }}"
       register: dhcp_ips
       ignore_errors: yes
@@ -146,8 +146,8 @@
           - "All VMs configured with:"
           - "  - Static IPs on 192.168.35.x"
           - "  - Correct hostnames"
-          - "  - DNS: {{ dns_servers }}"
-          - "  - Gateway: {{ gateway }}"
+          - "  - DNS: 192.168.33.6, 192.168.33.7"
+          - "  - Gateway: 192.168.35.1"
           - ""
           - "Next steps:"
           - "  1. Verify connectivity: ping each IP"
