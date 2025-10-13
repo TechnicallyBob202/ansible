@@ -96,7 +96,7 @@
         # Remove old IP and add new one in single command to minimize downtime
         Remove-NetIPAddress -InterfaceAlias $adapter.Name -Confirm:$false -ErrorAction SilentlyContinue
         Remove-NetRoute -InterfaceAlias $adapter.Name -Confirm:$false -ErrorAction SilentlyContinue
-        New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway "{{ hostvars['localhost']['gateway'] }}"
+        New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway 192.168.35.1
       register: ip_result
       async: 45
       poll: 0
@@ -125,7 +125,7 @@
     - name: Configure DNS servers
       win_shell: |
         $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "{{ hostvars['localhost']['dns_servers'] }}"
+        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "192.168.33.6","192.168.33.7"
 
     - name: Set hostname
       win_hostname:
