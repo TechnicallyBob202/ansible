@@ -1,48 +1,96 @@
 ---
-- name: Deploy VMs to NUC-1
+- name: Deploy Semperis Lab - 17 VMs
   hosts: localhost
   gather_facts: no
 
   vars:
-    proxmox_host: 192.168.33.21
-    proxmox_node: semperis-nuc-1
+    ansible_async_dir: /tmp/ansible_async  # Fix async path for Semaphore
+
+  vars:
+    # Proxmox connection details
+    proxmox_host1: 192.168.33.21
+    proxmox_host2: 192.168.33.22
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
-    template_id: 9001
+
+    # Template IDs (clean Windows without cloudbase-init)
+    # Each host has its own template (no shared storage)
+    template_host1: 9001  # semperis-nuc-1
+    template_host2: 9002  # semperis-nuc-2
+
+    # Network configuration
     network_bridge: vmbr0
     network_vlan: 35
 
+    # VM definitions
     vms:
-      - { name: "ATLAS", vmid: 3510, cores: 4, memory: 8192, disk: "100G" }
-      - { name: "SUMMIT", vmid: 3511, cores: 4, memory: 8192, disk: "100G" }
-      - { name: "PEAK", vmid: 3512, cores: 4, memory: 16384, disk: "200G" }
-      - { name: "RIDGE", vmid: 3513, cores: 2, memory: 4096, disk: "500G" }
-      - { name: "KOA-DC01", vmid: 3520, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "GRANITE-DC01", vmid: 3530, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "SLATE-DC01", vmid: 3532, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "MARBLE-DC01", vmid: 3534, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "MESA-R01", vmid: 3550, cores: 2, memory: 4096, disk: "80G" }
+      # Host 1 VMs (9 VMs on semperis-nuc-1)
+      - { name: "ATLAS", vmid: 3510, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
+      - { name: "SUMMIT", vmid: 3511, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
+      - { name: "PEAK", vmid: 3512, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 16384, disk: "200G" }
+      - { name: "RIDGE", vmid: 3513, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "500G" }
+      - { name: "KOA-DC01", vmid: 3520, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "GRANITE-DC01", vmid: 3530, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "SLATE-DC01", vmid: 3532, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "MARBLE-DC01", vmid: 3534, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "MESA-R01", vmid: 3550, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
+
+      # Host 2 VMs (8 VMs on semperis-nuc-2)
+      - { name: "CREST", vmid: 3514, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
+      - { name: "SLOPE", vmid: 3519, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "OAK-DC01", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "BASALT-DC01", vmid: 3531, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "SHALE-DC01", vmid: 3533, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "QUARTZ-DC01", vmid: 3535, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "BLUFF-R01", vmid: 3551, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "CLIFF-R01", vmid: 3552, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
 
   tasks:
-    - name: Clone VMs on NUC-1
+    - name: Display deployment plan
+      debug:
+        msg:
+          - "=========================================="
+          - "Deploying 17 VMs to Semperis Lab"
+          - "=========================================="
+          - "Host 1 ({{ proxmox_host1 }}): 9 VMs"
+          - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
+          - "=========================================="
+
+    - name: Clone VMs from templates (parallel)
       community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
+        api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
-        node: "{{ proxmox_node }}"
-        vmid: "{{ template_id }}"
-        clone: "{{ template_id }}"
+        node: "{{ item.node }}"
+        vmid: "{{ item.template }}"
+        clone: "{{ item.template }}"
         newid: "{{ item.vmid }}"
         name: "{{ item.name }}"
         full: yes
         timeout: 600
       loop: "{{ vms }}"
+      async: 600
+      poll: 0
+      register: clone_jobs
 
-    - name: Configure VLAN on NUC-1 VMs
+    - name: Wait for all clones to complete
+      async_status:
+        jid: "{{ item.ansible_job_id }}"
+      loop: "{{ clone_jobs.results }}"
+      register: clone_results
+      until: clone_results.finished
+      retries: 60
+      delay: 10
+
+    - name: Wait for clones to complete
+      pause:
+        seconds: 10
+
+    - name: Configure VLAN tags on network interfaces
       community.general.proxmox_nic:
-        api_host: "{{ proxmox_host }}"
+        api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
@@ -52,23 +100,23 @@
         tag: "{{ network_vlan }}"
       loop: "{{ vms }}"
 
-    - name: Configure hardware on NUC-1 VMs
+    - name: Configure VM hardware
       community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
+        api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
-        node: "{{ proxmox_node }}"
+        node: "{{ item.node }}"
         name: "{{ item.name }}"
         cores: "{{ item.cores }}"
         memory: "{{ item.memory }}"
         update: yes
       loop: "{{ vms }}"
 
-    - name: Resize disks on NUC-1 VMs
+    - name: Resize VM disks
       community.general.proxmox_disk:
-        api_host: "{{ proxmox_host }}"
+        api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
@@ -78,122 +126,38 @@
         state: resized
       loop: "{{ vms }}"
 
-    - name: Start VMs on NUC-1
+    - name: Start all VMs
       community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
+        api_host: "{{ item.host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ validate_certs }}"
         vmid: "{{ item.vmid }}"
-        node: "{{ proxmox_node }}"
+        node: "{{ item.node }}"
         state: started
       loop: "{{ vms }}"
 
-- name: Deploy VMs to NUC-2
-  hosts: localhost
-  gather_facts: no
-
-  vars:
-    proxmox_host: 192.168.33.22
-    proxmox_node: semperis-nuc-2
-    proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
-    validate_certs: no
-    template_id: 9002
-    network_bridge: vmbr0
-    network_vlan: 35
-
-    vms:
-      - { name: "CREST", vmid: 3514, cores: 2, memory: 4096, disk: "500G" }
-      - { name: "SLOPE", vmid: 3519, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "OAK-DC01", vmid: 3521, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "BASALT-DC01", vmid: 3531, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "SHALE-DC01", vmid: 3533, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "QUARTZ-DC01", vmid: 3535, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "BLUFF-R01", vmid: 3551, cores: 2, memory: 4096, disk: "80G" }
-      - { name: "CLIFF-R01", vmid: 3552, cores: 2, memory: 4096, disk: "80G" }
-
-  tasks:
-    - name: Clone VMs on NUC-2
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        node: "{{ proxmox_node }}"
-        vmid: "{{ template_id }}"
-        clone: "{{ template_id }}"
-        newid: "{{ item.vmid }}"
-        name: "{{ item.name }}"
-        full: yes
-        timeout: 600
-      loop: "{{ vms }}"
-
-    - name: Configure VLAN on NUC-2 VMs
-      community.general.proxmox_nic:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        interface: net0
-        bridge: "{{ network_bridge }}"
-        tag: "{{ network_vlan }}"
-      loop: "{{ vms }}"
-
-    - name: Configure hardware on NUC-2 VMs
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        node: "{{ proxmox_node }}"
-        name: "{{ item.name }}"
-        cores: "{{ item.cores }}"
-        memory: "{{ item.memory }}"
-        update: yes
-      loop: "{{ vms }}"
-
-    - name: Resize disks on NUC-2 VMs
-      community.general.proxmox_disk:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        disk: scsi0
-        size: "{{ item.disk }}"
-        state: resized
-      loop: "{{ vms }}"
-
-    - name: Start VMs on NUC-2
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        node: "{{ proxmox_node }}"
-        state: started
-      loop: "{{ vms }}"
-
-- name: Wait for all VMs to boot
-  hosts: localhost
-  gather_facts: no
-
-  tasks:
     - name: Wait for VMs to boot
       pause:
         seconds: 60
         prompt: "Waiting for all VMs to boot and get DHCP addresses..."
 
-    - name: Display completion
+    - name: Display completion summary
       debug:
         msg:
           - "=========================================="
           - "VM Deployment Complete!"
           - "=========================================="
-          - "All 17 VMs deployed and started"
-          - "Next: Run 2-configure-ips.yml"
+          - ""
+          - "All 17 VMs have been deployed and started."
+          - "VMs are booting with DHCP addresses."
+          - ""
+          - "Next step:"
+          - "  Run playbook: 2-configure-ips.yml"
+          - ""
+          - "This will:"
+          - "  1. Find DHCP IPs of all VMs"
+          - "  2. Set static IPs on VLAN 35"
+          - "  3. Configure hostnames"
+          - "  4. Set DNS servers"
           - "=========================================="
