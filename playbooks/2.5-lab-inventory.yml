@@ -1,0 +1,264 @@
+---
+- name: Discover Windows Servers and Generate ADFR Lab Inventory
+  hosts: windows_servers
+  gather_facts: yes
+
+  vars_files:
+    - vars/domain_config.yml
+    - vars/credentials.yml
+
+  tasks:
+    - name: Gather Windows server information
+      ansible.windows.win_powershell:
+        script: |
+          $Info = @{
+            Hostname = $env:COMPUTERNAME
+            FQDN = [System.Net.Dns]::GetHostByName($env:COMPUTERNAME).HostName
+            IPAddress = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike "169.*" -and $_.IPAddress -ne "127.0.0.1"} | Select-Object -First 1).IPAddress
+            Domain = (Get-WmiObject Win32_ComputerSystem).Domain
+            IsDomainController = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
+            OSVersion = (Get-WmiObject Win32_OperatingSystem).Caption
+            Memory = [math]::Round((Get-WmiObject Win32_ComputerSystem).TotalPhysicalMemory / 1GB, 2)
+          }
+          $Info | ConvertTo-Json
+      register: server_info_raw
+
+    - name: Parse server information
+      ansible.builtin.set_fact:
+        server_info: "{{ server_info_raw.output[0] | from_json }}"
+
+    - name: Determine DC role from hostname or vars
+      ansible.builtin.set_fact:
+        dc_role: >-
+          {%- if inventory_hostname in groups['forest_root_dc'] | default([]) -%}
+            forest_root_primary
+          {%- elif inventory_hostname in groups['forest_root_additional_dcs'] | default([]) -%}
+            forest_root_additional
+          {%- elif inventory_hostname in groups['child_domain_dcs'] | default([]) -%}
+            child_domain_primary
+          {%- elif inventory_hostname in groups['additional_domain_controllers'] | default([]) -%}
+            {{ hostvars[inventory_hostname].dc_type | default('additional') }}
+          {%- elif 'arbor-01' in inventory_hostname or 'dc01' in inventory_hostname -%}
+            forest_root_primary
+          {%- elif 'arbor-02' in inventory_hostname or 'dc02' in inventory_hostname -%}
+            forest_root_additional
+          {%- elif 'prod' in inventory_hostname and ('01' in inventory_hostname or 'dc1' in inventory_hostname) -%}
+            child_domain_primary
+          {%- elif 'prod' in inventory_hostname -%}
+            child_domain_additional
+          {%- elif 'dev' in inventory_hostname and ('01' in inventory_hostname or 'dc1' in inventory_hostname) -%}
+            child_domain_primary
+          {%- elif 'dev' in inventory_hostname -%}
+            child_domain_additional
+          {%- else -%}
+            unknown
+          {%- endif -%}
+
+    - name: Determine target domain from hostname or vars
+      ansible.builtin.set_fact:
+        target_domain_info: >-
+          {%- if 'prod' in inventory_hostname -%}
+            prod.arbor.local|PROD
+          {%- elif 'dev' in inventory_hostname -%}
+            dev.arbor.local|DEV
+          {%- else -%}
+            arbor.local|ARBOR
+          {%- endif -%}
+
+    - name: Build server entry
+      ansible.builtin.set_fact:
+        server_entry:
+          hostname: "{{ inventory_hostname }}"
+          ansible_host: "{{ ansible_host }}"
+          ip_address: "{{ server_info.IPAddress }}"
+          dc_role: "{{ dc_role }}"
+          target_domain: "{{ target_domain_info.split('|')[0] }}"
+          target_netbios: "{{ target_domain_info.split('|')[1] }}"
+          is_dc: "{{ server_info.IsDomainController }}"
+          fqdn: "{{ server_info.FQDN }}"
+          memory_gb: "{{ server_info.Memory }}"
+
+    - name: Collect all server entries
+      ansible.builtin.set_fact:
+        all_servers: "{{ all_servers | default([]) + [server_entry] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      run_once: no
+
+- name: Generate ADFR Lab Inventory File
+  hosts: localhost
+  gather_facts: yes
+
+  vars_files:
+    - vars/domain_config.yml
+    - vars/credentials.yml
+
+  tasks:
+    - name: Create inventories directory
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/inventories"
+        state: directory
+        mode: '0755'
+
+    - name: Sort servers by role
+      ansible.builtin.set_fact:
+        forest_root_primary: "{{ hostvars['localhost'].all_servers | default([]) | selectattr('dc_role', 'equalto', 'forest_root_primary') | list }}"
+        forest_root_additional: "{{ hostvars['localhost'].all_servers | default([]) | selectattr('dc_role', 'equalto', 'forest_root_additional') | list }}"
+        child_domain_primary: "{{ hostvars['localhost'].all_servers | default([]) | selectattr('dc_role', 'equalto', 'child_domain_primary') | list }}"
+        child_domain_additional: "{{ hostvars['localhost'].all_servers | default([]) | selectattr('dc_role', 'equalto', 'child_domain_additional') | list }}"
+        all_discovered: "{{ hostvars['localhost'].all_servers | default([]) }}"
+
+    - name: Generate inventory content
+      ansible.builtin.set_fact:
+        inventory_content: |
+          # ========================================
+          # SEMPERIS ADFR & DSP LAB INVENTORY
+          # ========================================
+          # Auto-generated: {{ ansible_date_time.iso8601 }}
+          # Discovered {{ all_discovered | length }} Windows servers
+
+          [all:vars]
+          ansible_user=Administrator
+          ansible_password={{ windows_password }}
+          ansible_connection=winrm
+          ansible_winrm_transport=ntlm
+          ansible_winrm_server_cert_validation=ignore
+          ansible_port=5985
+
+          # ========================================
+          # ALL WINDOWS SERVERS (for steps 1-2)
+          # ========================================
+          [windows_servers]
+          {% for server in all_discovered | sort(attribute='hostname') %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }}  # {{ server.ip_address }} - {{ server.memory_gb }}GB RAM{% if server.is_dc %} - Currently DC{% endif %}
+
+          {% endfor %}
+
+          # ========================================
+          # FOREST ROOT DOMAIN CONTROLLERS
+          # ========================================
+          # First DC - creates the forest (step 3)
+          [forest_root_dc]
+          {% for server in forest_root_primary %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }}
+          {% endfor %}
+          {% if forest_root_primary | length == 0 %}
+          # WARNING: No forest root primary DC found! Add one manually.
+          {% endif %}
+
+          # Additional DCs in forest root (step 4)
+          [forest_root_additional_dcs]
+          {% for server in forest_root_additional %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }}
+          {% endfor %}
+
+          # ========================================
+          # CHILD DOMAIN CONTROLLERS
+          # ========================================
+          # First DC in each child domain (step 3)
+          [child_domain_dcs]
+          {% for server in child_domain_primary %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }} target_domain={{ server.target_domain }} target_netbios={{ server.target_netbios }}
+          {% endfor %}
+
+          # ========================================
+          # ADDITIONAL DOMAIN CONTROLLERS (step 4)
+          # ========================================
+          [additional_domain_controllers]
+          # Additional forest root DCs
+          {% for server in forest_root_additional %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }} dc_type=forest_root_additional
+          {% endfor %}
+
+          # Additional child domain DCs
+          {% for server in child_domain_additional %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }} dc_type=child_domain_additional target_domain={{ server.target_domain }} target_netbios={{ server.target_netbios }}
+          {% endfor %}
+
+          # ========================================
+          # AGGREGATE GROUPS
+          # ========================================
+          [domain_controllers:children]
+          forest_root_dc
+          forest_root_additional_dcs
+          child_domain_dcs
+          additional_domain_controllers
+
+          # Semperis Management Server (typically first DC)
+          [semperis_servers:children]
+          forest_root_dc
+
+          # Distribution Points (first DC in each domain)
+          [semperis_distribution_points]
+          {% for server in forest_root_primary + child_domain_primary %}
+          {{ server.hostname }} ansible_host={{ server.ansible_host }}
+          {% endfor %}
+
+          # ========================================
+          # DISCOVERED SERVER DETAILS
+          # ========================================
+          # Total Servers: {{ all_discovered | length }}
+          # Forest Root Primary: {{ forest_root_primary | length }}
+          # Forest Root Additional: {{ forest_root_additional | length }}
+          # Child Domain Primary: {{ child_domain_primary | length }}
+          # Child Domain Additional: {{ child_domain_additional | length }}
+          #
+          {% for server in all_discovered | sort(attribute='hostname') %}
+          # {{ server.hostname }}: {{ server.ip_address }} ({{ server.dc_role }}){% if server.is_dc %} - Active DC{% endif %}
+
+          {% endfor %}
+
+    - name: Write inventory file
+      ansible.builtin.copy:
+        content: "{{ inventory_content }}"
+        dest: "{{ playbook_dir }}/inventories/adfr-lab.ini"
+        mode: '0644'
+
+    - name: Create inventory metadata
+      ansible.builtin.copy:
+        content: |
+          # ADFR Lab Inventory Metadata
+          Generated: {{ ansible_date_time.iso8601 }}
+          Total Servers: {{ all_discovered | length }}
+          Forest Root Primary: {{ forest_root_primary | length }}
+          Forest Root Additional: {{ forest_root_additional | length }}
+          Child Domain Primary: {{ child_domain_primary | length }}
+          Child Domain Additional: {{ child_domain_additional | length }}
+
+          Server List:
+          {% for server in all_discovered | sort(attribute='hostname') %}
+          - {{ server.hostname }}: {{ server.ip_address }} ({{ server.dc_role }})
+          {% endfor %}
+        dest: "{{ playbook_dir }}/inventories/adfr-lab-metadata.txt"
+        mode: '0644'
+
+    - name: Generate summary report
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          ADFR Lab Inventory Generated!
+          ========================================
+
+          📁 Location: {{ playbook_dir }}/inventories/adfr-lab.ini
+          📊 Metadata: {{ playbook_dir }}/inventories/adfr-lab-metadata.txt
+
+          📈 Summary:
+          - Total Servers Discovered: {{ all_discovered | length }}
+          - Forest Root Primary DCs: {{ forest_root_primary | length }}
+          - Forest Root Additional DCs: {{ forest_root_additional | length }}
+          - Child Domain Primary DCs: {{ child_domain_primary | length }}
+          - Child Domain Additional DCs: {{ child_domain_additional | length }}
+
+          🎯 Next Steps:
+          1. Review the generated inventory file
+          2. Update Semaphore to use: inventories/adfr-lab.ini
+          3. Run remaining playbooks (3-6) with new inventory
+
+          ✅ This inventory contains ONLY the ADFR/DSP lab servers
+          ✅ No Proxmox hosts or halehapa infrastructure included
+          ========================================
+
+    - name: Display inventory preview
+      ansible.builtin.debug:
+        msg: "{{ inventory_content.split('\n')[0:50] | join('\n') }}"
+        verbosity: 1
