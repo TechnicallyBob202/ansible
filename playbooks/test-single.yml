@@ -12,7 +12,7 @@
     validate_certs: no
 
     # Template (clean Windows without cloudbase-init)
-    template_id: 9003
+    template_id: 9004
 
     # Network configuration - VLAN 35
     network_bridge: vmbr0
