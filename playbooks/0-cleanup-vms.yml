@@ -1,0 +1,114 @@
+---
+- name: Cleanup All Lab VMs
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    proxmox_host1: 192.168.33.21
+    proxmox_host2: 192.168.33.22
+    proxmox_user: root@pam
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    validate_certs: no
+
+    # All VM IDs to cleanup
+    vm_ids_host1:
+      - 3510  # ATLAS
+      - 3511  # SUMMIT
+      - 3512  # PEAK
+      - 3513  # RIDGE
+      - 3520  # KOA-DC01
+      - 3530  # GRANITE-DC01
+      - 3532  # SLATE-DC01
+      - 3534  # MARBLE-DC01
+      - 3550  # MESA-R01
+
+    vm_ids_host2:
+      - 3514  # CREST
+      - 3519  # SLOPE
+      - 3521  # OAK-DC01
+      - 3531  # BASALT-DC01
+      - 3533  # SHALE-DC01
+      - 3535  # QUARTZ-DC01
+      - 3551  # BLUFF-R01
+      - 3552  # CLIFF-R01
+
+  tasks:
+    - name: Display cleanup plan
+      debug:
+        msg:
+          - "=========================================="
+          - "CLEANUP: Destroying All Lab VMs"
+          - "=========================================="
+          - "Host 1 ({{ proxmox_host1 }}): {{ vm_ids_host1 | length }} VMs"
+          - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
+          - "=========================================="
+          - "WARNING: This will permanently delete all VMs!"
+          - "=========================================="
+
+    - name: Pause for confirmation
+      pause:
+        prompt: "Press ENTER to continue with cleanup, or Ctrl+C then A to abort"
+
+    - name: Stop VMs on Host 1
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host1 }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ validate_certs }}"
+        vmid: "{{ item }}"
+        node: semperis-nuc-1
+        state: stopped
+        force: yes
+      loop: "{{ vm_ids_host1 }}"
+      ignore_errors: yes
+
+    - name: Stop VMs on Host 2
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host2 }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ validate_certs }}"
+        vmid: "{{ item }}"
+        node: semperis-nuc-2
+        state: stopped
+        force: yes
+      loop: "{{ vm_ids_host2 }}"
+      ignore_errors: yes
+
+    - name: Wait for VMs to stop
+      pause:
+        seconds: 5
+
+    - name: Destroy VMs on Host 1
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host1 }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ validate_certs }}"
+        vmid: "{{ item }}"
+        node: semperis-nuc-1
+        state: absent
+      loop: "{{ vm_ids_host1 }}"
+      ignore_errors: yes
+
+    - name: Destroy VMs on Host 2
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host2 }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ validate_certs }}"
+        vmid: "{{ item }}"
+        node: semperis-nuc-2
+        state: absent
+      loop: "{{ vm_ids_host2 }}"
+      ignore_errors: yes
+
+    - name: Display cleanup results
+      debug:
+        msg:
+          - "=========================================="
+          - "Cleanup Complete!"
+          - "=========================================="
+          - "All lab VMs have been destroyed"
+          - "Ready for fresh deployment"
+          - "=========================================="
