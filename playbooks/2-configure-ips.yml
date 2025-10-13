@@ -107,22 +107,17 @@
         msg: "{{ target_hostname }}: Current IP {{ current_ip.stdout_lines[0] | trim }} - {{ 'Already correct, skipping' if ip_already_set | default(false) else 'Needs change to ' + target_ip }}"
       when: current_ip is success
 
-    - name: Configure static IP address (background job)
+    - name: Configure static IP address
       win_shell: |
-        Start-Job -ScriptBlock {
-          Start-Sleep -Seconds 2
-          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-          Remove-NetIPAddress -InterfaceAlias $adapter.Name -Confirm:$false -ErrorAction SilentlyContinue
-          Remove-NetRoute -InterfaceAlias $adapter.Name -Confirm:$false -ErrorAction SilentlyContinue
-          New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway 192.168.35.1
-        }
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway 192.168.35.1
       register: ip_result
       ignore_errors: yes
       when: not (ip_already_set | default(false))
 
     - name: Wait for IP change to propagate
       pause:
-        seconds: 10
+        seconds: 5
       when: not (ip_already_set | default(false))
 
     - name: Reconnect with new static IP
