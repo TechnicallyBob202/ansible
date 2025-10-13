@@ -3,9 +3,35 @@
   hosts: domain_controllers
   gather_facts: no
 
-  vars_files:
-    - vars/domain_config.yml
-    - vars/credentials.yml
+  vars:
+    # Passwords from Semaphore Environment
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') }}"
+
+    # Forest Root Configuration
+    forest_root:
+      domain_name: "arbor.local"
+      netbios_name: "ARBOR"
+      distinguished_name: "DC=arbor,DC=local"
+
+    # Child Domains Configuration
+    child_domains:
+      - domain_name: "koa.arbor.local"
+        netbios_name: "KOA"
+        parent: "arbor.local"
+        dc_hostname: "KOA-DC01"
+      - domain_name: "granite.arbor.local"
+        netbios_name: "GRANITE"
+        parent: "arbor.local"
+        dc_hostname: "GRANITE-DC01"
+      - domain_name: "slate.arbor.local"
+        netbios_name: "SLATE"
+        parent: "arbor.local"
+        dc_hostname: "SLATE-DC01"
+      - domain_name: "marble.arbor.local"
+        netbios_name: "MARBLE"
+        parent: "arbor.local"
+        dc_hostname: "MARBLE-DC01"
 
   tasks:
     - name: Ensure microsoft.ad collection is available
