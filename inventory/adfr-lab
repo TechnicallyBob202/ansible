@@ -1,0 +1,68 @@
+# ========================================
+# SEMPERIS ADFR & DSP LAB INVENTORY
+# ========================================
+# Auto-generated: 2025-10-13T23:35:49Z
+# Discovered 0 Windows servers
+
+[all:vars]
+ansible_user=Administrator
+ansible_password={{ lookup('env', 'WINDOWS_PASSWORD') }}
+ansible_connection=winrm
+ansible_winrm_transport=ntlm
+ansible_winrm_server_cert_validation=ignore
+ansible_port=5985
+
+# ========================================
+# ALL WINDOWS SERVERS (for steps 1-2)
+# ========================================
+[windows_servers]
+
+# ========================================
+# FOREST ROOT DOMAIN CONTROLLERS
+# ========================================
+# First DC - creates the forest (step 3)
+[forest_root_dc]
+# WARNING: No forest root primary DC found! Add one manually.
+
+# Additional DCs in forest root (step 4)
+[forest_root_additional_dcs]
+
+# ========================================
+# CHILD DOMAIN CONTROLLERS
+# ========================================
+# First DC in each child domain (step 3)
+[child_domain_dcs]
+
+# ========================================
+# ADDITIONAL DOMAIN CONTROLLERS (step 4)
+# ========================================
+[additional_domain_controllers]
+# Additional forest root DCs
+
+# Additional child domain DCs
+
+# ========================================
+# AGGREGATE GROUPS
+# ========================================
+[domain_controllers:children]
+forest_root_dc
+forest_root_additional_dcs
+child_domain_dcs
+additional_domain_controllers
+
+# Semperis Management Server (typically first DC)
+[semperis_servers:children]
+forest_root_dc
+
+# Distribution Points (first DC in each domain)
+[semperis_distribution_points]
+
+# ========================================
+# DISCOVERED SERVER DETAILS
+# ========================================
+# Total Servers: 0
+# Forest Root Primary: 0
+# Forest Root Additional: 0
+# Child Domain Primary: 0
+# Child Domain Additional: 0
+#
