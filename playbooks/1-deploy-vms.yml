@@ -1,148 +1,156 @@
 ---
-- name: Deploy Semperis Lab - 17 VMs
+- name: Configure Static IPs and Hostnames
   hosts: localhost
   gather_facts: no
 
   vars:
-    # Proxmox connection details
+    # Windows credentials
+    windows_user: Administrator
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+    # Proxmox hosts for getting DHCP IPs
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
-    proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
-    validate_certs: no
-
-    # Template IDs (clean Windows without cloudbase-init)
-    template_host1: 9001
-    template_host2: 9002
 
     # Network configuration
-    network_bridge: vmbr0
-    network_vlan: 35
+    gateway: 192.168.35.1
+    dns_servers: "192.168.33.6,192.168.33.7"
 
-    # VM definitions
-    vms:
-      # Host 1 VMs (9 VMs on semperis-nuc-1)
-      - { name: "ATLAS", vmid: 3510, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
-      - { name: "SUMMIT", vmid: 3511, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "100G" }
-      - { name: "PEAK", vmid: 3512, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 16384, disk: "200G" }
-      - { name: "RIDGE", vmid: 3513, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "500G" }
-      - { name: "KOA-DC01", vmid: 3520, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "GRANITE-DC01", vmid: 3530, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "SLATE-DC01", vmid: 3532, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "MARBLE-DC01", vmid: 3534, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "MESA-R01", vmid: 3550, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "80G" }
-
-      # Host 2 VMs (8 VMs on semperis-nuc-2)
-      - { name: "CREST", vmid: 3514, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
-      - { name: "SLOPE", vmid: 3519, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "OAK-DC01", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "BASALT-DC01", vmid: 3531, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "SHALE-DC01", vmid: 3533, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "QUARTZ-DC01", vmid: 3535, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "BLUFF-R01", vmid: 3551, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "CLIFF-R01", vmid: 3552, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+    # VM configurations (VMID, final IP, hostname, which proxmox host)
+    vm_configs:
+      - { vmid: 3510, ip: "192.168.35.10", hostname: "ATLAS", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3511, ip: "192.168.35.11", hostname: "SUMMIT", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3512, ip: "192.168.35.12", hostname: "PEAK", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3513, ip: "192.168.35.13", hostname: "RIDGE", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3520, ip: "192.168.35.20", hostname: "KOA-DC01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3530, ip: "192.168.35.30", hostname: "GRANITE-DC01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3532, ip: "192.168.35.32", hostname: "SLATE-DC01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3534, ip: "192.168.35.34", hostname: "MARBLE-DC01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3550, ip: "192.168.35.50", hostname: "MESA-R01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3514, ip: "192.168.35.14", hostname: "CREST", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3519, ip: "192.168.35.19", hostname: "SLOPE", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3521, ip: "192.168.35.21", hostname: "OAK-DC01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3531, ip: "192.168.35.31", hostname: "BASALT-DC01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3533, ip: "192.168.35.33", hostname: "SHALE-DC01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3535, ip: "192.168.35.35", hostname: "QUARTZ-DC01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3551, ip: "192.168.35.51", hostname: "BLUFF-R01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3552, ip: "192.168.35.52", hostname: "CLIFF-R01", pxhost: "{{ proxmox_host2 }}" }
 
   tasks:
-    - name: Display deployment plan
+    - name: Check Windows password is set
+      assert:
+        that:
+          - windows_password != ''
+        fail_msg: "WINDOWS_PASSWORD environment variable must be set"
+
+    - name: Get DHCP IPs from all VMs
+      shell: "ssh root@{{ item.pxhost }} 'qm guest cmd {{ item.vmid }} network-get-interfaces' 2>/dev/null | grep -oP '(?<=\"ip-address\":\")[^\"]*' | grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1"
+      loop: "{{ vm_configs }}"
+      register: dhcp_ips
+      ignore_errors: yes
+
+    - name: Display discovered DHCP IPs
+      debug:
+        msg: "{{ item.item.hostname }} (VMID {{ item.item.vmid}}): {{ item.stdout if item.stdout else 'NOT FOUND' }}"
+      loop: "{{ dhcp_ips.results }}"
+
+    - name: Create dynamic inventory with DHCP IPs
+      add_host:
+        name: "{{ item.item.hostname }}"
+        groups: windows_vms
+        ansible_host: "{{ item.stdout }}"
+        ansible_user: "{{ windows_user }}"
+        ansible_password: "{{ windows_password }}"
+        ansible_connection: winrm
+        ansible_winrm_transport: basic
+        ansible_winrm_server_cert_validation: ignore
+        ansible_port: 5985
+        ansible_winrm_scheme: http
+        target_ip: "{{ item.item.ip }}"
+        target_hostname: "{{ item.item.hostname }}"
+      loop: "{{ dhcp_ips.results }}"
+      when: item.stdout != ""
+
+    - name: Pause to ensure all VMs are in inventory
+      pause:
+        seconds: 2
+
+- name: Configure Windows VMs
+  hosts: windows_vms
+  gather_facts: no
+  serial: 1
+
+  tasks:
+    - name: Test WinRM connectivity
+      win_ping:
+      register: ping_result
+      ignore_errors: yes
+
+    - name: Skip if WinRM not available
+      meta: end_host
+      when: ping_result is failed
+
+    - name: Remove existing IP configuration
+      win_shell: |
+        Remove-NetIPAddress -InterfaceAlias "Ethernet*" -Confirm:$false -ErrorAction SilentlyContinue
+        Remove-NetRoute -InterfaceAlias "Ethernet*" -Confirm:$false -ErrorAction SilentlyContinue
+      ignore_errors: yes
+
+    - name: Configure static IP address
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        New-NetIPAddress -InterfaceAlias $adapter.Name -IPAddress "{{ target_ip }}" -PrefixLength 24 -DefaultGateway "{{ hostvars['localhost']['gateway'] }}"
+      register: ip_result
+
+    - name: Configure DNS servers
+      win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "{{ hostvars['localhost']['dns_servers'] }}"
+
+    - name: Set hostname
+      win_hostname:
+        name: "{{ target_hostname }}"
+      register: hostname_result
+
+    - name: Display configuration result
       debug:
         msg:
-          - "=========================================="
-          - "Deploying 17 VMs to Semperis Lab"
-          - "=========================================="
-          - "Host 1 ({{ proxmox_host1 }}): 9 VMs"
-          - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
-          - "=========================================="
+          - "{{ target_hostname }}: Configured"
+          - "  IP: {{ target_ip }}"
+          - "  Hostname: {{ target_hostname }}"
+          - "  Reboot required: {{ hostname_result.reboot_required }}"
 
-    - name: Clone VMs from templates
-      community.general.proxmox_kvm:
-        api_host: "{{ item.host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        node: "{{ item.node }}"
-        vmid: "{{ item.template }}"
-        clone: "{{ item.template }}"
-        newid: "{{ item.vmid }}"
-        name: "{{ item.name }}"
-        full: yes
-        timeout: 600
-      loop: "{{ vms }}"
-      register: clone_results
+- name: Reboot VMs that need it
+  hosts: windows_vms
+  gather_facts: no
+  serial: 3
 
-    - name: Wait for clones to complete
-      pause:
-        seconds: 10
+  tasks:
+    - name: Reboot if hostname changed
+      win_reboot:
+        reboot_timeout: 600
+      when: hostvars[inventory_hostname].hostname_result.reboot_required | default(false)
 
-    - name: Configure VLAN tags on network interfaces
-      community.general.proxmox_nic:
-        api_host: "{{ item.host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        interface: net0
-        bridge: "{{ network_bridge }}"
-        tag: "{{ network_vlan }}"
-      loop: "{{ vms }}"
+- name: Final verification
+  hosts: localhost
+  gather_facts: no
 
-    - name: Configure VM hardware
-      community.general.proxmox_kvm:
-        api_host: "{{ item.host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        node: "{{ item.node }}"
-        name: "{{ item.name }}"
-        cores: "{{ item.cores }}"
-        memory: "{{ item.memory }}"
-        update: yes
-      loop: "{{ vms }}"
-
-    - name: Resize VM disks
-      community.general.proxmox_disk:
-        api_host: "{{ item.host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        disk: scsi0
-        size: "{{ item.disk }}"
-        state: resized
-      loop: "{{ vms }}"
-
-    - name: Start all VMs
-      community.general.proxmox_kvm:
-        api_host: "{{ item.host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ validate_certs }}"
-        vmid: "{{ item.vmid }}"
-        node: "{{ item.node }}"
-        state: started
-      loop: "{{ vms }}"
-
-    - name: Wait for VMs to boot
-      pause:
-        seconds: 60
-        prompt: "Waiting for all VMs to boot and get DHCP addresses..."
-
+  tasks:
     - name: Display completion summary
       debug:
         msg:
           - "=========================================="
-          - "VM Deployment Complete!"
+          - "IP Configuration Complete!"
           - "=========================================="
           - ""
-          - "All 17 VMs have been deployed and started."
-          - "VMs are booting with DHCP addresses."
+          - "All VMs configured with:"
+          - "  - Static IPs on 192.168.35.x"
+          - "  - Correct hostnames"
+          - "  - DNS: {{ dns_servers }}"
+          - "  - Gateway: {{ gateway }}"
           - ""
-          - "Next step:"
-          - "  Run playbook: 2-configure-ips.yml"
-          - ""
-          - "This will:"
-          - "  1. Find DHCP IPs of all VMs"
-          - "  2. Set static IPs on VLAN 35"
-          - "  3. Configure hostnames"
-          - "  4. Set DNS servers"
+          - "Next steps:"
+          - "  1. Verify connectivity: ping each IP"
+          - "  2. RDP to verify hostnames"
+          - "  3. Run DC promotion playbook"
           - "=========================================="
