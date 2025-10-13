@@ -3,9 +3,8 @@
   hosts: windows_servers
   gather_facts: yes
 
-  vars_files:
-    - vars/domain_config.yml
-    - vars/credentials.yml
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Gather Windows server information
@@ -89,9 +88,8 @@
   hosts: localhost
   gather_facts: yes
 
-  vars_files:
-    - vars/domain_config.yml
-    - vars/credentials.yml
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Create inventories directory
@@ -119,7 +117,7 @@
 
           [all:vars]
           ansible_user=Administrator
-          ansible_password={{ WINDOWS_PASSWORD }}
+          ansible_password={{ windows_password }}
           ansible_connection=winrm
           ansible_winrm_transport=ntlm
           ansible_winrm_server_cert_validation=ignore
