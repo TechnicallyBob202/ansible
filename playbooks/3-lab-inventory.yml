@@ -62,8 +62,10 @@
         msg: "{{ offline_vms | length }} VMs offline"
       when: offline_vms | length > 0
 
-    - name: Generate inventory
+    - name: Generate Ansible inventory
       copy:
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab"
+        mode: '0644'
         content: |
           # ADFR/DSP Lab Inventory
           # Generated: {{ ansible_date_time.iso8601 }}
@@ -82,59 +84,43 @@
           {% endfor %}
 
           [arbor_forest_root_pdc]
-          {% for vm in lab_design.arbor_forest %}
-          {% if 'PDC' in vm.role and 'Forest Root' in vm.role %}
+          {% for vm in lab_design.arbor_forest if 'PDC' in vm.role %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=arbor.lab netbios_name=ARBOR
-          {% endif %}
           {% endfor %}
 
           [arbor_forest_root_replica]
-          {% for vm in lab_design.arbor_forest %}
-          {% if 'Replica' in vm.role %}
+          {% for vm in lab_design.arbor_forest if 'Replica' in vm.role %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=arbor.lab netbios_name=ARBOR
-          {% endif %}
           {% endfor %}
 
           [alpine_forest_root_pdc]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'PDC' in vm.role and 'Forest Root' in vm.role %}
+          {% for vm in lab_design.alpine_forest if 'PDC' in vm.role and vm.domain == 'alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=alpine.lab netbios_name=ALPINE
-          {% endif %}
           {% endfor %}
 
           [alpine_forest_root_replica]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'Replica' in vm.role and vm.domain == 'alpine.lab' %}
+          {% for vm in lab_design.alpine_forest if 'Replica' in vm.role and vm.domain == 'alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=alpine.lab netbios_name=ALPINE
-          {% endif %}
           {% endfor %}
 
           [mauna_child_pdc]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'PDC' in vm.role and vm.domain == 'mauna.alpine.lab' %}
+          {% for vm in lab_design.alpine_forest if 'PDC' in vm.role and vm.domain == 'mauna.alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=mauna.alpine.lab netbios_name=MAUNA parent_domain=alpine.lab
-          {% endif %}
           {% endfor %}
 
           [mauna_child_replica]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'Replica' in vm.role and vm.domain == 'mauna.alpine.lab' %}
+          {% for vm in lab_design.alpine_forest if 'Replica' in vm.role and vm.domain == 'mauna.alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=mauna.alpine.lab netbios_name=MAUNA parent_domain=alpine.lab
-          {% endif %}
           {% endfor %}
 
           [rainier_child_pdc]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'PDC' in vm.role and vm.domain == 'rainier.alpine.lab' %}
+          {% for vm in lab_design.alpine_forest if 'PDC' in vm.role and vm.domain == 'rainier.alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=rainier.alpine.lab netbios_name=RAINIER parent_domain=alpine.lab
-          {% endif %}
           {% endfor %}
 
           [rainier_child_replica]
-          {% for vm in lab_design.alpine_forest %}
-          {% if 'Replica' in vm.role and vm.domain == 'rainier.alpine.lab' %}
+          {% for vm in lab_design.alpine_forest if 'Replica' in vm.role and vm.domain == 'rainier.alpine.lab' %}
           {{ vm.hostname }} ansible_host={{ vm.ip }} domain_name=rainier.alpine.lab netbios_name=RAINIER parent_domain=alpine.lab
-          {% endif %}
           {% endfor %}
 
           [recovery_vms]
@@ -151,79 +137,75 @@
           mauna_child_replica
           rainier_child_pdc
           rainier_child_replica
-        dest: "{{ playbook_dir }}/../inventory/adfr-lab"
-        mode: '0644'
 
-    - name: Generate mRemoteNG config
+    - name: Generate mRemoteNG XML config
       copy:
-        content: |
-          <?xml version="1.0" encoding="utf-8"?>
-          <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" ConfVersion="2.6">
-              {% set root_id = 'ADFR-DSP Lab' | hash('sha1') | truncate(32, True) | to_uuid %}
-              <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ root_id }}">
-                  {% set infra_id = 'Infrastructure' | hash('sha1') | truncate(32, True) | to_uuid %}
-                  <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ infra_id }}" ParentId="{{ root_id }}">
-                  {% for vm in lab_design.infrastructure | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
-                            Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
-                            ParentId="{{ infra_id }}"
-                            Username="Administrator"
-                            Hostname="{{ vm.ip }}"
-                            Protocol="RDP"
-                            Port="3389" />
-                  {% endfor %}
-                  </Node>
-
-                  {% set arbor_id = 'arbor.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid %}
-                  <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ arbor_id }}" ParentId="{{ root_id }}">
-                  {% for vm in lab_design.arbor_forest | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
-                            Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
-                            ParentId="{{ arbor_id }}"
-                            Username="ARBOR\Administrator"
-                            Hostname="{{ vm.ip }}"
-                            Protocol="RDP"
-                            Port="3389" />
-                  {% endfor %}
-                  </Node>
-
-                  {% set alpine_id = 'alpine.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid %}
-                  <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ alpine_id }}" ParentId="{{ root_id }}">
-                  {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
-                            Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
-                            ParentId="{{ alpine_id }}"
-                            Username="ALPINE\Administrator"
-                            Hostname="{{ vm.ip }}"
-                            Protocol="RDP"
-                            Port="3389" />
-                  {% endfor %}
-                  </Node>
-
-                  {% set recovery_id = 'Admin and Recovery' | hash('sha1') | truncate(32, True) | to_uuid %}
-                  <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ recovery_id }}" ParentId="{{ root_id }}">
-                  {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
-                            Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
-                            ParentId="{{ recovery_id }}"
-                            Username="Administrator"
-                            Hostname="{{ vm.ip }}"
-                            Protocol="RDP"
-                            Port="3389" />
-                  {% endfor %}
-                  </Node>
-              </Node>
-          </mrng:Connections>
         dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
         mode: '0644'
+        content: |
+          <?xml version="1.0" encoding="utf-8"?>
+          <mrng:Connections xmlns:mrng="http://mremoteng.org"
+                            Name="Connections"
+                            Export="false"
+                            EncryptionEngine="AES"
+                            BlockCipherMode="GCM"
+                            KdfIterations="1000"
+                            FullFileEncryption="false"
+                            ConfVersion="2.6">
+            <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General">
+              <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General">
+              {% for vm in lab_design.infrastructure | sort(attribute='hostname') %}
+                <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}"
+                      Icon="mRemoteNG" Panel="General"
+                      Username="Administrator"
+                      Hostname="{{ vm.ip }}"
+                      Protocol="RDP"
+                      Port="3389" />
+              {% endfor %}
+              </Node>
+
+              <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General">
+              {% for vm in lab_design.arbor_forest | sort(attribute='hostname') %}
+                <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}"
+                      Icon="mRemoteNG" Panel="General"
+                      Username="ARBOR\\Administrator"
+                      Hostname="{{ vm.ip }}"
+                      Protocol="RDP"
+                      Port="3389" />
+              {% endfor %}
+              </Node>
+
+              <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General">
+              {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
+                <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}"
+                      Icon="mRemoteNG" Panel="General"
+                      Username="ALPINE\\Administrator"
+                      Hostname="{{ vm.ip }}"
+                      Protocol="RDP"
+                      Port="3389" />
+              {% endfor %}
+              </Node>
+
+              <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General">
+              {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
+                <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}"
+                      Icon="mRemoteNG" Panel="General"
+                      Username="Administrator"
+                      Hostname="{{ vm.ip }}"
+                      Protocol="RDP"
+                      Port="3389" />
+              {% endfor %}
+              </Node>
+            </Node>
+          </mrng:Connections>
 
     - name: Inventory generation complete
       debug:
-        msg: "Inventory: inventory/adfr-lab | mRemoteNG: files/adfr-lab-mremoteng.xml"
+        msg: "Inventory and mRemoteNG config generated successfully."
 
-    - name: Commit and push inventory to git
+    - name: Commit and push to Git
       block:
-        - name: Stage inventory files
+        - name: Stage inventory and XML
           command: git add inventory/adfr-lab files/adfr-lab-mremoteng.xml
           args:
             chdir: "{{ playbook_dir }}/.."
