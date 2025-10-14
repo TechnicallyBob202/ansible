@@ -12,23 +12,23 @@
 
     vm_ids_host1:
       - 3501  # ATLAS
-      - 3502  # SUMMIT
       - 3503  # PEAK
       - 3504  # RIDGE
-      - 3509  # SLOPE
-      - 3510  # KOA-DC01
-      - 3520  # GRANITE-DC01
-      - 3522  # SLATE-DC01
-      - 3524  # MARBLE-DC01
-      - 3550  # MESA-R01
+      - 3510  # KOA-DC
+      - 3520  # GRANITE-DC
+      - 3522  # SLATE-DC
+      - 3524  # MARBLE-DC
+      - 3550  # MESA
 
     vm_ids_host2:
+      - 3502  # SUMMIT
       - 3505  # CREST
-      - 3511  # OAK-DC01
-      - 3521  # BASALT-DC01
-      - 3523  # SHALE-DC01
-      - 3525  # QUARTZ-DC01
-      - 3551  # BLUFF-R01
+      - 3509  # SLOPE
+      - 3511  # OAK-DC
+      - 3521  # BASALT-DC
+      - 3523  # SHALE-DC
+      - 3525  # QUARTZ-DC
+      - 3551  # BLUFF
 
   tasks:
     - name: Display cleanup plan

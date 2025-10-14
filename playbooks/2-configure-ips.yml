@@ -10,21 +10,21 @@
 
     vm_configs:
       - { vmid: 3501, ip: "192.168.35.10", hostname: "ATLAS", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3502, ip: "192.168.35.11", hostname: "SUMMIT", pxhost: "{{ proxmox_host1 }}" }
       - { vmid: 3503, ip: "192.168.35.12", hostname: "PEAK", pxhost: "{{ proxmox_host1 }}" }
       - { vmid: 3504, ip: "192.168.35.13", hostname: "RIDGE", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3509, ip: "192.168.35.19", hostname: "SLOPE", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3510, ip: "192.168.35.20", hostname: "KOA-DC01", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3520, ip: "192.168.35.30", hostname: "GRANITE-DC01", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3522, ip: "192.168.35.32", hostname: "SLATE-DC01", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3524, ip: "192.168.35.34", hostname: "MARBLE-DC01", pxhost: "{{ proxmox_host1 }}" }
-      - { vmid: 3550, ip: "192.168.35.50", hostname: "MESA-R01", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3510, ip: "192.168.35.20", hostname: "KOA-DC", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3520, ip: "192.168.35.30", hostname: "GRANITE-DC", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3522, ip: "192.168.35.32", hostname: "SLATE-DC", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3524, ip: "192.168.35.34", hostname: "MARBLE-DC", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3550, ip: "192.168.35.50", hostname: "MESA", pxhost: "{{ proxmox_host1 }}" }
+      - { vmid: 3502, ip: "192.168.35.11", hostname: "SUMMIT", pxhost: "{{ proxmox_host2 }}" }
       - { vmid: 3505, ip: "192.168.35.14", hostname: "CREST", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3511, ip: "192.168.35.21", hostname: "OAK-DC01", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3521, ip: "192.168.35.31", hostname: "BASALT-DC01", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3523, ip: "192.168.35.33", hostname: "SHALE-DC01", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3525, ip: "192.168.35.35", hostname: "QUARTZ-DC01", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3551, ip: "192.168.35.51", hostname: "BLUFF-R01", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3509, ip: "192.168.35.19", hostname: "SLOPE", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3511, ip: "192.168.35.21", hostname: "OAK-DC", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3521, ip: "192.168.35.31", hostname: "BASALT-DC", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3523, ip: "192.168.35.33", hostname: "SHALE-DC", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3525, ip: "192.168.35.35", hostname: "QUARTZ-DC", pxhost: "{{ proxmox_host2 }}" }
+      - { vmid: 3551, ip: "192.168.35.51", hostname: "BLUFF", pxhost: "{{ proxmox_host2 }}" }
 
   tasks:
     - name: Display configuration plan

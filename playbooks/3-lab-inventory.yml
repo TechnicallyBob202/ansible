@@ -18,20 +18,20 @@
         - { hostname: "SLOPE", ip: "192.168.35.19", role: "Admin Workstation" }
 
       arbor_forest:
-        - { hostname: "KOA-DC01", ip: "192.168.35.20", domain: "arbor.lab", role: "Forest Root PDC" }
-        - { hostname: "OAK-DC01", ip: "192.168.35.21", domain: "arbor.lab", role: "Forest Root Replica" }
+        - { hostname: "KOA-DC", ip: "192.168.35.20", domain: "arbor.lab", role: "Forest Root PDC" }
+        - { hostname: "OAK-DC", ip: "192.168.35.21", domain: "arbor.lab", role: "Forest Root Replica" }
 
       alpine_forest:
-        - { hostname: "GRANITE-DC01", ip: "192.168.35.30", domain: "alpine.lab", role: "Forest Root PDC" }
-        - { hostname: "BASALT-DC01", ip: "192.168.35.31", domain: "alpine.lab", role: "Forest Root Replica" }
-        - { hostname: "SLATE-DC01", ip: "192.168.35.32", domain: "mauna.alpine.lab", role: "Child Domain PDC" }
-        - { hostname: "SHALE-DC01", ip: "192.168.35.33", domain: "mauna.alpine.lab", role: "Child Domain Replica" }
-        - { hostname: "MARBLE-DC01", ip: "192.168.35.34", domain: "rainier.alpine.lab", role: "Child Domain PDC" }
-        - { hostname: "QUARTZ-DC01", ip: "192.168.35.35", domain: "rainier.alpine.lab", role: "Child Domain Replica" }
+        - { hostname: "GRANITE-DC", ip: "192.168.35.30", domain: "alpine.lab", role: "Forest Root PDC" }
+        - { hostname: "BASALT-DC", ip: "192.168.35.31", domain: "alpine.lab", role: "Forest Root Replica" }
+        - { hostname: "SLATE-DC", ip: "192.168.35.32", domain: "mauna.alpine.lab", role: "Child Domain PDC" }
+        - { hostname: "SHALE-DC", ip: "192.168.35.33", domain: "mauna.alpine.lab", role: "Child Domain Replica" }
+        - { hostname: "MARBLE-DC", ip: "192.168.35.34", domain: "rainier.alpine.lab", role: "Child Domain PDC" }
+        - { hostname: "QUARTZ-DC", ip: "192.168.35.35", domain: "rainier.alpine.lab", role: "Child Domain Replica" }
 
       recovery_vms:
-        - { hostname: "MESA-R01", ip: "192.168.35.50", role: "Recovery VM" }
-        - { hostname: "BLUFF-R01", ip: "192.168.35.51", role: "Recovery VM" }
+        - { hostname: "MESA", ip: "192.168.35.50", role: "Recovery VM" }
+        - { hostname: "BLUFF", ip: "192.168.35.51", role: "Recovery VM" }
 
   tasks:
     - name: Build expected VMs list
