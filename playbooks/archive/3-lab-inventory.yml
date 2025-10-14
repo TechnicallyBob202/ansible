@@ -1,0 +1,475 @@
+---
+- name: Validate VMs and Generate ADFR Lab Inventory from Design
+  hosts: localhost
+  gather_facts: yes
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+    # ========================================
+    # LAB DESIGN SPECIFICATION
+    # ========================================
+    # Define what we WANT the lab to look like
+    lab_design:
+      forest_root:
+        domain_name: "arbor.local"
+        netbios_name: "ARBOR"
+        dcs:
+          - hostname: "ATLAS"
+            ip: "192.168.35.10"
+            role: "forest_root_primary"
+            memory_gb: 8
+            site: "Default-First-Site-Name"
+          - hostname: "SUMMIT"
+            ip: "192.168.35.11"
+            role: "forest_root_additional"
+            memory_gb: 8
+            site: "Default-First-Site-Name"
+
+      child_domains:
+        - domain_name: "koa.arbor.local"
+          netbios_name: "KOA"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "KOA-DC01"
+              ip: "192.168.35.20"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "OAK-DC01"
+              ip: "192.168.35.21"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+        - domain_name: "granite.arbor.local"
+          netbios_name: "GRANITE"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "GRANITE-DC01"
+              ip: "192.168.35.30"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "BASALT-DC01"
+              ip: "192.168.35.31"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+        - domain_name: "slate.arbor.local"
+          netbios_name: "SLATE"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "SLATE-DC01"
+              ip: "192.168.35.32"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "SHALE-DC01"
+              ip: "192.168.35.33"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+        - domain_name: "marble.arbor.local"
+          netbios_name: "MARBLE"
+          parent: "arbor.local"
+          dcs:
+            - hostname: "MARBLE-DC01"
+              ip: "192.168.35.34"
+              role: "child_domain_primary"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+            - hostname: "QUARTZ-DC01"
+              ip: "192.168.35.35"
+              role: "child_domain_additional"
+              memory_gb: 4
+              site: "Default-First-Site-Name"
+
+  tasks:
+    # ========================================
+    # VALIDATION: Check if VMs exist
+    # ========================================
+    - name: Build list of expected VMs
+      ansible.builtin.set_fact:
+        expected_vms: >-
+          {{ lab_design.forest_root.dcs +
+             (lab_design.child_domains | map(attribute='dcs') | flatten | list) }}
+
+    - name: Display expected VMs
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          EXPECTED LAB DESIGN
+          ========================================
+          Total VMs Expected: {{ expected_vms | length }}
+
+          Forest Root ({{ lab_design.forest_root.domain_name }}):
+          {% for dc in lab_design.forest_root.dcs %}
+          - {{ dc.hostname }} ({{ dc.ip }}) - {{ dc.role }} - {{ dc.memory_gb }}GB RAM
+          {% endfor %}
+
+          {% for domain in lab_design.child_domains %}
+          Child Domain ({{ domain.domain_name }}):
+          {% for dc in domain.dcs %}
+          - {{ dc.hostname }} ({{ dc.ip }}) - {{ dc.role }} - {{ dc.memory_gb }}GB RAM
+          {% endfor %}
+
+          {% endfor %}
+
+    - name: Test connectivity to each expected VM
+      ansible.builtin.wait_for:
+        host: "{{ item.ip }}"
+        port: 5985
+        timeout: 5
+        state: started
+      loop: "{{ expected_vms }}"
+      register: connectivity_test
+      ignore_errors: yes
+
+    - name: Analyze connectivity results
+      ansible.builtin.set_fact:
+        online_vms: "{{ connectivity_test.results | selectattr('failed', 'undefined') | map(attribute='item') | list }}"
+        offline_vms: "{{ connectivity_test.results | selectattr('failed', 'defined') | selectattr('failed', 'equalto', true) | map(attribute='item') | list }}"
+
+    - name: Display validation results
+      ansible.builtin.debug:
+        msg: |
+          ========================================
+          VM VALIDATION RESULTS
+          ========================================
+          ✅ Online VMs: {{ online_vms | length }}/{{ expected_vms | length }}
+          {% for vm in online_vms %}
+          ✅ {{ vm.hostname }} ({{ vm.ip }}) - Ready
+          {% endfor %}
+
+          {% if offline_vms | length > 0 %}
+          ❌ Offline VMs: {{ offline_vms | length }}
+          {% for vm in offline_vms %}
+          ❌ {{ vm.hostname }} ({{ vm.ip }}) - Not reachable on WinRM port 5985
+          {% endfor %}
+
+          ⚠️  WARNING: Some VMs are not ready!
+          {% else %}
+          🎉 All VMs are online and ready!
+          {% endif %}
+          ========================================
+
+    - name: Fail if critical VMs are missing
+      ansible.builtin.fail:
+        msg: |
+          ❌ CRITICAL: Cannot proceed - required VMs are offline
+
+          Missing VMs:
+          {% for vm in offline_vms %}
+          - {{ vm.hostname }} ({{ vm.ip }})
+          {% endfor %}
+
+          Please ensure all VMs are:
+          1. Powered on
+          2. Have WinRM enabled
+          3. Are reachable on port 5985
+          4. Have completed steps 1 & 2
+      when: offline_vms | length > 0
+
+    # ========================================
+    # GENERATE INVENTORY FROM DESIGN
+    # ========================================
+    - name: Build inventory content from design
+      ansible.builtin.set_fact:
+        inventory_content: |
+          # ========================================
+          # SEMPERIS ADFR & DSP LAB INVENTORY
+          # ========================================
+          # Generated: {{ ansible_date_time.date }} {{ ansible_date_time.time }}
+          # Based on lab design specification
+          #
+          # Lab Architecture:
+          # - Forest Root: {{ lab_design.forest_root.domain_name }} ({{ lab_design.forest_root.dcs | length }} DCs)
+          {% for domain in lab_design.child_domains %}
+          # - Child Domain: {{ domain.domain_name }} ({{ domain.dcs | length }} DCs)
+          {% endfor %}
+          #
+          # Total Domain Controllers: {{ expected_vms | length }}
+
+          [all:vars]
+          ansible_user=Administrator
+          ansible_password={{ "{{" }} lookup('env', 'WINDOWS_PASSWORD') {{ "}}" }}
+          ansible_connection=winrm
+          ansible_winrm_transport=ntlm
+          ansible_winrm_server_cert_validation=ignore
+          ansible_port=5985
+
+          # ========================================
+          # ALL WINDOWS SERVERS (for steps 1-2)
+          # ========================================
+          [windows_servers]
+          {% for vm in expected_vms | sort(attribute='hostname') %}
+          {{ vm.hostname }} ansible_host={{ vm.ip }}  # {{ vm.role }} - {{ vm.memory_gb }}GB RAM
+          {% endfor %}
+
+          # ========================================
+          # FOREST ROOT DOMAIN: {{ lab_design.forest_root.domain_name }}
+          # ========================================
+          # First DC - creates the forest (step 3)
+          [forest_root_dc]
+          {% for dc in lab_design.forest_root.dcs %}
+          {% if dc.role == 'forest_root_primary' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }} ad_site={{ dc.site }}
+          {% endif %}
+          {% endfor %}
+
+          # Additional DCs in forest root (step 4)
+          [forest_root_additional_dcs]
+          {% for dc in lab_design.forest_root.dcs %}
+          {% if dc.role == 'forest_root_additional' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }} ad_site={{ dc.site }}
+          {% endif %}
+          {% endfor %}
+
+          # ========================================
+          # CHILD DOMAIN CONTROLLERS
+          # ========================================
+          # First DC in each child domain (step 3)
+          [child_domain_dcs]
+          {% for domain in lab_design.child_domains %}
+          {% for dc in domain.dcs %}
+          {% if dc.role == 'child_domain_primary' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }} target_domain={{ domain.domain_name }} target_netbios={{ domain.netbios_name }} parent_domain={{ domain.parent }} ad_site={{ dc.site }}
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+
+          # ========================================
+          # ADDITIONAL DOMAIN CONTROLLERS (step 4)
+          # ========================================
+          [additional_domain_controllers]
+          # Additional forest root DCs
+          {% for dc in lab_design.forest_root.dcs %}
+          {% if dc.role == 'forest_root_additional' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }} dc_type=forest_root_additional ad_site={{ dc.site }}
+          {% endif %}
+          {% endfor %}
+
+          # Additional child domain DCs
+          {% for domain in lab_design.child_domains %}
+          {% for dc in domain.dcs %}
+          {% if dc.role == 'child_domain_additional' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }} dc_type=child_domain_additional target_domain={{ domain.domain_name }} target_netbios={{ domain.netbios_name }} ad_site={{ dc.site }}
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+
+          # ========================================
+          # AGGREGATE GROUPS
+          # ========================================
+          [domain_controllers:children]
+          forest_root_dc
+          forest_root_additional_dcs
+          child_domain_dcs
+          additional_domain_controllers
+
+          # Semperis Management Server (first DC)
+          [semperis_servers:children]
+          forest_root_dc
+
+          # Distribution Points (first DC in each domain)
+          [semperis_distribution_points]
+          {% for dc in lab_design.forest_root.dcs %}
+          {% if dc.role == 'forest_root_primary' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }}
+          {% endif %}
+          {% endfor %}
+          {% for domain in lab_design.child_domains %}
+          {% for dc in domain.dcs %}
+          {% if dc.role == 'child_domain_primary' %}
+          {{ dc.hostname }} ansible_host={{ dc.ip }}
+          {% endif %}
+          {% endfor %}
+          {% endfor %}
+
+    - name: Write inventory file
+      ansible.builtin.copy:
+        content: "{{ inventory_content }}"
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab"
+        mode: '0644'
+
+    - name: Create validation report
+      ansible.builtin.copy:
+        content: |
+          # ADFR Lab Validation Report
+          Generated: {{ ansible_date_time.iso8601 }}
+
+          ## Design Specification
+          - Forest Root: {{ lab_design.forest_root.domain_name }}
+          - Child Domains: {{ lab_design.child_domains | length }}
+          - Total DCs: {{ expected_vms | length }}
+
+          ## Validation Results
+          - VMs Online: {{ online_vms | length }}/{{ expected_vms | length }}
+          - VMs Offline: {{ offline_vms | length }}
+
+          ## Expected VMs
+          {% for vm in expected_vms | sort(attribute='hostname') %}
+          - {{ vm.hostname }} ({{ vm.ip }}) - {{ vm.role }} - {% if vm in online_vms %}✅ READY{% else %}❌ OFFLINE{% endif %}
+
+          {% endfor %}
+
+          ## Next Steps
+          {% if offline_vms | length == 0 %}
+          ✅ All VMs validated and ready for DC promotion
+
+          Proceed with:
+          1. Step 3: Promote first DCs (forest root + child domains)
+          2. Step 4: Promote additional DCs
+          3. Step 5: Post-DC configuration
+          4. Step 6: Semperis ADFR preparation
+          {% else %}
+          ❌ Fix offline VMs before proceeding:
+          {% for vm in offline_vms %}
+          - {{ vm.hostname }} ({{ vm.ip }})
+          {% endfor %}
+          {% endif %}
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab.validation"
+        mode: '0644'
+
+    # ========================================
+    # GENERATE MREMOTENG CONFIGURATION
+    # ========================================
+    - name: Create files directory if it doesn't exist
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+    - name: Generate mRemoteNG configuration XML
+      ansible.builtin.copy:
+        content: |
+          <?xml version="1.0" encoding="utf-8"?>
+          <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B" ConfVersion="2.6">
+              <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Descr="Semperis ADFR &amp; DSP Lab" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999999 | random | to_uuid }}" Username="" Domain="" Password="" Hostname="" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false">
+                  <Node Name="Forest Root - arbor.local" Type="Container" Expanded="true" Descr="Forest root domain controllers" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999998 | random | to_uuid }}" Username="" Domain="" Password="" Hostname="" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false">
+          {% for dc in lab_design.forest_root.dcs | sort(attribute='hostname') %}
+                      <Node Name="{{ dc.hostname }}" Type="Connection" Descr="{{ dc.role|replace('_', ' ')|title }} - {{ dc.memory_gb }}GB RAM" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999997 | random | to_uuid }}" Username="ARBOR\Administrator" Domain="ARBOR" Password="" Hostname="{{ dc.ip }}" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false" />
+          {% endfor %}
+                  </Node>
+          {% for domain in lab_design.child_domains %}
+                  <Node Name="Child Domain - {{ domain.domain_name }}" Type="Container" Expanded="true" Descr="{{ domain.domain_name }} domain controllers" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999996 | random | to_uuid }}" Username="" Domain="" Password="" Hostname="" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false">
+          {% for dc in domain.dcs | sort(attribute='hostname') %}
+                      <Node Name="{{ dc.hostname }}" Type="Connection" Descr="{{ dc.role|replace('_', ' ')|title }} - {{ dc.memory_gb }}GB RAM" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999995 | random | to_uuid }}" Username="{{ domain.netbios_name }}\Administrator" Domain="{{ domain.netbios_name }}" Password="" Hostname="{{ dc.ip }}" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false" />
+          {% endfor %}
+                  </Node>
+          {% endfor %}
+              </Node>
+          </mrng:Connections>
+        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        mode: '0644'
+
+    # ========================================
+    # GIT COMMIT AND PUSH
+    # ========================================
+    - name: Configure git user
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git config user.name "Semaphore Ansible" || true
+        git config user.email "ansible@semaphore.local" || true
+      changed_when: false
+
+    - name: Add inventory files to git
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git add inventory/adfr-lab
+        git add inventory/adfr-lab.validation
+        git add files/adfr-lab-mremoteng.xml 2>/dev/null || true
+      register: git_add
+      changed_when: true
+
+    - name: Check if there are changes to commit
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git diff --cached --quiet
+      register: git_diff
+      failed_when: false
+      changed_when: false
+
+    - name: Commit inventory files
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git commit -m "Add ADFR Lab inventory, validation report, and mRemoteNG config"
+      register: git_commit
+      when: git_diff.rc != 0
+      changed_when: true
+
+    - name: Push to git repository
+      ansible.builtin.shell: |
+        cd {{ playbook_dir }}/..
+        git push origin $(git branch --show-current)
+      register: git_push
+      when: git_diff.rc != 0
+      changed_when: true
+
+    # ========================================
+    # FINAL SUMMARY
+    # ========================================
+    - name: Display final summary
+      ansible.builtin.debug:
+        msg: |
+          ╔════════════════════════════════════════════════════════════════╗
+          ║         STEP 2.5: VALIDATION & INVENTORY GENERATION            ║
+          ╚════════════════════════════════════════════════════════════════╝
+
+          ✅ VALIDATION COMPLETE
+          ─────────────────────────────────────────────────────────────────
+          Expected VMs: {{ expected_vms | length }}
+          Online VMs:   {{ online_vms | length }}
+          Offline VMs:  {{ offline_vms | length }}
+
+          ✅ INVENTORY GENERATED
+          ─────────────────────────────────────────────────────────────────
+          Location: inventory/adfr-lab
+
+          Forest Root ({{ lab_design.forest_root.domain_name }}):
+          {% for dc in lab_design.forest_root.dcs %}
+          - {{ dc.hostname }} → {{ dc.role }}
+          {% endfor %}
+
+          {% for domain in lab_design.child_domains %}
+          Child Domain ({{ domain.domain_name }}):
+          {% for dc in domain.dcs %}
+          - {{ dc.hostname }} → {{ dc.role }}
+          {% endfor %}
+
+          {% endfor %}
+
+          ✅ MREMOTENG CONFIG GENERATED
+          ─────────────────────────────────────────────────────────────────
+          📁 Local: files/adfr-lab-mremoteng.xml
+          🌐 GitHub: https://github.com/TechnicallyBob202/ansible/blob/main/files/adfr-lab-mremoteng.xml
+
+          Download and import into mRemoteNG:
+          1. File → Open Connection File
+          2. Select: adfr-lab-mremoteng.xml
+          3. All {{ expected_vms | length }} VMs organized by domain
+
+          {% if git_diff.rc != 0 %}
+          ✅ GIT OPERATIONS
+          ─────────────────────────────────────────────────────────────────
+          Committed and pushed to: git@github.com:TechnicallyBob202/ansible.git
+          {% else %}
+          ℹ️  No git changes (inventory unchanged)
+          {% endif %}
+
+          📋 NEXT: CREATE INVENTORY IN SEMAPHORE
+          ─────────────────────────────────────────────────────────────────
+          1. Go to: Inventory → New Inventory
+          2. Name: ADFR Lab
+          3. Type: File
+          4. Path: inventory/adfr-lab
+          5. Save
+
+          Then update Task Templates 4-7 to use "ADFR Lab" inventory
+          (4-initial-dcpromo, 5-more-dcpromo, 6-post-dc-config, etc.)
+
+          🚀 READY TO PROCEED WITH DC PROMOTION!
+          ════════════════════════════════════════════════════════════════

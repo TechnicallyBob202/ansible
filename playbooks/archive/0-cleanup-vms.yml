@@ -7,38 +7,46 @@
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
     proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'PROXMOX_ROOT_PASSWORD') }}"
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
 
+    # All VM IDs to cleanup
     vm_ids_host1:
-      - 3501  # ATLAS
-      - 3502  # SUMMIT
-      - 3503  # PEAK
-      - 3504  # RIDGE
-      - 3509  # SLOPE
-      - 3510  # KOA-DC01
-      - 3520  # GRANITE-DC01
-      - 3522  # SLATE-DC01
-      - 3524  # MARBLE-DC01
+      - 3510  # ATLAS
+      - 3511  # SUMMIT
+      - 3512  # PEAK
+      - 3513  # RIDGE
+      - 3520  # KOA-DC01
+      - 3530  # GRANITE-DC01
+      - 3532  # SLATE-DC01
+      - 3534  # MARBLE-DC01
       - 3550  # MESA-R01
 
     vm_ids_host2:
-      - 3505  # CREST
-      - 3511  # OAK-DC01
-      - 3521  # BASALT-DC01
-      - 3523  # SHALE-DC01
-      - 3525  # QUARTZ-DC01
+      - 3514  # CREST
+      - 3519  # SLOPE
+      - 3521  # OAK-DC01
+      - 3531  # BASALT-DC01
+      - 3533  # SHALE-DC01
+      - 3535  # QUARTZ-DC01
       - 3551  # BLUFF-R01
+      - 3552  # CLIFF-R01
 
   tasks:
     - name: Display cleanup plan
       debug:
         msg:
-          - "Destroying {{ (vm_ids_host1 | length) + (vm_ids_host2 | length) }} VMs"
-          - "Host 1: {{ vm_ids_host1 | length }} VMs"
-          - "Host 2: {{ vm_ids_host2 | length }} VMs"
+          - "=========================================="
+          - "CLEANUP: Destroying All Lab VMs"
+          - "=========================================="
+          - "Host 1 ({{ proxmox_host1 }}): {{ vm_ids_host1 | length }} VMs"
+          - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
+          - "=========================================="
+          - "WARNING: This will permanently delete all VMs!"
+          - "Starting cleanup in 5 seconds..."
+          - "=========================================="
 
-    - name: Wait 5 seconds
+    - name: Wait 5 seconds before cleanup
       pause:
         seconds: 5
 
@@ -96,6 +104,12 @@
       loop: "{{ vm_ids_host2 }}"
       ignore_errors: yes
 
-    - name: Cleanup complete
+    - name: Display cleanup results
       debug:
-        msg: "All lab VMs destroyed"
+        msg:
+          - "=========================================="
+          - "Cleanup Complete!"
+          - "=========================================="
+          - "All lab VMs have been destroyed"
+          - "Ready for fresh deployment"
+          - "=========================================="
