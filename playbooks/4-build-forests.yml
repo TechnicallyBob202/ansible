@@ -7,11 +7,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to forest root PDC
       microsoft.ad.domain:
@@ -22,11 +36,13 @@
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -45,11 +61,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -61,11 +91,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -84,11 +116,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to forest root PDC
       microsoft.ad.domain:
@@ -99,11 +145,13 @@
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -122,11 +170,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -138,11 +200,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -161,22 +225,30 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = "Stop"
-
-          $IsDC = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
-          if ($IsDC) {
-            Write-Output "Already a DC"
-            exit 0
-          }
 
           $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
           $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
@@ -194,11 +266,13 @@
             -NoRebootOnCompletion:$false
       async: 1200
       poll: 30
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 900
         delay: 60
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -217,11 +291,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -233,11 +321,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -256,22 +346,30 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = "Stop"
-
-          $IsDC = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
-          if ($IsDC) {
-            Write-Output "Already a DC"
-            exit 0
-          }
 
           $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
           $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
@@ -289,11 +387,13 @@
             -NoRebootOnCompletion:$false
       async: 1200
       poll: 30
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 900
         delay: 60
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -312,11 +412,25 @@
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) {
+            exit 0
+          } else {
+            exit 1
+          }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -328,11 +442,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when: dc_check.rc != 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: dc_check.rc != 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
