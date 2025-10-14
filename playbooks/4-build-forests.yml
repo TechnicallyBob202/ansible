@@ -1,0 +1,355 @@
+---
+- name: Build arbor.lab Forest
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to forest root PDC
+      microsoft.ad.domain:
+        dns_domain_name: arbor.lab
+        domain_netbios_name: ARBOR
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Promote arbor.lab Replica DC
+  hosts: arbor_forest_root_replica
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: arbor.lab
+        domain_admin_user: ARBOR\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Build alpine.lab Forest Root
+  hosts: alpine_forest_root_pdc
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to forest root PDC
+      microsoft.ad.domain:
+        dns_domain_name: alpine.lab
+        domain_netbios_name: ALPINE
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Promote alpine.lab Replica DC
+  hosts: alpine_forest_root_replica
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Create mauna.alpine.lab Child Domain
+  hosts: mauna_child_pdc
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to child domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+
+          $IsDC = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
+          if ($IsDC) {
+            Write-Output "Already a DC"
+            exit 0
+          }
+
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+
+          Install-ADDSDomain `
+            -NewDomainName "mauna" `
+            -ParentDomainName "alpine.lab" `
+            -DomainNetbiosName "MAUNA" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+      async: 1200
+      poll: 30
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Promote mauna.alpine.lab Replica DC
+  hosts: mauna_child_replica
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: mauna.alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Create rainier.alpine.lab Child Domain
+  hosts: rainier_child_pdc
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to child domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+
+          $IsDC = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
+          if ($IsDC) {
+            Write-Output "Already a DC"
+            exit 0
+          }
+
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+
+          Install-ADDSDomain `
+            -NewDomainName "rainier" `
+            -ParentDomainName "alpine.lab" `
+            -DomainNetbiosName "RAINIER" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+      async: 1200
+      poll: 30
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Promote rainier.alpine.lab Replica DC
+  hosts: rainier_child_replica
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: rainier.alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+
+    - name: Wait for DC to come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+
+    - name: Wait for ADWS
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      register: adws
+      until: adws is succeeded
+
+- name: Forest build complete
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display completion
+      debug:
+        msg: "Both forests built successfully with all domains and DCs"
