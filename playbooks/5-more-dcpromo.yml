@@ -3,9 +3,16 @@
   hosts: additional_domain_controllers
   gather_facts: yes
 
-  vars_files:
-    - vars/domain_config.yml
-    - vars/credentials.yml
+  vars:
+    # Passwords from Semaphore Environment
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    dsrm_password: "{{ lookup('env', 'DSRM_PASSWORD') }}"
+
+    # Forest Root Configuration
+    forest_root:
+      domain_name: "arbor.local"
+      netbios_name: "ARBOR"
+      distinguished_name: "DC=arbor,DC=local"
 
   tasks:
     - name: Verify we're not targeting the first DC
@@ -114,6 +121,7 @@
             log_path: C:\Windows\NTDS
             install_dns: yes
             read_only: no
+            state: domain_controller
             reboot: yes
           register: dc_promotion_root
 
@@ -159,6 +167,7 @@
             log_path: C:\Windows\NTDS
             install_dns: yes
             read_only: no
+            state: domain_controller
             reboot: yes
           register: dc_promotion_child
 
@@ -223,6 +232,7 @@
             log_path: C:\Windows\NTDS
             install_dns: yes
             read_only: yes
+            state: domain_controller
             reboot: yes
           register: rodc_promotion
 

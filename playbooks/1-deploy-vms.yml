@@ -11,6 +11,9 @@
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
 
+    # Resource pool for lab VMs
+    proxmox_pool: "ADFR-DSP"
+
     # Template IDs (clean Windows without cloudbase-init)
     # Each host has its own template (no shared storage)
     template_host1: 9001  # semperis-nuc-1
@@ -52,8 +55,12 @@
           - "=========================================="
           - "Host 1 ({{ proxmox_host1 }}): 9 VMs"
           - "Host 2 ({{ proxmox_host2 }}): 8 VMs"
+          - "Resource Pool: {{ proxmox_pool }}"
           - "=========================================="
 
+    # ========================================
+    # CLONE VMs
+    # ========================================
     - name: Clone VMs from templates
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
@@ -65,6 +72,7 @@
         clone: "{{ item.template }}"
         newid: "{{ item.vmid }}"
         name: "{{ item.name }}"
+        pool: "{{ proxmox_pool }}"
         full: yes
         timeout: 600
       loop: "{{ vms }}"
@@ -76,6 +84,9 @@
       pause:
         seconds: 10
 
+    # ========================================
+    # CONFIGURE VMs
+    # ========================================
     - name: Configure VLAN tags on network interfaces
       community.general.proxmox_nic:
         api_host: "{{ item.host }}"
@@ -101,6 +112,7 @@
         name: "{{ item.name }}"
         cores: "{{ item.cores }}"
         memory: "{{ item.memory }}"
+        pool: "{{ proxmox_pool }}"
         update: yes
       loop: "{{ vms }}"
       loop_control:
@@ -120,6 +132,20 @@
       loop_control:
         label: "{{ item.name }}"
 
+    # ========================================
+    # TAG VMs
+    # ========================================
+    - name: Tag VMs with lab identifier
+      shell: |
+        ssh root@{{ item.host }} "qm set {{ item.vmid }} --tags 'adfr-dsp'"
+      loop: "{{ vms }}"
+      loop_control:
+        label: "{{ item.name }}"
+      changed_when: true
+
+    # ========================================
+    # START VMs
+    # ========================================
     - name: Start all VMs
       community.general.proxmox_kvm:
         api_host: "{{ item.host }}"
@@ -138,6 +164,9 @@
         seconds: 60
         prompt: "Waiting for all VMs to boot and get DHCP addresses..."
 
+    # ========================================
+    # SUMMARY
+    # ========================================
     - name: Display completion summary
       debug:
         msg:
@@ -145,8 +174,10 @@
           - "VM Deployment Complete!"
           - "=========================================="
           - ""
-          - "All 17 VMs have been deployed and started."
-          - "VMs are booting with DHCP addresses."
+          - "✅ All 17 VMs deployed and started"
+          - "✅ VMs added to resource pool: {{ proxmox_pool }}"
+          - "✅ VMs tagged with lab: adfr-dsp"
+          - "✅ VMs booting with DHCP addresses on VLAN {{ network_vlan }}"
           - ""
           - "Next step:"
           - "  Run playbook: 2-configure-ips.yml"
