@@ -4,7 +4,6 @@
   gather_facts: no
 
   vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
 
@@ -30,13 +29,13 @@
       loop_control:
         label: "{{ item.hostname }}"
 
-    - name: Create dynamic inventory
+    - name: Create dynamic inventory with password
       add_host:
         name: "{{ item.item.hostname }}"
         groups: windows_vms
         ansible_host: "{{ item.stdout }}"
         ansible_user: Administrator
-        ansible_password: "{{ windows_password }}"
+        ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
         ansible_connection: winrm
         ansible_winrm_transport: basic
         ansible_winrm_server_cert_validation: ignore
@@ -53,8 +52,6 @@
 - name: Configure static IPs
   hosts: windows_vms
   gather_facts: no
-  vars:
-    ansible_password: "{{ windows_password }}"
 
   tasks:
     - name: Set static IP
@@ -82,8 +79,6 @@
   hosts: windows_vms
   gather_facts: no
   serial: 1
-  vars:
-    ansible_password: "{{ windows_password }}"
 
   tasks:
     - name: Test new IP
@@ -118,8 +113,6 @@
 - name: Reboot VMs
   hosts: windows_vms
   gather_facts: no
-  vars:
-    ansible_password: "{{ windows_password }}"
 
   tasks:
     - name: Reboot if needed
