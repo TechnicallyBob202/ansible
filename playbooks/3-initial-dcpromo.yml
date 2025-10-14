@@ -78,6 +78,7 @@
         safe_mode_password: "{{ dsrm_password }}"
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
         reboot: yes
       when:
         - inventory_hostname in groups['forest_root_additional_dcs']
@@ -92,23 +93,49 @@
         - additional_dc_promotion.changed
 
     # Child Domain Promotion
-    - name: Promote to child domain controllers
-      microsoft.ad.domain:
-        dns_domain_name: "{{ item.domain_name }}"
-        parent_domain_name: "{{ item.parent }}"
-        domain_netbios_name: "{{ item.netbios_name }}"
-        safe_mode_password: "{{ dsrm_password }}"
-        domain_admin_user: "{{ forest_root.netbios_name }}\\Administrator"
-        domain_admin_password: "{{ windows_password }}"
-        create_dns_delegation: yes
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        reboot: yes
+    - name: Promote to child domain controllers using PowerShell
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+
+          # Check if already a DC
+          $IsDC = (Get-WmiObject Win32_ComputerSystem).DomainRole -ge 4
+          if ($IsDC) {
+            Write-Output "Already a domain controller"
+            exit 0
+          }
+
+          # Install AD DS feature if not installed
+          $ADDSFeature = Get-WindowsFeature AD-Domain-Services
+          if (-not $ADDSFeature.Installed) {
+            Install-WindowsFeature -Name AD-Domain-Services -IncludeManagementTools
+          }
+
+          # Create child domain
+          $SecurePassword = ConvertTo-SecureString "{{ dsrm_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("{{ forest_root.netbios_name }}\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+
+          Install-ADDSDomain `
+            -NewDomainName "{{ item.domain_name.split('.')[0] }}" `
+            -ParentDomainName "{{ item.parent }}" `
+            -DomainNetbiosName "{{ item.netbios_name }}" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+
+          Write-Output "Child domain created successfully"
       loop: "{{ child_domains }}"
       when:
         - inventory_hostname in groups['child_domain_dcs']
         - item.dc_hostname == inventory_hostname
       register: child_promotion
+      async: 1200
+      poll: 30
 
     - name: Wait for child DCs to come back online
       wait_for_connection:
