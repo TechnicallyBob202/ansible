@@ -43,7 +43,7 @@
     - name: Get DHCP IPs from all VMs (with timeout)
       shell: |
         timeout 10 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@{{ item.pxhost }} \
-        'qm guest cmd {{ item.vmid }} network-get-interfaces 2>/dev/null' | \
+        'qm guest cmd {{ item.vmid }} network-get-interfaces' | \
         grep -oP '(?<="ip-address" : ")[^"]*' | \
         grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1 || echo ""
       loop: "{{ vm_configs }}"
