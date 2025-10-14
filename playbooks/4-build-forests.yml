@@ -184,7 +184,6 @@
           Install-ADDSDomain `
             -NewDomainName "mauna" `
             -ParentDomainName "alpine.lab" `
-            -DomainNetbiosName "MAUNA" `
             -SafeModeAdministratorPassword $SecurePassword `
             -Credential $ParentCred `
             -InstallDNS `
@@ -280,7 +279,6 @@
           Install-ADDSDomain `
             -NewDomainName "rainier" `
             -ParentDomainName "alpine.lab" `
-            -DomainNetbiosName "RAINIER" `
             -SafeModeAdministratorPassword $SecurePassword `
             -Credential $ParentCred `
             -InstallDNS `
