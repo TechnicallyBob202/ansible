@@ -1,28 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B" ConfVersion="2.6">
-    <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="c95dac96-8bbe-58bc-9d47-428110419512">
-        <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="b1eb451b-16b5-5ca4-ade3-6424a214ff97">
-            <Node Name="ATLAS" Type="Connection" Descr="ADFR Management" Icon="mRemoteNG" Panel="General" Id="08e265fd-0a31-5124-af81-1f8a7a0a4559" Username="Administrator" Domain="" Password="" Hostname="192.168.35.10" Protocol="RDP" Port="3389" />
-            <Node Name="CREST" Type="Connection" Descr="Secondary DP" Icon="mRemoteNG" Panel="General" Id="08e265fd-0a31-5124-af81-1f8a7a0a4559" Username="Administrator" Domain="" Password="" Hostname="192.168.35.14" Protocol="RDP" Port="3389" />
-            <Node Name="PEAK" Type="Connection" Descr="SQL Server" Icon="mRemoteNG" Panel="General" Id="08e265fd-0a31-5124-af81-1f8a7a0a4559" Username="Administrator" Domain="" Password="" Hostname="192.168.35.12" Protocol="RDP" Port="3389" />
-            <Node Name="RIDGE" Type="Connection" Descr="Primary DP" Icon="mRemoteNG" Panel="General" Id="08e265fd-0a31-5124-af81-1f8a7a0a4559" Username="Administrator" Domain="" Password="" Hostname="192.168.35.13" Protocol="RDP" Port="3389" />
-            <Node Name="SUMMIT" Type="Connection" Descr="DSP Management" Icon="mRemoteNG" Panel="General" Id="08e265fd-0a31-5124-af81-1f8a7a0a4559" Username="Administrator" Domain="" Password="" Hostname="192.168.35.11" Protocol="RDP" Port="3389" />
+    <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="820accd5-f8b3-539f-87e2-9a7aa8651fab">
+        <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="70a0dffb-e357-5394-a3bd-824d47e247dc">
+            <Node Name="ATLAS" Type="Connection" Descr="ADFR Management" Icon="mRemoteNG" Panel="General" Id="8ddac65b-b6ae-543c-8d1e-a7a7db705ce4" Username="Administrator" Hostname="192.168.35.10" Protocol="RDP" Port="3389" />
+            <Node Name="CREST" Type="Connection" Descr="Secondary DP" Icon="mRemoteNG" Panel="General" Id="8ddac65b-b6ae-543c-8d1e-a7a7db705ce4" Username="Administrator" Hostname="192.168.35.14" Protocol="RDP" Port="3389" />
+            <Node Name="PEAK" Type="Connection" Descr="SQL Server" Icon="mRemoteNG" Panel="General" Id="8ddac65b-b6ae-543c-8d1e-a7a7db705ce4" Username="Administrator" Hostname="192.168.35.12" Protocol="RDP" Port="3389" />
+            <Node Name="RIDGE" Type="Connection" Descr="Primary DP" Icon="mRemoteNG" Panel="General" Id="8ddac65b-b6ae-543c-8d1e-a7a7db705ce4" Username="Administrator" Hostname="192.168.35.13" Protocol="RDP" Port="3389" />
+            <Node Name="SUMMIT" Type="Connection" Descr="DSP Management" Icon="mRemoteNG" Panel="General" Id="8ddac65b-b6ae-543c-8d1e-a7a7db705ce4" Username="Administrator" Hostname="192.168.35.11" Protocol="RDP" Port="3389" />
         </Node>
-        <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="8fc8b3cd-26c8-5214-a28f-e0489984cfc3">
-            <Node Name="KOA-DC" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="7a139f7a-49cb-5b0f-95a2-7ed95e9d8707" Username="ARBOR\Administrator" Domain="ARBOR" Password="" Hostname="192.168.35.20" Protocol="RDP" Port="3389" />
-            <Node Name="OAK-DC" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="7a139f7a-49cb-5b0f-95a2-7ed95e9d8707" Username="ARBOR\Administrator" Domain="ARBOR" Password="" Hostname="192.168.35.21" Protocol="RDP" Port="3389" />
+        <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="c0d802cf-e5e5-5f23-8fd0-0915fe8b2948">
+            <Node Name="KOA-DC" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="9fe5b2ae-9224-55f4-9968-20db18697863" Username="ARBOR\Administrator" Domain="ARBOR" Hostname="192.168.35.20" Protocol="RDP" Port="3389" />
+            <Node Name="OAK-DC" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="9fe5b2ae-9224-55f4-9968-20db18697863" Username="ARBOR\Administrator" Domain="ARBOR" Hostname="192.168.35.21" Protocol="RDP" Port="3389" />
         </Node>
-        <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="f5213c8b-ef3b-5301-ab60-cd2c0f3e84f4">
-            <Node Name="BASALT-DC" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.31" Protocol="RDP" Port="3389" />
-            <Node Name="GRANITE-DC" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.30" Protocol="RDP" Port="3389" />
-            <Node Name="MARBLE-DC" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.34" Protocol="RDP" Port="3389" />
-            <Node Name="QUARTZ-DC" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.35" Protocol="RDP" Port="3389" />
-            <Node Name="SHALE-DC" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.33" Protocol="RDP" Port="3389" />
-            <Node Name="SLATE-DC" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="ffc035b4-4238-5ef6-b2d2-d730c31fe018" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="192.168.35.32" Protocol="RDP" Port="3389" />
+        <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="c0741bbf-f4f5-5072-aef6-d445f8772541">
+            <Node Name="BASALT-DC" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.31" Protocol="RDP" Port="3389" />
+            <Node Name="GRANITE-DC" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.30" Protocol="RDP" Port="3389" />
+            <Node Name="MARBLE-DC" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.34" Protocol="RDP" Port="3389" />
+            <Node Name="QUARTZ-DC" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.35" Protocol="RDP" Port="3389" />
+            <Node Name="SHALE-DC" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.33" Protocol="RDP" Port="3389" />
+            <Node Name="SLATE-DC" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="a89faffc-b030-5c12-99af-95888ee0bdd2" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="192.168.35.32" Protocol="RDP" Port="3389" />
         </Node>
-        <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="8857ceba-befb-5087-b4af-a5c741cbd226">
-            <Node Name="BLUFF" Type="Connection" Descr="Recovery VM" Icon="mRemoteNG" Panel="General" Id="3d727f62-ccd9-5184-8e09-7cca243e3fef" Username="Administrator" Domain="" Password="" Hostname="192.168.35.51" Protocol="RDP" Port="3389" />
-            <Node Name="MESA" Type="Connection" Descr="Recovery VM" Icon="mRemoteNG" Panel="General" Id="3d727f62-ccd9-5184-8e09-7cca243e3fef" Username="Administrator" Domain="" Password="" Hostname="192.168.35.50" Protocol="RDP" Port="3389" />
+        <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="a44a99b1-2c6a-5fd8-a9bb-05843c2f4a43">
+            <Node Name="BLUFF" Type="Connection" Descr="Recovery VM" Icon="mRemoteNG" Panel="General" Id="09035254-ba52-5c67-8a1f-76f820f621fc" Username="Administrator" Hostname="192.168.35.51" Protocol="RDP" Port="3389" />
+            <Node Name="MESA" Type="Connection" Descr="Recovery VM" Icon="mRemoteNG" Panel="General" Id="09035254-ba52-5c67-8a1f-76f820f621fc" Username="Administrator" Hostname="192.168.35.50" Protocol="RDP" Port="3389" />
         </Node>
     </Node>
 </mrng:Connections>
