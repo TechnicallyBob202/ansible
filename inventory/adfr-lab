@@ -1,17 +1,5 @@
-# ========================================
-# SEMPERIS ADFR & DSP LAB INVENTORY
-# ========================================
-# Generated: 2025-10-14 16:34:24
-# Based on lab design specification
-#
-# Lab Architecture:
-# - Forest Root: arbor.local (2 DCs)
-# - Child Domain: koa.arbor.local (2 DCs)
-# - Child Domain: granite.arbor.local (2 DCs)
-# - Child Domain: slate.arbor.local (2 DCs)
-# - Child Domain: marble.arbor.local (2 DCs)
-#
-# Total Domain Controllers: 10
+# ADFR/DSP Lab Inventory
+# Generated: 2025-10-14T20:20:19Z
 
 [all:vars]
 ansible_user=Administrator
@@ -21,72 +9,47 @@ ansible_winrm_transport=ntlm
 ansible_winrm_server_cert_validation=ignore
 ansible_port=5985
 
-# ========================================
-# ALL WINDOWS SERVERS (for steps 1-2)
-# ========================================
-[windows_servers]
-ATLAS ansible_host=192.168.35.10  # forest_root_primary - 8GB RAM
-BASALT-DC01 ansible_host=192.168.35.31  # child_domain_additional - 4GB RAM
-GRANITE-DC01 ansible_host=192.168.35.30  # child_domain_primary - 4GB RAM
-KOA-DC01 ansible_host=192.168.35.20  # child_domain_primary - 4GB RAM
-MARBLE-DC01 ansible_host=192.168.35.34  # child_domain_primary - 4GB RAM
-OAK-DC01 ansible_host=192.168.35.21  # child_domain_additional - 4GB RAM
-QUARTZ-DC01 ansible_host=192.168.35.35  # child_domain_additional - 4GB RAM
-SHALE-DC01 ansible_host=192.168.35.33  # child_domain_additional - 4GB RAM
-SLATE-DC01 ansible_host=192.168.35.32  # child_domain_primary - 4GB RAM
-SUMMIT ansible_host=192.168.35.11  # forest_root_additional - 8GB RAM
-
-# ========================================
-# FOREST ROOT DOMAIN: arbor.local
-# ========================================
-# First DC - creates the forest (step 3)
-[forest_root_dc]
-ATLAS ansible_host=192.168.35.10 ad_site=Default-First-Site-Name
-
-# Additional DCs in forest root (step 4)
-[forest_root_additional_dcs]
-SUMMIT ansible_host=192.168.35.11 ad_site=Default-First-Site-Name
-
-# ========================================
-# CHILD DOMAIN CONTROLLERS
-# ========================================
-# First DC in each child domain (step 3)
-[child_domain_dcs]
-KOA-DC01 ansible_host=192.168.35.20 target_domain=koa.arbor.local target_netbios=KOA parent_domain=arbor.local ad_site=Default-First-Site-Name
-GRANITE-DC01 ansible_host=192.168.35.30 target_domain=granite.arbor.local target_netbios=GRANITE parent_domain=arbor.local ad_site=Default-First-Site-Name
-SLATE-DC01 ansible_host=192.168.35.32 target_domain=slate.arbor.local target_netbios=SLATE parent_domain=arbor.local ad_site=Default-First-Site-Name
-MARBLE-DC01 ansible_host=192.168.35.34 target_domain=marble.arbor.local target_netbios=MARBLE parent_domain=arbor.local ad_site=Default-First-Site-Name
-
-# ========================================
-# ADDITIONAL DOMAIN CONTROLLERS (step 4)
-# ========================================
-[additional_domain_controllers]
-# Additional forest root DCs
-SUMMIT ansible_host=192.168.35.11 dc_type=forest_root_additional ad_site=Default-First-Site-Name
-
-# Additional child domain DCs
-OAK-DC01 ansible_host=192.168.35.21 dc_type=child_domain_additional target_domain=koa.arbor.local target_netbios=KOA ad_site=Default-First-Site-Name
-BASALT-DC01 ansible_host=192.168.35.31 dc_type=child_domain_additional target_domain=granite.arbor.local target_netbios=GRANITE ad_site=Default-First-Site-Name
-SHALE-DC01 ansible_host=192.168.35.33 dc_type=child_domain_additional target_domain=slate.arbor.local target_netbios=SLATE ad_site=Default-First-Site-Name
-QUARTZ-DC01 ansible_host=192.168.35.35 dc_type=child_domain_additional target_domain=marble.arbor.local target_netbios=MARBLE ad_site=Default-First-Site-Name
-
-# ========================================
-# AGGREGATE GROUPS
-# ========================================
-[domain_controllers:children]
-forest_root_dc
-forest_root_additional_dcs
-child_domain_dcs
-additional_domain_controllers
-
-# Semperis Management Server (first DC)
-[semperis_servers:children]
-forest_root_dc
-
-# Distribution Points (first DC in each domain)
-[semperis_distribution_points]
+[infrastructure]
 ATLAS ansible_host=192.168.35.10
-KOA-DC01 ansible_host=192.168.35.20
-GRANITE-DC01 ansible_host=192.168.35.30
-SLATE-DC01 ansible_host=192.168.35.32
-MARBLE-DC01 ansible_host=192.168.35.34
+CREST ansible_host=192.168.35.14
+PEAK ansible_host=192.168.35.12
+RIDGE ansible_host=192.168.35.13
+SUMMIT ansible_host=192.168.35.11
+
+[arbor_forest_root_pdc]
+KOA-DC ansible_host=192.168.35.20 domain_name=arbor.lab netbios_name=ARBOR
+
+[arbor_forest_root_replica]
+OAK-DC ansible_host=192.168.35.21 domain_name=arbor.lab netbios_name=ARBOR
+
+[alpine_forest_root_pdc]
+GRANITE-DC ansible_host=192.168.35.30 domain_name=alpine.lab netbios_name=ALPINE
+
+[alpine_forest_root_replica]
+BASALT-DC ansible_host=192.168.35.31 domain_name=alpine.lab netbios_name=ALPINE
+
+[mauna_child_pdc]
+SLATE-DC ansible_host=192.168.35.32 domain_name=mauna.alpine.lab netbios_name=MAUNA parent_domain=alpine.lab
+
+[mauna_child_replica]
+SHALE-DC ansible_host=192.168.35.33 domain_name=mauna.alpine.lab netbios_name=MAUNA parent_domain=alpine.lab
+
+[rainier_child_pdc]
+MARBLE-DC ansible_host=192.168.35.34 domain_name=rainier.alpine.lab netbios_name=RAINIER parent_domain=alpine.lab
+
+[rainier_child_replica]
+QUARTZ-DC ansible_host=192.168.35.35 domain_name=rainier.alpine.lab netbios_name=RAINIER parent_domain=alpine.lab
+
+[recovery_vms]
+MESA ansible_host=192.168.35.50
+BLUFF ansible_host=192.168.35.51
+
+[domain_controllers:children]
+arbor_forest_root_pdc
+arbor_forest_root_replica
+alpine_forest_root_pdc
+alpine_forest_root_replica
+mauna_child_pdc
+mauna_child_replica
+rainier_child_pdc
+rainier_child_replica
