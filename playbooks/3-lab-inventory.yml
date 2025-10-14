@@ -4,7 +4,7 @@
   gather_facts: yes
 
   vars:
-    windows_password: "Lyons123!"
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
     lab_design:
       infrastructure:
@@ -13,9 +13,6 @@
         - { hostname: "PEAK", ip: "192.168.35.12", role: "SQL Server" }
         - { hostname: "RIDGE", ip: "192.168.35.13", role: "Primary DP" }
         - { hostname: "CREST", ip: "192.168.35.14", role: "Secondary DP" }
-
-      jump_servers:
-        - { hostname: "SLOPE", ip: "192.168.35.19", role: "Admin Workstation" }
 
       arbor_forest:
         - { hostname: "KOA-DC", ip: "192.168.35.20", domain: "arbor.lab", role: "Forest Root PDC" }
@@ -38,7 +35,6 @@
       set_fact:
         expected_vms: >-
           {{ lab_design.infrastructure +
-             lab_design.jump_servers +
              lab_design.arbor_forest +
              lab_design.alpine_forest +
              lab_design.recovery_vms }}
@@ -82,11 +78,6 @@
 
           [infrastructure]
           {% for vm in lab_design.infrastructure | sort(attribute='hostname') %}
-          {{ vm.hostname }} ansible_host={{ vm.ip }}
-          {% endfor %}
-
-          [jump_servers]
-          {% for vm in lab_design.jump_servers %}
           {{ vm.hostname }} ansible_host={{ vm.ip }}
           {% endfor %}
 
@@ -185,7 +176,7 @@
           {% endfor %}
                   </Node>
                   <Node Name="Admin & Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999992 | random | to_uuid }}">
-          {% for vm in lab_design.jump_servers + lab_design.recovery_vms | sort(attribute='hostname') %}
+          {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
                       <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999991 | random | to_uuid }}" Username="Administrator" Domain="" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
           {% endfor %}
                   </Node>

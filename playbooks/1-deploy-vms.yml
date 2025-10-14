@@ -26,7 +26,6 @@
       - { name: "MESA", vmid: 3550, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
       - { name: "SUMMIT", vmid: 3511, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 6144, disk: "100G" }
       - { name: "CREST", vmid: 3514, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
-      - { name: "SLOPE", vmid: 3515, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
       - { name: "OAK-DC", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
       - { name: "BASALT-DC", vmid: 3531, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
       - { name: "SHALE-DC", vmid: 3533, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }

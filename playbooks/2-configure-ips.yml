@@ -18,7 +18,6 @@
       - { vmid: 3550, ip: "192.168.35.50", hostname: "MESA", pxhost: "{{ proxmox_host1 }}" }
       - { vmid: 3511, ip: "192.168.35.11", hostname: "SUMMIT", pxhost: "{{ proxmox_host2 }}" }
       - { vmid: 3514, ip: "192.168.35.14", hostname: "CREST", pxhost: "{{ proxmox_host2 }}" }
-      - { vmid: 3515, ip: "192.168.35.19", hostname: "SLOPE", pxhost: "{{ proxmox_host2 }}" }
       - { vmid: 3521, ip: "192.168.35.21", hostname: "OAK-DC", pxhost: "{{ proxmox_host2 }}" }
       - { vmid: 3531, ip: "192.168.35.31", hostname: "BASALT-DC", pxhost: "{{ proxmox_host2 }}" }
       - { vmid: 3533, ip: "192.168.35.33", hostname: "SHALE-DC", pxhost: "{{ proxmox_host2 }}" }

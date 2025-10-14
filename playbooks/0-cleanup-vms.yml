@@ -23,7 +23,6 @@
     vm_ids_host2:
       - 3511  # SUMMIT
       - 3514  # CREST
-      - 3515  # SLOPE
       - 3521  # OAK-DC
       - 3531  # BASALT-DC
       - 3533  # SHALE-DC
