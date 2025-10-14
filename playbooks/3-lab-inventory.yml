@@ -154,7 +154,7 @@
         dest: "{{ playbook_dir }}/../inventory/adfr-lab"
         mode: '0644'
 
-  - name: Generate mRemoteNG config
+- name: Generate mRemoteNG config
   copy:
     content: |
       <?xml version="1.0" encoding="utf-8"?>
@@ -240,25 +240,3 @@
       command: git push origin main
       args:
         chdir: "{{ playbook_dir }}/.."
-
-    - name: Inventory generation complete
-      debug:
-        msg: "Inventory: inventory/adfr-lab | mRemoteNG: files/adfr-lab-mremoteng.xml"
-
-    - name: Commit and push inventory to git
-      block:
-        - name: Stage inventory files
-          command: git add inventory/adfr-lab files/adfr-lab-mremoteng.xml
-          args:
-            chdir: "{{ playbook_dir }}/.."
-
-        - name: Commit changes
-          command: git commit -m "Update lab inventory and mRemoteNG config"
-          args:
-            chdir: "{{ playbook_dir }}/.."
-          ignore_errors: yes  # in case nothing changed
-
-        - name: Push changes
-          command: git push origin main
-          args:
-            chdir: "{{ playbook_dir }}/.."
