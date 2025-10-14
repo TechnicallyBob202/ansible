@@ -7,7 +7,7 @@
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
     proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'PROXMOX_ROOT_PASSWORD') }}"
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
     proxmox_pool: "ADFR-DSP"
     template_host1: 9001
