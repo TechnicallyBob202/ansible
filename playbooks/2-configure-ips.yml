@@ -29,11 +29,35 @@
       - { vmid: 3552, ip: "192.168.35.52", hostname: "CLIFF-R01", pxhost: "{{ proxmox_host2 }}" }
 
   tasks:
-    - name: Get DHCP IPs from all VMs
-      shell: "ssh root@{{ item.pxhost }} 'qm guest cmd {{ item.vmid }} network-get-interfaces' 2>/dev/null | grep -oP '(?<=\"ip-address\" : \")[^\"]*' | grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1"
+    - name: Display configuration plan
+      debug:
+        msg:
+          - "=========================================="
+          - "Configuring {{ vm_configs | length }} VMs with static IPs"
+          - "=========================================="
+          - "Network: 192.168.35.0/24"
+          - "Gateway: 192.168.35.1"
+          - "DNS: 192.168.33.6, 192.168.33.7"
+          - "=========================================="
+
+    - name: Get DHCP IPs from all VMs (with timeout)
+      shell: |
+        timeout 10 ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no root@{{ item.pxhost }} \
+        'qm guest cmd {{ item.vmid }} network-get-interfaces 2>/dev/null' | \
+        grep -oP '(?<="ip-address" : ")[^"]*' | \
+        grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1 || echo ""
       loop: "{{ vm_configs }}"
       register: dhcp_ips
       ignore_errors: yes
+      loop_control:
+        label: "{{ item.hostname }}"
+
+    - name: Display discovered IPs
+      debug:
+        msg: |
+          {% for item in dhcp_ips.results %}
+          {{ item.item.hostname }}: {{ item.stdout if item.stdout != "" else "⚠️  NOT FOUND" }}
+          {% endfor %}
 
     - name: Create dynamic inventory
       add_host:
@@ -50,6 +74,8 @@
         target_hostname: "{{ item.item.hostname }}"
       loop: "{{ dhcp_ips.results }}"
       when: item.stdout != ""
+      loop_control:
+        label: "{{ item.item.hostname }}"
 
 - name: Phase 1 - Change All IPs
   hosts: windows_vms
