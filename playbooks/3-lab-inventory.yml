@@ -337,6 +337,12 @@
     # ========================================
     # GENERATE MREMOTENG CONFIGURATION
     # ========================================
+    - name: Create files directory if it doesn't exist
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
     - name: Generate mRemoteNG configuration XML
       ansible.builtin.copy:
         content: |
@@ -359,19 +365,6 @@
           </mrng:Connections>
         dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
         mode: '0644'
-
-    - name: Create files directory if it doesn't exist
-      ansible.builtin.file:
-        path: "{{ playbook_dir }}/../files"
-        state: directory
-        mode: '0755'
-
-    - name: Move mRemoteNG config to files directory
-      ansible.builtin.copy:
-        src: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
-        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
-        mode: '0644'
-        force: yes
 
     # ========================================
     # GIT COMMIT AND PUSH
@@ -475,7 +468,8 @@
           4. Path: inventory/adfr-lab
           5. Save
 
-          Then update Task Templates 3-6 to use "ADFR Lab" inventory
+          Then update Task Templates 4-7 to use "ADFR Lab" inventory
+          (4-initial-dcpromo, 5-more-dcpromo, 6-post-dc-config, etc.)
 
           🚀 READY TO PROCEED WITH DC PROMOTION!
           ════════════════════════════════════════════════════════════════
