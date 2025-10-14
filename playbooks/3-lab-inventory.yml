@@ -175,7 +175,7 @@
                       <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999993 | random | to_uuid }}" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
           {% endfor %}
                   </Node>
-                  <Node Name="Admin & Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999992 | random | to_uuid }}">
+                  <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999992 | random | to_uuid }}">
           {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
                       <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ 999999999999991 | random | to_uuid }}" Username="Administrator" Domain="" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
           {% endfor %}
