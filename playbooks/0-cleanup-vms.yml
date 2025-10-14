@@ -50,42 +50,6 @@
       pause:
         seconds: 5
 
-    # Kill any running clone operations first
-    - name: Kill running clone operations on Host 1
-      shell: |
-        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host1 }} \
-          "pkill -9 -f 'qm clone' || true"
-      ignore_errors: yes
-
-    - name: Kill running clone operations on Host 2
-      shell: |
-        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host2 }} \
-          "pkill -9 -f 'qm clone' || true"
-      ignore_errors: yes
-
-    - name: Brief pause after killing clone operations
-      pause:
-        seconds: 2
-
-    # Check for and unlock any locked VMs
-    - name: Unlock locked VMs on Host 1
-      shell: |
-        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host1 }} \
-          "qm unlock {{ item }} 2>/dev/null || true"
-      loop: "{{ vm_ids_host1 }}"
-      ignore_errors: yes
-
-    - name: Unlock locked VMs on Host 2
-      shell: |
-        ssh -o StrictHostKeyChecking=no root@{{ proxmox_host2 }} \
-          "qm unlock {{ item }} 2>/dev/null || true"
-      loop: "{{ vm_ids_host2 }}"
-      ignore_errors: yes
-
-    - name: Brief pause after unlocking VMs
-      pause:
-        seconds: 2
-
     - name: Stop VMs on Host 1
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host1 }}"
