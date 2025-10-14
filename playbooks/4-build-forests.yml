@@ -20,16 +20,12 @@
       failed_when: false
       changed_when: false
 
-    - name: Debug DC check
-      debug:
-        var: dc_check
-
     - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to forest root PDC
       microsoft.ad.domain:
@@ -40,13 +36,13 @@
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -83,7 +79,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -95,13 +91,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -138,7 +134,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to forest root PDC
       microsoft.ad.domain:
@@ -149,13 +145,13 @@
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -192,7 +188,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -204,13 +200,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -247,7 +243,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
@@ -270,13 +266,13 @@
             -NoRebootOnCompletion:$false
       async: 1200
       poll: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 900
         delay: 60
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -313,7 +309,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -325,13 +321,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -368,7 +364,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
@@ -391,13 +387,13 @@
             -NoRebootOnCompletion:$false
       async: 1200
       poll: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 900
         delay: 60
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
@@ -434,7 +430,7 @@
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -446,13 +442,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for DC to come back online
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: dc_check.ps_output[0] | int == 0
+      when: dc_check.output[0] | int == 0
 
     - name: Wait for ADWS
       ansible.windows.win_service:
