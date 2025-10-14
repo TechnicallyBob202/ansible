@@ -154,41 +154,70 @@
         dest: "{{ playbook_dir }}/../inventory/adfr-lab"
         mode: '0644'
 
-    - name: Generate mRemoteNG config
-      copy:
-        content: |
-          <?xml version="1.0" encoding="utf-8"?>
-          <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B" ConfVersion="2.6">
-              <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 'ADFR-DSP Lab' | hash('sha1') | truncate(32, True) | to_uuid }}">
+- name: Generate mRemoteNG config
+  copy:
+    content: |
+      <?xml version="1.0" encoding="utf-8"?>
+      <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B" ConfVersion="2.6">
+          {% set root_id = 'ADFR-DSP Lab' | hash('sha1') | truncate(32, True) | to_uuid %}
+          <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ root_id }}">
 
-                  <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 'Infrastructure' | hash('sha1') | truncate(32, True) | to_uuid }}">
-          {% for vm in lab_design.infrastructure | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}" Username="Administrator" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
-          {% endfor %}
-                  </Node>
-
-                  <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 'arbor.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid }}">
-          {% for vm in lab_design.arbor_forest | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}" Username="ARBOR\Administrator" Domain="ARBOR" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
-          {% endfor %}
-                  </Node>
-
-                  <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 'alpine.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid }}">
-          {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}" Username="ALPINE\Administrator" Domain="ALPINE" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
-          {% endfor %}
-                  </Node>
-
-                  <Node Name="Admin and Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ 'Admin & Recovery' | hash('sha1') | truncate(32, True) | to_uuid }}">
-          {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}" Username="Administrator" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" />
-          {% endfor %}
-                  </Node>
-
+              {% set infra_id = 'Infrastructure' | hash('sha1') | truncate(32, True) | to_uuid %}
+              <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ infra_id }}" ParentId="{{ root_id }}">
+              {% for vm in lab_design.infrastructure | sort(attribute='hostname') %}
+                  <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
+                        Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
+                        ParentId="{{ infra_id }}"
+                        Username="Administrator"
+                        Hostname="{{ vm.ip }}"
+                        Protocol="RDP"
+                        Port="3389" />
+              {% endfor %}
               </Node>
-          </mrng:Connections>
-        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
-        mode: '0644'
+
+              {% set arbor_id = 'arbor.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid %}
+              <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ arbor_id }}" ParentId="{{ root_id }}">
+              {% for vm in lab_design.arbor_forest | sort(attribute='hostname') %}
+                  <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
+                        Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
+                        ParentId="{{ arbor_id }}"
+                        Username="ARBOR\Administrator"
+                        Hostname="{{ vm.ip }}"
+                        Protocol="RDP"
+                        Port="3389" />
+              {% endfor %}
+              </Node>
+
+              {% set alpine_id = 'alpine.lab Forest' | hash('sha1') | truncate(32, True) | to_uuid %}
+              <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ alpine_id }}" ParentId="{{ root_id }}">
+              {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
+                  <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
+                        Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
+                        ParentId="{{ alpine_id }}"
+                        Username="ALPINE\Administrator"
+                        Hostname="{{ vm.ip }}"
+                        Protocol="RDP"
+                        Port="3389" />
+              {% endfor %}
+              </Node>
+
+              {% set recovery_id = 'Admin and Recovery' | hash('sha1') | truncate(32, True) | to_uuid %}
+              <Node Name="Admin & Recovery" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="{{ recovery_id }}" ParentId="{{ root_id }}">
+              {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
+                  <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General"
+                        Id="{{ vm.hostname | hash('sha1') | truncate(32, True) | to_uuid }}"
+                        ParentId="{{ recovery_id }}"
+                        Username="Administrator"
+                        Hostname="{{ vm.ip }}"
+                        Protocol="RDP"
+                        Port="3389" />
+              {% endfor %}
+              </Node>
+
+          </Node>
+      </mrng:Connections>
+    dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+    mode: '0644'
 
     - name: Inventory generation complete
       debug:
