@@ -16,21 +16,21 @@
     network_vlan: 35
 
     vms:
-      - { name: "ATLAS", vmid: 3501, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 6144, disk: "100G" }
-      - { name: "PEAK", vmid: 3503, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "200G" }
-      - { name: "RIDGE", vmid: 3504, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "500G" }
-      - { name: "KOA-DC", vmid: 3510, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "GRANITE-DC", vmid: 3520, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "SLATE-DC", vmid: 3522, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "MARBLE-DC", vmid: 3524, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "ATLAS", vmid: 3510, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 6144, disk: "100G" }
+      - { name: "PEAK", vmid: 3512, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 4, memory: 8192, disk: "200G" }
+      - { name: "RIDGE", vmid: 3513, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 4096, disk: "500G" }
+      - { name: "KOA-DC", vmid: 3520, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "GRANITE-DC", vmid: 3530, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "SLATE-DC", vmid: 3532, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "MARBLE-DC", vmid: 3534, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
       - { name: "MESA", vmid: 3550, host: "{{ proxmox_host1 }}", node: "semperis-nuc-1", template: "{{ template_host1 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "SUMMIT", vmid: 3502, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 6144, disk: "100G" }
-      - { name: "CREST", vmid: 3505, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
-      - { name: "SLOPE", vmid: 3509, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
-      - { name: "OAK-DC", vmid: 3511, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "BASALT-DC", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "SHALE-DC", vmid: 3523, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
-      - { name: "QUARTZ-DC", vmid: 3525, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "SUMMIT", vmid: 3511, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 6144, disk: "100G" }
+      - { name: "CREST", vmid: 3514, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "500G" }
+      - { name: "SLOPE", vmid: 3519, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 4096, disk: "80G" }
+      - { name: "OAK-DC", vmid: 3521, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "BASALT-DC", vmid: 3531, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "SHALE-DC", vmid: 3533, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
+      - { name: "QUARTZ-DC", vmid: 3535, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
       - { name: "BLUFF", vmid: 3551, host: "{{ proxmox_host2 }}", node: "semperis-nuc-2", template: "{{ template_host2 }}", cores: 2, memory: 3072, disk: "80G" }
 
   tasks:
