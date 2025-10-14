@@ -4,7 +4,8 @@
   gather_facts: no
 
   vars:
-    windows_password: "Lyons123!"
+    initial_windows_password: "{{ lookup('env', 'SYSPREP_PASSWORD') }}"
+    new_windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
     proxmox_host1: 192.168.33.21
     proxmox_host2: 192.168.33.22
 
@@ -49,7 +50,7 @@
         groups: windows_vms
         ansible_host: "{{ item.stdout }}"
         ansible_user: Administrator
-        ansible_password: "{{ windows_password }}"
+        ansible_password: "{{ initial_windows_password }}"
         ansible_connection: winrm
         ansible_winrm_transport: basic
         ansible_winrm_server_cert_validation: ignore
@@ -61,9 +62,22 @@
       loop_control:
         label: "{{ item.item.hostname }}"
 
+- name: Change Administrator password
+  hosts: windows_vms
+  gather_facts: no
+
+  tasks:
+    - name: Change Administrator password
+      win_user:
+        name: Administrator
+        password: "{{ new_windows_password }}"
+        update_password: always
+
 - name: Configure static IPs
   hosts: windows_vms
   gather_facts: no
+  vars:
+    ansible_password: "{{ new_windows_password }}"
 
   tasks:
     - name: Set static IP
@@ -86,6 +100,8 @@
 - name: Configure DNS and hostname
   hosts: windows_vms
   gather_facts: no
+  vars:
+    ansible_password: "{{ new_windows_password }}"
   serial: 1
 
   tasks:
@@ -119,6 +135,8 @@
 - name: Reboot VMs
   hosts: windows_vms
   gather_facts: no
+  vars:
+    ansible_password: "{{ new_windows_password }}"
 
   tasks:
     - name: Reboot if needed
