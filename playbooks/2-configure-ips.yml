@@ -62,9 +62,14 @@
       loop_control:
         label: "{{ item.item.hostname }}"
 
+# -------------------------------------------------------------------
+
 - name: Change Administrator password
   hosts: windows_vms
   gather_facts: no
+  vars:
+    initial_windows_password: "{{ lookup('env', 'SYSPREP_PASSWORD') }}"
+    new_windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Change Administrator password
@@ -73,11 +78,13 @@
         password: "{{ new_windows_password }}"
         update_password: always
 
+# -------------------------------------------------------------------
+
 - name: Configure static IPs
   hosts: windows_vms
   gather_facts: no
   vars:
-    ansible_password: "{{ new_windows_password }}"
+    ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Set static IP
@@ -88,6 +95,8 @@
       poll: 0
       ignore_errors: yes
 
+# -------------------------------------------------------------------
+
 - name: Wait for network changes
   hosts: localhost
   gather_facts: no
@@ -97,12 +106,14 @@
       pause:
         seconds: 15
 
+# -------------------------------------------------------------------
+
 - name: Configure DNS and hostname
   hosts: windows_vms
   gather_facts: no
-  vars:
-    ansible_password: "{{ new_windows_password }}"
   serial: 1
+  vars:
+    ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Test new IP
@@ -132,11 +143,13 @@
         name: "{{ target_hostname }}"
       register: hostname_result
 
+# -------------------------------------------------------------------
+
 - name: Reboot VMs
   hosts: windows_vms
   gather_facts: no
   vars:
-    ansible_password: "{{ new_windows_password }}"
+    ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
   tasks:
     - name: Reboot if needed
@@ -157,6 +170,8 @@
       when:
         - hostvars[inventory_hostname].hostname_result.reboot_required | default(false)
         - reboot_job.ansible_job_id is defined
+
+# -------------------------------------------------------------------
 
 - name: Summary
   hosts: localhost
