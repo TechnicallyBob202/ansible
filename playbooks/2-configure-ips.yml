@@ -138,10 +138,24 @@
   gather_facts: no
 
   tasks:
-    - name: Reboot if needed
+    - name: Reboot if needed (async)
       win_reboot:
         reboot_timeout: 600
       when: hostvars[inventory_hostname].hostname_result.reboot_required | default(false)
+      async: 600
+      poll: 0
+      register: reboot_job
+
+    - name: Wait for all reboots to complete
+      async_status:
+        jid: "{{ reboot_job.ansible_job_id }}"
+      register: reboot_result
+      until: reboot_result.finished
+      retries: 60
+      delay: 10
+      when:
+        - hostvars[inventory_hostname].hostname_result.reboot_required | default(false)
+        - reboot_job.ansible_job_id is defined
 
 - name: Summary
   hosts: localhost
