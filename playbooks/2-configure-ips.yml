@@ -57,6 +57,7 @@
         msg: |
           {% for item in dhcp_ips.results %}
           {{ item.item.hostname }}: {{ item.stdout if item.stdout != "" else "⚠️  NOT FOUND" }}
+          DEBUG - RC: {{ item.rc }} | STDERR: {{ item.stderr }}
           {% endfor %}
 
     - name: Create dynamic inventory
