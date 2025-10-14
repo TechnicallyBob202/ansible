@@ -335,6 +335,45 @@
         mode: '0644'
 
     # ========================================
+    # GENERATE MREMOTENG CONFIGURATION
+    # ========================================
+    - name: Generate mRemoteNG configuration XML
+      ansible.builtin.copy:
+        content: |
+          <?xml version="1.0" encoding="utf-8"?>
+          <mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="GiUis2Jb9FJVJGGhjbGfMqEF0NCCQV7kGZPL1k+AQwA=" ConfVersion="2.6">
+              <Node Name="ADFR-DSP Lab" Type="Container" Expanded="True" Descr="Semperis ADFR &amp; DSP Lab - arbor.local forest" Icon="Datacenter" Panel="General" Id="adfr-lab" Username="Administrator" Password="" Domain="" Hostname="" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="False" UseCredSsp="True" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="True" DisplayWallpaper="False" DisplayThemes="False" EnableFontSmoothing="False" EnableDesktopComposition="False" CacheBitmaps="False" RedirectDiskDrives="False" RedirectPorts="False" RedirectPrinters="False" RedirectSmartCards="False" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="False" Connected="False" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="False" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="False" InheritColors="False" InheritDescription="False" InheritDisplayThemes="False" InheritDisplayWallpaper="False" InheritEnableFontSmoothing="False" InheritEnableDesktopComposition="False" InheritDomain="False" InheritIcon="False" InheritPanel="False" InheritPassword="False" InheritPort="False" InheritProtocol="False" InheritPuttySession="False" InheritRedirectDiskDrives="False" InheritRedirectKeys="False" InheritRedirectPorts="False" InheritRedirectPrinters="False" InheritRedirectSmartCards="False" InheritRedirectSound="False" InheritSoundQuality="False" InheritResolution="False" InheritAutomaticResize="False" InheritUseConsoleSession="False" InheritUseCredSsp="False" InheritRenderingEngine="False" InheritUsername="False" InheritICAEncryptionStrength="False" InheritRDPAuthenticationLevel="False" InheritLoadBalanceInfo="False" InheritPreExtApp="False" InheritPostExtApp="False" InheritMacAddress="False" InheritUserField="False" InheritExtApp="False" InheritVNCCompression="False" InheritVNCEncoding="False" InheritVNCAuthMode="False" InheritVNCProxyType="False" InheritVNCProxyIP="False" InheritVNCProxyPort="False" InheritVNCProxyUsername="False" InheritVNCProxyPassword="False" InheritVNCColors="False" InheritVNCSmartSizeMode="False" InheritVNCViewOnly="False" InheritRDGatewayUsageMethod="False" InheritRDGatewayHostname="False" InheritRDGatewayUseConnectionCredentials="False" InheritRDGatewayUsername="False" InheritRDGatewayPassword="False" InheritRDGatewayDomain="False">
+                  <Node Name="Forest Root - arbor.local" Type="Container" Expanded="True" Descr="Forest root domain controllers" Icon="Folder" Panel="General" Id="forest-root">
+          {% for dc in lab_design.forest_root.dcs | sort(attribute='hostname') %}
+                      <Node Name="{{ dc.hostname }}" Type="Connection" Descr="{{ dc.role|replace('_', ' ')|title }} - {{ dc.memory_gb }}GB RAM" Icon="Windows" Panel="General" Id="{{ dc.hostname|lower }}" Username="ARBOR\Administrator" Password="" Domain="ARBOR" Hostname="{{ dc.ip }}" Protocol="RDP" Port="3389" UseCredSsp="True" />
+          {% endfor %}
+                  </Node>
+          {% for domain in lab_design.child_domains %}
+                  <Node Name="Child Domain - {{ domain.domain_name }}" Type="Container" Expanded="True" Descr="{{ domain.domain_name }} domain controllers" Icon="Folder" Panel="General" Id="{{ domain.netbios_name|lower }}">
+          {% for dc in domain.dcs | sort(attribute='hostname') %}
+                      <Node Name="{{ dc.hostname }}" Type="Connection" Descr="{{ dc.role|replace('_', ' ')|title }} - {{ dc.memory_gb }}GB RAM" Icon="Windows" Panel="General" Id="{{ dc.hostname|lower }}" Username="{{ domain.netbios_name }}\Administrator" Password="" Domain="{{ domain.netbios_name }}" Hostname="{{ dc.ip }}" Protocol="RDP" Port="3389" UseCredSsp="True" />
+          {% endfor %}
+                  </Node>
+          {% endfor %}
+              </Node>
+          </mrng:Connections>
+        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        mode: '0644'
+
+    - name: Create files directory if it doesn't exist
+      ansible.builtin.file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+    - name: Move mRemoteNG config to files directory
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        mode: '0644'
+        force: yes
+
+    # ========================================
     # GIT COMMIT AND PUSH
     # ========================================
     - name: Configure git user
@@ -349,6 +388,7 @@
         cd {{ playbook_dir }}/..
         git add inventory/adfr-lab
         git add inventory/adfr-lab.validation
+        git add files/adfr-lab-mremoteng.xml 2>/dev/null || true
       register: git_add
       changed_when: true
 
@@ -363,7 +403,7 @@
     - name: Commit inventory files
       ansible.builtin.shell: |
         cd {{ playbook_dir }}/..
-        git commit -m "Add ADFR Lab inventory and validation report"
+        git commit -m "Add ADFR Lab inventory, validation report, and mRemoteNG config"
       register: git_commit
       when: git_diff.rc != 0
       changed_when: true
@@ -408,6 +448,16 @@
           {% endfor %}
 
           {% endfor %}
+
+          ✅ MREMOTENG CONFIG GENERATED
+          ─────────────────────────────────────────────────────────────────
+          📁 Local: files/adfr-lab-mremoteng.xml
+          🌐 GitHub: https://github.com/TechnicallyBob202/ansible/blob/main/files/adfr-lab-mremoteng.xml
+
+          Download and import into mRemoteNG:
+          1. File → Open Connection File
+          2. Select: adfr-lab-mremoteng.xml
+          3. All {{ expected_vms | length }} VMs organized by domain
 
           {% if git_diff.rc != 0 %}
           ✅ GIT OPERATIONS
