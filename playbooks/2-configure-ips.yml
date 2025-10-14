@@ -42,7 +42,7 @@
 
     - name: Get DHCP IPs from all VMs (with timeout)
       shell: |
-        timeout 3 ssh -i ~/.ssh/ansible_key -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes root@{{ item.pxhost }} \
+        timeout 3 ssh -i /root/.ssh/ansible_key -o ConnectTimeout=2 -o StrictHostKeyChecking=no -o BatchMode=yes root@{{ item.pxhost }} \
         'qm guest cmd {{ item.vmid }} network-get-interfaces' | \
         grep -oP '(?<="ip-address" : ")[^"]*' | \
         grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1 || echo ""
