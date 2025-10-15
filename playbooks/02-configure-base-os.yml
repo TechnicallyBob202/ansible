@@ -1,5 +1,5 @@
 ---
-- name: Discover DHCP IPs and Configure Static Network
+- name: Discover IPs and Configure Static Network
   hosts: all
   gather_facts: no
 
@@ -9,8 +9,8 @@
         msg: "Configuring network for {{ ansible_play_hosts | length }} VMs"
       run_once: yes
 
-# Phase 1: Save target IPs and discover DHCP
-- name: Discover DHCP IPs
+# Phase 1: Discover current IPs and check if static config needed
+- name: Discover Current IPs
   hosts: all
   gather_facts: no
   serial: 0
@@ -20,16 +20,24 @@
       set_fact:
         target_ip: "{{ ansible_host }}"
 
-    - name: Discover current DHCP IP from Proxmox
+    - name: Discover current IP from Proxmox
       include_role:
         name: windows
-        tasks_from: discover_dhcp_ip.yml
+        tasks_from: discover_ip.yml
 
-    - name: Update ansible_host to use DHCP IP
+    - name: Check if IP already matches target
       set_fact:
-        ansible_host: "{{ discovered_dhcp_ip }}"
+        needs_ip_config: "{{ discovered_ip != target_ip }}"
 
-# Phase 2: Configure static IPs
+    - name: Update ansible_host to discovered IP
+      set_fact:
+        ansible_host: "{{ discovered_ip }}"
+
+    - name: Display IP status
+      debug:
+        msg: "{{ inventory_hostname }}: Current={{ discovered_ip }}, Target={{ target_ip }}, NeedsConfig={{ needs_ip_config }}"
+
+# Phase 2: Configure static IPs (only if needed)
 - name: Configure Static IP Addresses
   hosts: all
   gather_facts: no
@@ -40,16 +48,18 @@
       include_role:
         name: windows
         tasks_from: set_static_ip.yml
+      when: needs_ip_config
 
     - name: Update ansible_host to static IP
       set_fact:
         ansible_host: "{{ target_ip }}"
+      when: needs_ip_config
 
-    - name: Wait for all IPs to settle (only if any changed)
+    - name: Wait for all IPs to settle
       pause:
         seconds: 10
       run_once: yes
-      when: hostvars | dict2items | selectattr('value.ip_changed', 'defined') | selectattr('value.ip_changed', 'equalto', true) | list | length > 0
+      when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
 
 # Phase 3: Configure DNS and Hostname (parallel)
 - name: Configure DNS and Hostname
