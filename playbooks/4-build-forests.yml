@@ -8,22 +8,25 @@
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
   tasks:
-    - name: Check if arbor.lab domain exists
+    - name: Check if arbor.lab domain exists and get SID
       ansible.windows.win_powershell:
         script: |
           try {
-            Get-ADDomain -Identity "arbor.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "arbor.lab" -ErrorAction Stop
+            Write-Output $domain.DomainSID.Value
             exit 0
           } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
             exit 1
           }
-      register: domain_exists
+      register: domain_check
       failed_when: false
       changed_when: false
 
-    - name: Set arbor domain fact
+    - name: Set arbor domain facts
       set_fact:
-        arbor_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+        arbor_domain_exists: "{{ domain_check.rc == 0 }}"
+        arbor_domain_sid: "{{ domain_check.stdout_lines[0] if domain_check.rc == 0 else '' }}"
       delegate_to: localhost
       delegate_facts: yes
 
@@ -69,7 +72,22 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: pdc_test
-      failed_when: pdc_test.exit_code != 0
+      failed_when: pdc_test.rc != 0
+
+    - name: Get arbor.lab domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "arbor.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Update arbor domain SID fact
+      set_fact:
+        arbor_domain_sid: "{{ new_domain_sid.stdout_lines[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when: not hostvars['localhost']['arbor_domain_exists']
 
 - name: Check arbor.lab replica DC status
   hosts: arbor_forest_root_replica
@@ -90,7 +108,7 @@
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -102,13 +120,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for replica to come back
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for ADWS on replica
       ansible.windows.win_service:
@@ -123,7 +141,7 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: replica_test
-      failed_when: replica_test.exit_code != 0
+      failed_when: replica_test.rc != 0
 
 # ==========================================
 # ALPINE.LAB FOREST
@@ -134,22 +152,25 @@
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
   tasks:
-    - name: Check if alpine.lab domain exists
+    - name: Check if alpine.lab domain exists and get SID
       ansible.windows.win_powershell:
         script: |
           try {
-            Get-ADDomain -Identity "alpine.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "alpine.lab" -ErrorAction Stop
+            Write-Output $domain.DomainSID.Value
             exit 0
           } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
             exit 1
           }
-      register: domain_exists
+      register: domain_check
       failed_when: false
       changed_when: false
 
-    - name: Set alpine domain fact
+    - name: Set alpine domain facts
       set_fact:
-        alpine_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+        alpine_domain_exists: "{{ domain_check.rc == 0 }}"
+        alpine_domain_sid: "{{ domain_check.stdout_lines[0] if domain_check.rc == 0 else '' }}"
       delegate_to: localhost
       delegate_facts: yes
 
@@ -195,7 +216,22 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: pdc_test
-      failed_when: pdc_test.exit_code != 0
+      failed_when: pdc_test.rc != 0
+
+    - name: Get alpine.lab domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "alpine.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost']['alpine_domain_exists']
+
+    - name: Update alpine domain SID fact
+      set_fact:
+        alpine_domain_sid: "{{ new_domain_sid.stdout_lines[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when: not hostvars['localhost']['alpine_domain_exists']
 
 - name: Check alpine.lab replica DC status
   hosts: alpine_forest_root_replica
@@ -216,7 +252,7 @@
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -228,13 +264,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for replica to come back
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for ADWS on replica
       ansible.windows.win_service:
@@ -249,7 +285,7 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: replica_test
-      failed_when: replica_test.exit_code != 0
+      failed_when: replica_test.rc != 0
 
 # ==========================================
 # MAUNA.ALPINE.LAB CHILD DOMAIN
@@ -260,22 +296,25 @@
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
   tasks:
-    - name: Check if mauna.alpine.lab domain exists
+    - name: Check if mauna.alpine.lab domain exists and get SID
       ansible.windows.win_powershell:
         script: |
           try {
-            Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            Write-Output $domain.DomainSID.Value
             exit 0
           } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
             exit 1
           }
-      register: domain_exists
+      register: domain_check
       failed_when: false
       changed_when: false
 
-    - name: Set mauna domain fact
+    - name: Set mauna domain facts
       set_fact:
-        mauna_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+        mauna_domain_exists: "{{ domain_check.rc == 0 }}"
+        mauna_domain_sid: "{{ domain_check.stdout_lines[0] if domain_check.rc == 0 else '' }}"
       delegate_to: localhost
       delegate_facts: yes
 
@@ -331,7 +370,22 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: pdc_test
-      failed_when: pdc_test.exit_code != 0
+      failed_when: pdc_test.rc != 0
+
+    - name: Get mauna.alpine.lab domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "mauna.alpine.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Update mauna domain SID fact
+      set_fact:
+        mauna_domain_sid: "{{ new_domain_sid.stdout_lines[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when: not hostvars['localhost']['mauna_domain_exists']
 
 - name: Check mauna.alpine.lab replica DC status
   hosts: mauna_child_replica
@@ -352,7 +406,7 @@
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -364,13 +418,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for replica to come back
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for ADWS on replica
       ansible.windows.win_service:
@@ -385,7 +439,7 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: replica_test
-      failed_when: replica_test.exit_code != 0
+      failed_when: replica_test.rc != 0
 
 # ==========================================
 # RAINIER.ALPINE.LAB CHILD DOMAIN
@@ -396,22 +450,25 @@
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
   tasks:
-    - name: Check if rainier.alpine.lab domain exists
+    - name: Check if rainier.alpine.lab domain exists and get SID
       ansible.windows.win_powershell:
         script: |
           try {
-            Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
+            Write-Output $domain.DomainSID.Value
             exit 0
           } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
             exit 1
           }
-      register: domain_exists
+      register: domain_check
       failed_when: false
       changed_when: false
 
-    - name: Set rainier domain fact
+    - name: Set rainier domain facts
       set_fact:
-        rainier_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+        rainier_domain_exists: "{{ domain_check.rc == 0 }}"
+        rainier_domain_sid: "{{ domain_check.stdout_lines[0] if domain_check.rc == 0 else '' }}"
       delegate_to: localhost
       delegate_facts: yes
 
@@ -467,7 +524,22 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: pdc_test
-      failed_when: pdc_test.exit_code != 0
+      failed_when: pdc_test.rc != 0
+
+    - name: Get rainier.alpine.lab domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "rainier.alpine.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost']['rainier_domain_exists']
+
+    - name: Update rainier domain SID fact
+      set_fact:
+        rainier_domain_sid: "{{ new_domain_sid.stdout_lines[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when: not hostvars['localhost']['rainier_domain_exists']
 
 - name: Check rainier.alpine.lab replica DC status
   hosts: rainier_child_replica
@@ -488,7 +560,7 @@
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Promote to replica DC
       microsoft.ad.domain_controller:
@@ -500,13 +572,13 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for replica to come back
       wait_for_connection:
         timeout: 600
         delay: 30
-      when: is_dc.exit_code != 0
+      when: is_dc.rc != 0
 
     - name: Wait for ADWS on replica
       ansible.windows.win_service:
@@ -521,12 +593,27 @@
       ansible.windows.win_powershell:
         script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
       register: replica_test
-      failed_when: replica_test.exit_code != 0
+      failed_when: replica_test.rc != 0
 
-- name: Forest build complete
+# ==========================================
+# WRITE DOMAIN SIDS TO FILE
+# ==========================================
+- name: Write domain SIDs to file
   hosts: localhost
-  gather_facts: no
+  gather_facts: yes
   tasks:
+    - name: Create domain SIDs file
+      copy:
+        content: |
+          # Lab Domain SIDs
+          # Generated: {{ ansible_date_time.iso8601 }}
+
+          arbor.lab={{ hostvars['localhost']['arbor_domain_sid'] }}
+          alpine.lab={{ hostvars['localhost']['alpine_domain_sid'] }}
+          mauna.alpine.lab={{ hostvars['localhost']['mauna_domain_sid'] }}
+          rainier.alpine.lab={{ hostvars['localhost']['rainier_domain_sid'] }}
+        dest: "{{ playbook_dir }}/../files/domain-sids.txt"
+
     - name: Display completion
       debug:
-        msg: "All forests and domains built successfully"
+        msg: "All forests and domains built successfully. Domain SIDs saved to files/domain-sids.txt"
