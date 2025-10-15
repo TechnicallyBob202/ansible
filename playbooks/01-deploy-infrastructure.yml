@@ -2,7 +2,7 @@
 - name: Deploy Lab VMs from Inventory
   hosts: all
   gather_facts: no
-  serial: 0  # Deploy all in parallel (limited by Proxmox host)
+  serial: 0  # Deploy all in parallel
 
   vars:
     proxmox_user: root@pam
@@ -14,7 +14,7 @@
       debug:
         msg:
           - "Deploying {{ ansible_play_hosts | length }} VMs"
-          - "This will take approximately 10-15 minutes"
+          - "VMs will boot with DHCP - run playbook 02 next to configure static IPs"
       run_once: yes
 
     - name: Deploy VM (clone + configure + start)
@@ -23,17 +23,15 @@
         apply:
           delegate_to: localhost
 
-    - name: Wait for all VMs to complete deployment
+    - name: Wait for VMs to boot (DHCP)
       pause:
-        seconds: 30
+        seconds: 90
       run_once: yes
-
-    - name: Wait for VMs to boot
-      include_role:
-        name: windows
-        tasks_from: wait_for_boot.yml
 
     - name: Deployment complete
       debug:
-        msg: "All {{ ansible_play_hosts | length }} VMs deployed and booted"
+        msg:
+          - "All {{ ansible_play_hosts | length }} VMs deployed"
+          - "VMs are booting with DHCP addresses"
+          - "Next: Run playbook 02-configure-base-os.yml to set static IPs"
       run_once: yes
