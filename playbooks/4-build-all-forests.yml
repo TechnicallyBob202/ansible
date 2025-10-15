@@ -51,10 +51,6 @@
           - "Estimated time: 60-90 minutes"
           - "=========================================="
 
-    - name: Pause before starting
-      pause:
-        prompt: "Press ENTER to begin full lab build, or Ctrl+C to cancel"
-
     # ==========================================
     # PHASE 1: PRE-BUILD CHECKS
     # ==========================================
@@ -275,56 +271,56 @@
           ========================================
           SEMPERIS LAB BUILD COMPLETE
           ========================================
-          
+
           Build Started: {{ build_start_time }}
           Build Completed: {{ build_end_time }}
-          
+
           FORESTS BUILT:
-          
+
           1. arbor.lab (Single Domain)
              ✓ KOA-DC (PDC) - 192.168.35.20
              ✓ OAK-DC (Replica) - 192.168.35.21
-          
+
           2. alpine.lab (Multi-Domain Forest)
              Root Domain: alpine.lab
                ✓ GRANITE-DC (PDC) - 192.168.35.30
                ✓ BASALT-DC (Replica) - 192.168.35.31
-             
+
              Child Domain: mauna.alpine.lab
                ✓ SLATE-DC (PDC) - 192.168.35.32
                ✓ SHALE-DC (Replica) - 192.168.35.33
-             
+
              Child Domain: rainier.alpine.lab
                ✓ MARBLE-DC (PDC) - 192.168.35.34
                ✓ QUARTZ-DC (Replica) - 192.168.35.35
-          
+
           TOTAL DOMAIN CONTROLLERS: 8
           TOTAL FORESTS: 2
           TOTAL DOMAINS: 4
-          
+
           STATUS: OPERATIONAL ✅
-          
+
           ========================================
           NEXT STEPS
           ========================================
-          
+
           1. Install ADFR components:
              - Deploy ATLAS management server
              - Configure distribution points (RIDGE, CREST)
              - Install ADFR agents on all DCs
-          
+
           2. Install DSP components:
              - Deploy SUMMIT management server
              - Configure monitoring
-          
+
           3. Configure backup schedules
-          
+
           4. Run test exercises
-          
+
           ========================================
-          
+
           Lab is ready for Semperis product deployment!
-          
+
         dest: "{{ playbook_dir_path }}/../state/final-build-summary.txt"
         mode: '0644'
 
