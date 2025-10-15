@@ -1,43 +1,17 @@
 ---
-# Configure DNS servers on Windows
-
-- name: Get network adapter name
+- name: Get current DNS servers
   ansible.windows.win_shell: |
-    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-    $adapter.Name
-  register: adapter_name
-  changed_when: false
-
-- name: Check current DNS servers
-  ansible.windows.win_shell: |
-    $adapter = Get-NetAdapter | Where-Object {$_.Name -eq "{{ adapter_name.stdout | trim }}"}
-    $currentDNS = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-    $currentDNS.ServerAddresses -join ","
+    $adapter = (Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1).Name
+    (Get-DnsClientServerAddress -InterfaceAlias $adapter -AddressFamily IPv4).ServerAddresses -join ","
   register: current_dns
   changed_when: false
 
 - name: Set DNS servers
   ansible.windows.win_shell: |
-    $adapter = Get-NetAdapter | Where-Object {$_.Name -eq "{{ adapter_name.stdout | trim }}"}
-    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name `
-      -ServerAddresses "{{ windows_dns_servers | join('","') }}"
-  register: dns_config
-  changed_when: "'{{ windows_dns_servers[0] }}' not in current_dns.stdout"
+    $adapter = (Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1).Name
+    Set-DnsClientServerAddress -InterfaceAlias $adapter -ServerAddresses "{{ windows_dns_servers | join('","') }}"
+  when: windows_dns_servers[0] not in current_dns.stdout
 
-- name: Set DNS suffix
-  ansible.windows.win_shell: |
-    Set-DnsClient -InterfaceAlias "{{ adapter_name.stdout | trim }}" `
-      -ConnectionSpecificSuffix "{{ windows_dns_suffix }}"
-  register: dns_suffix_config
-
-- name: Flush DNS cache
-  ansible.windows.win_shell: |
-    Clear-DnsClientCache
-  when: dns_config.changed
-
-- name: Display DNS configuration result
+- name: Display DNS result
   debug:
-    msg:
-      - "{{ inventory_hostname }} - DNS {{ 'configured' if dns_config.changed else 'already set' }}"
-      - "  Primary: {{ windows_dns_servers[0] }}"
-      - "  Secondary: {{ windows_dns_servers[1] }}"
+    msg: "{{ inventory_hostname }} - DNS {{ 'configured' if windows_dns_servers[0] not in current_dns.stdout else 'already set' }}"

@@ -54,11 +54,11 @@
         seconds: 10
       run_once: yes
 
-# Phase 3: Configure DNS and Hostname
+# Phase 3: Configure DNS and Hostname (parallel)
 - name: Configure DNS and Hostname
   hosts: all
   gather_facts: no
-  serial: 1
+  serial: 0
 
   tasks:
     - name: Configure DNS servers
@@ -71,13 +71,20 @@
         name: windows
         tasks_from: set_hostname.yml
 
+# Phase 4: Reboot only hosts that need it
+- name: Reboot hosts that changed hostname
+  hosts: all
+  gather_facts: no
+  serial: 1
+
+  tasks:
     - name: Reboot if needed
       include_role:
         name: windows
         tasks_from: reboot.yml
       when: reboot_required | default(false)
 
-# Phase 4: Validation
+# Phase 5: Validation
 - name: Validate Configuration
   hosts: all
   gather_facts: no
