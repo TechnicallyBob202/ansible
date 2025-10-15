@@ -171,9 +171,27 @@
           {% endfor %}
                   </Node>
                   <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="alpine-container">
-          {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
-                      <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="alpine-{{ vm.hostname | lower }}" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-          {% endfor %}
+                      <Node Name="Forest Root" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="alpine-root-container">
+                      {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
+                          {% if vm.domain == 'alpine.lab' %}
+                          <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="alpine-{{ vm.hostname | lower }}" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
+                          {% endif %}
+                      {% endfor %}
+                      </Node>
+                      <Node Name="mauna.alpine.lab Child Domain" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="mauna-container">
+                      {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
+                          {% if vm.domain == 'mauna.alpine.lab' %}
+                          <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="mauna-{{ vm.hostname | lower }}" Username="MAUNA\Administrator" Domain="MAUNA" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
+                          {% endif %}
+                      {% endfor %}
+                      </Node>
+                      <Node Name="rainier.alpine.lab Child Domain" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="rainier-container">
+                      {% for vm in lab_design.alpine_forest | sort(attribute='hostname') %}
+                          {% if vm.domain == 'rainier.alpine.lab' %}
+                          <Node Name="{{ vm.hostname }}" Type="Connection" Descr="{{ vm.role }}" Icon="mRemoteNG" Panel="General" Id="rainier-{{ vm.hostname | lower }}" Username="RAINIER\Administrator" Domain="RAINIER" Password="" Hostname="{{ vm.ip }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
+                          {% endif %}
+                      {% endfor %}
+                      </Node>
                   </Node>
                   <Node Name="Recovery VMs" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="recovery-container">
           {% for vm in lab_design.recovery_vms | sort(attribute='hostname') %}
