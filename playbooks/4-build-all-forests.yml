@@ -1,269 +1,77 @@
 ---
 # ==========================================
 # MASTER ORCHESTRATOR - BUILD ALL FORESTS
-# Runs all modular playbooks in the correct sequence
+# Uses import_playbook for Semaphore/AWX compatibility
 # ==========================================
-# This is a convenience playbook that orchestrates the complete lab build
-# You can also run individual playbooks for more granular control
+# This orchestrator imports other playbooks sequentially
+# The inventory is automatically passed from Semaphore
 # ==========================================
 
-- name: Master Lab Build Orchestrator
+- name: Display Build Plan
   hosts: localhost
   gather_facts: yes
-
-  vars:
-    playbook_dir_path: "{{ playbook_dir }}"
-    build_start_time: "{{ ansible_date_time.iso8601 }}"
-
+  
   tasks:
-    - name: Display build plan
+    - name: Display orchestrator info
       debug:
         msg:
           - "=========================================="
           - "SEMPERIS LAB - FULL BUILD ORCHESTRATOR"
           - "=========================================="
-          - "This will build the complete multi-forest lab:"
-          - ""
-          - "Phase 1: Pre-Build Checks"
-          - "  ✓ Validate all VMs are ready"
-          - ""
-          - "Phase 2: Forest Roots"
-          - "  ✓ Build arbor.lab forest"
-          - "  ✓ Build alpine.lab forest"
-          - ""
-          - "Phase 3: Replica DCs"
-          - "  ✓ Add OAK-DC to arbor.lab"
-          - "  ✓ Add BASALT-DC to alpine.lab"
-          - ""
-          - "Phase 4: Child Domains"
-          - "  ✓ Build mauna.alpine.lab"
-          - "  ✓ Build rainier.alpine.lab"
-          - ""
-          - "Phase 5: Child Replicas"
-          - "  ✓ Add SHALE-DC to mauna.alpine.lab"
-          - "  ✓ Add QUARTZ-DC to rainier.alpine.lab"
-          - ""
-          - "Phase 6: Post-Configuration"
-          - "  ✓ Configure AD Sites"
-          - "  ✓ Create service accounts"
-          - "  ✓ Validate replication"
-          - ""
-          - "Estimated time: 60-90 minutes"
+          - "This will build the complete multi-forest lab"
+          - "Started: {{ ansible_date_time.iso8601 }}"
           - "=========================================="
 
-    # ==========================================
-    # PHASE 1: PRE-BUILD CHECKS
-    # ==========================================
+# ==========================================
+# PHASE 1: PRE-BUILD CHECKS
+# ==========================================
+- import_playbook: 4a-pre-build-checks.yml
 
-    - name: Phase 1 - Run pre-build checks
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 1: PRE-BUILD CHECKS"
-          - "=========================================="
+# ==========================================
+# PHASE 2: FOREST ROOTS
+# ==========================================
+- import_playbook: 4b-build-arbor-forest-root.yml
+- import_playbook: 4c-build-alpine-forest-root.yml
 
-    - name: Run pre-build checks playbook
-      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4a-pre-build-checks.yml"
-      register: prebuild_result
-      ignore_errors: yes
+# ==========================================
+# PHASE 3: ROOT REPLICA DCs
+# ==========================================
+- import_playbook: 4d-add-arbor-replica-dc.yml
+- import_playbook: 4e-add-alpine-replica-dc.yml
 
-    - name: Fail if pre-build checks failed
-      fail:
-        msg: "Pre-build checks failed. Please resolve issues before continuing."
-      when: prebuild_result.rc != 0
+# ==========================================
+# PHASE 4: CHILD DOMAINS
+# ==========================================
+- import_playbook: 4f-build-mauna-child-domain.yml
+- import_playbook: 4g-build-rainier-child-domain.yml
 
-    - name: Phase 1 complete
-      debug:
-        msg: "✅ Phase 1 Complete: All VMs validated"
+# ==========================================
+# PHASE 5: CHILD REPLICA DCs
+# ==========================================
+- import_playbook: 4h-add-mauna-replica-dc.yml
+- import_playbook: 4i-add-rainier-replica-dc.yml
 
-    # ==========================================
-    # PHASE 2: FOREST ROOTS
-    # ==========================================
+# ==========================================
+# PHASE 6: POST-CONFIGURATION
+# ==========================================
+# - import_playbook: 4j-configure-ad-sites.yml  # Uncomment when created
+# - import_playbook: 4k-create-service-accounts.yml  # Uncomment when created
+# - import_playbook: 4l-validate-replication.yml  # Uncomment when created
+# - import_playbook: 4m-save-domain-info.yml  # Uncomment when created
 
-    - name: Phase 2 - Build forest roots
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 2: BUILDING FOREST ROOTS"
-          - "=========================================="
-
-    - name: Build arbor.lab forest root
-      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4b-build-arbor-forest-root.yml"
-      register: arbor_root_result
-      ignore_errors: yes
-
-    - name: Fail if arbor.lab failed
-      fail:
-        msg: "arbor.lab forest build failed. Check logs."
-      when: arbor_root_result.rc != 0
-
-    - name: Build alpine.lab forest root
-      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4c-build-alpine-forest-root.yml"
-      register: alpine_root_result
-      ignore_errors: yes
-
-    - name: Fail if alpine.lab failed
-      fail:
-        msg: "alpine.lab forest build failed. Check logs."
-      when: alpine_root_result.rc != 0
-
-    - name: Phase 2 complete
-      debug:
-        msg: "✅ Phase 2 Complete: Both forest roots operational"
-
-    # ==========================================
-    # PHASE 3: REPLICA DCs
-    # ==========================================
-
-    - name: Phase 3 - Add replica DCs
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 3: ADDING REPLICA DOMAIN CONTROLLERS"
-          - "=========================================="
-
-    - name: Add OAK-DC replica to arbor.lab
-      command: ansible-playbook "{{ playbook_dir_path }}/4d-add-arbor-replica-dc.yml"
-      register: arbor_replica_result
-      ignore_errors: yes
-
-    - name: Fail if arbor.lab replica failed
-      fail:
-        msg: "arbor.lab replica DC failed. Check logs."
-      when: arbor_replica_result.rc != 0
-
-    - name: Add BASALT-DC replica to alpine.lab
-      command: ansible-playbook "{{ playbook_dir_path }}/4e-add-alpine-replica-dc.yml"
-      register: alpine_replica_result
-      ignore_errors: yes
-
-    - name: Fail if alpine.lab replica failed
-      fail:
-        msg: "alpine.lab replica DC failed. Check logs."
-      when: alpine_replica_result.rc != 0
-
-    - name: Phase 3 complete
-      debug:
-        msg: "✅ Phase 3 Complete: All replica DCs operational"
-
-    # ==========================================
-    # PHASE 4: CHILD DOMAINS
-    # ==========================================
-
-    - name: Phase 4 - Build child domains
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 4: BUILDING CHILD DOMAINS"
-          - "=========================================="
-
-    - name: Build mauna.alpine.lab child domain
-      command: ansible-playbook "{{ playbook_dir_path }}/4f-build-mauna-child-domain.yml"
-      register: mauna_result
-      ignore_errors: yes
-
-    - name: Fail if mauna.alpine.lab failed
-      fail:
-        msg: "mauna.alpine.lab child domain build failed. Check logs."
-      when: mauna_result.rc != 0
-
-    - name: Build rainier.alpine.lab child domain
-      command: ansible-playbook "{{ playbook_dir_path }}/4g-build-rainier-child-domain.yml"
-      register: rainier_result
-      ignore_errors: yes
-
-    - name: Fail if rainier.alpine.lab failed
-      fail:
-        msg: "rainier.alpine.lab child domain build failed. Check logs."
-      when: rainier_result.rc != 0
-
-    - name: Phase 4 complete
-      debug:
-        msg: "✅ Phase 4 Complete: All child domains operational"
-
-    # ==========================================
-    # PHASE 5: CHILD REPLICAS
-    # ==========================================
-
-    - name: Phase 5 - Add child domain replicas
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 5: ADDING CHILD DOMAIN REPLICAS"
-          - "=========================================="
-
-    - name: Add SHALE-DC replica to mauna.alpine.lab
-      command: ansible-playbook "{{ playbook_dir_path }}/4h-add-mauna-replica-dc.yml"
-      register: mauna_replica_result
-      ignore_errors: yes
-
-    - name: Fail if mauna replica failed
-      fail:
-        msg: "mauna.alpine.lab replica DC failed. Check logs."
-      when: mauna_replica_result.rc != 0
-
-    - name: Add QUARTZ-DC replica to rainier.alpine.lab
-      command: ansible-playbook "{{ playbook_dir_path }}/4i-add-rainier-replica-dc.yml"
-      register: rainier_replica_result
-      ignore_errors: yes
-
-    - name: Fail if rainier replica failed
-      fail:
-        msg: "rainier.alpine.lab replica DC failed. Check logs."
-      when: rainier_replica_result.rc != 0
-
-    - name: Phase 5 complete
-      debug:
-        msg: "✅ Phase 5 Complete: All child domain replicas operational"
-
-    # ==========================================
-    # PHASE 6: POST-CONFIGURATION
-    # ==========================================
-
-    - name: Phase 6 - Post-configuration
-      debug:
-        msg:
-          - ""
-          - "=========================================="
-          - "PHASE 6: POST-CONFIGURATION"
-          - "=========================================="
-
-    - name: Configure AD Sites and Services
-      command: ansible-playbook "{{ playbook_dir_path }}/4j-configure-ad-sites.yml"
-      register: sites_result
-      ignore_errors: yes
-      when: false  # Set to true when playbook exists
-
-    - name: Create service accounts
-      command: ansible-playbook "{{ playbook_dir_path }}/4k-create-service-accounts.yml"
-      register: accounts_result
-      ignore_errors: yes
-      when: false  # Set to true when playbook exists
-
-    - name: Validate replication
-      command: ansible-playbook "{{ playbook_dir_path }}/4l-validate-replication.yml"
-      register: replication_result
-      ignore_errors: yes
-      when: false  # Set to true when playbook exists
-
-    - name: Save domain information
-      command: ansible-playbook "{{ playbook_dir_path }}/4m-save-domain-info.yml"
-      register: save_result
-      ignore_errors: yes
-      when: false  # Set to true when playbook exists
-
-    # ==========================================
-    # FINAL SUMMARY
-    # ==========================================
-
-    - name: Calculate build duration
-      set_fact:
-        build_end_time: "{{ ansible_date_time.iso8601 }}"
+# ==========================================
+# FINAL SUMMARY
+# ==========================================
+- name: Build Complete Summary
+  hosts: localhost
+  gather_facts: yes
+  
+  tasks:
+    - name: Create state directory
+      file:
+        path: "{{ playbook_dir }}/../state"
+        state: directory
+        mode: '0755'
 
     - name: Generate final summary
       copy:
@@ -271,76 +79,49 @@
           ========================================
           SEMPERIS LAB BUILD COMPLETE
           ========================================
-
-          Build Started: {{ build_start_time }}
-          Build Completed: {{ build_end_time }}
-
+          
+          Build Completed: {{ ansible_date_time.iso8601 }}
+          
           FORESTS BUILT:
-
+          
           1. arbor.lab (Single Domain)
              ✓ KOA-DC (PDC) - 192.168.35.20
              ✓ OAK-DC (Replica) - 192.168.35.21
-
+          
           2. alpine.lab (Multi-Domain Forest)
              Root Domain: alpine.lab
                ✓ GRANITE-DC (PDC) - 192.168.35.30
                ✓ BASALT-DC (Replica) - 192.168.35.31
-
+             
              Child Domain: mauna.alpine.lab
                ✓ SLATE-DC (PDC) - 192.168.35.32
                ✓ SHALE-DC (Replica) - 192.168.35.33
-
+             
              Child Domain: rainier.alpine.lab
                ✓ MARBLE-DC (PDC) - 192.168.35.34
                ✓ QUARTZ-DC (Replica) - 192.168.35.35
-
-          TOTAL DOMAIN CONTROLLERS: 8
-          TOTAL FORESTS: 2
-          TOTAL DOMAINS: 4
-
-          STATUS: OPERATIONAL ✅
-
+          
+          TOTAL: 8 Domain Controllers across 2 forests
+          STATUS: FULLY OPERATIONAL ✅
+          
           ========================================
-          NEXT STEPS
-          ========================================
-
-          1. Install ADFR components:
-             - Deploy ATLAS management server
-             - Configure distribution points (RIDGE, CREST)
-             - Install ADFR agents on all DCs
-
-          2. Install DSP components:
-             - Deploy SUMMIT management server
-             - Configure monitoring
-
-          3. Configure backup schedules
-
-          4. Run test exercises
-
-          ========================================
-
-          Lab is ready for Semperis product deployment!
-
-        dest: "{{ playbook_dir_path }}/../state/final-build-summary.txt"
+        dest: "{{ playbook_dir }}/../state/final-build-summary.txt"
         mode: '0644'
 
-    - name: Display final summary
+    - name: Display completion message
       debug:
         msg:
           - ""
           - "=========================================="
-          - "🎉 LAB BUILD SUCCESSFULLY COMPLETED! 🎉"
+          - "✅ FULL LAB BUILD COMPLETED"
           - "=========================================="
           - ""
-          - "All forests and domains are operational:"
+          - "All forests and domains operational:"
           - "  ✅ arbor.lab (2 DCs)"
-          - "  ✅ alpine.lab forest root (2 DCs)"
-          - "  ✅ mauna.alpine.lab child (2 DCs)"
-          - "  ✅ rainier.alpine.lab child (2 DCs)"
+          - "  ✅ alpine.lab root (2 DCs)"
+          - "  ✅ mauna.alpine.lab (2 DCs)"
+          - "  ✅ rainier.alpine.lab (2 DCs)"
           - ""
-          - "Total: 8 Domain Controllers across 2 forests"
-          - ""
-          - "Summary saved to: state/final-build-summary.txt"
-          - ""
-          - "Ready for ADFR/DSP deployment!"
+          - "Total: 8 Domain Controllers"
+          - "Summary: state/final-build-summary.txt"
           - "=========================================="

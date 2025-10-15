@@ -12,7 +12,7 @@
 - name: Check if alpine.lab forest already exists
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
+  
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -67,7 +67,7 @@
 - name: Build alpine.lab forest root
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
+  
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -106,14 +106,14 @@
     - name: Display promotion status
       debug:
         msg: "Forest promotion initiated. Server will reboot..."
-      when:
+      when: 
         - not hostvars['localhost']['alpine_domain_exists']
         - domain_promotion.changed
 
 - name: Wait for forest root to come online
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
+  
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -140,7 +140,7 @@
 - name: Verify forest build and gather info
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
+  
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -215,14 +215,14 @@
         content: |
           # alpine.lab Forest Information
           # Generated: {{ ansible_date_time.iso8601 }}
-
+          
           domain_built: yes
           forest_root_pdc: GRANITE-DC
           forest_root_pdc_ip: 192.168.35.30
           domain_name: alpine.lab
           domain_netbios: ALPINE
           domain_sid: {{ hostvars[groups['alpine_forest_root_pdc'][0]]['alpine_domain_sid'] }}
-
+          
           child_domains:
             mauna:
               built: no
@@ -230,7 +230,7 @@
             rainier:
               built: no
               target_pdc: MARBLE-DC
-
+          
           next_steps:
             - Run 4e-add-alpine-replica-dc.yml to add BASALT-DC replica
             - Run 4f-build-mauna-child-domain.yml to add mauna.alpine.lab

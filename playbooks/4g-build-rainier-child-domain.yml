@@ -1,7 +1,7 @@
 ---
 # ==========================================
-# BUILD MAUNA.ALPINE.LAB CHILD DOMAIN
-# Creates mauna.alpine.lab child domain and promotes SLATE-DC as PDC
+# BUILD RAINIER.ALPINE.LAB CHILD DOMAIN
+# Creates rainier.alpine.lab child domain and promotes MARBLE-DC as PDC
 # ==========================================
 # Prerequisites: 4c-build-alpine-forest-root.yml completed
 # Dependencies: alpine.lab forest must exist
@@ -36,15 +36,15 @@
       debug:
         msg:
           - "=========================================="
-          - "BUILDING MAUNA.ALPINE.LAB CHILD DOMAIN"
+          - "BUILDING RAINIER.ALPINE.LAB CHILD DOMAIN"
           - "=========================================="
           - "Parent Forest: {{ alpine_status.domain_name }}"
           - "Parent PDC: {{ alpine_status.forest_root_pdc }}"
-          - "Child Domain: mauna.alpine.lab"
-          - "Target PDC: SLATE-DC (192.168.35.32)"
+          - "Child Domain: rainier.alpine.lab"
+          - "Target PDC: MARBLE-DC (192.168.35.34)"
 
-- name: Check if mauna.alpine.lab domain already exists
-  hosts: mauna_child_pdc
+- name: Check if rainier.alpine.lab domain already exists
+  hosts: rainier_child_pdc
   gather_facts: no
   
   vars:
@@ -55,7 +55,7 @@
       ansible.windows.win_powershell:
         script: |
           try {
-            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
             Write-Output "Domain: $($domain.DNSRoot)"
             Write-Output "SID: $($domain.DomainSID.Value)"
             Write-Output "NetBIOS: $($domain.NetBIOSName)"
@@ -71,8 +71,8 @@
 
     - name: Set domain status facts
       set_fact:
-        mauna_domain_exists: "{{ domain_check.rc == 0 }}"
-        mauna_domain_info: "{{ domain_check.stdout_lines if domain_check.rc == 0 else [] }}"
+        rainier_domain_exists: "{{ domain_check.rc == 0 }}"
+        rainier_domain_info: "{{ domain_check.stdout_lines if domain_check.rc == 0 else [] }}"
       delegate_to: localhost
       delegate_facts: yes
 
@@ -87,8 +87,8 @@
       meta: end_host
       when: domain_check.rc == 0
 
-- name: Build mauna.alpine.lab child domain
-  hosts: mauna_child_pdc
+- name: Build rainier.alpine.lab child domain
+  hosts: rainier_child_pdc
   gather_facts: no
   
   vars:
@@ -98,7 +98,7 @@
     - name: Verify we should proceed
       debug:
         msg: "Child domain does not exist. Proceeding with build..."
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Test connectivity to parent domain PDC
       ansible.windows.win_powershell:
@@ -113,13 +113,13 @@
             exit 1
           }
       register: parent_test
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Fail if parent PDC unreachable
       fail:
         msg: "Cannot reach alpine.lab PDC at 192.168.35.30. Verify GRANITE-DC is online."
       when: 
-        - not hostvars['localhost']['mauna_domain_exists']
+        - not hostvars['localhost']['rainier_domain_exists']
         - parent_test.rc != 0
 
     - name: Install Active Directory Domain Services
@@ -128,12 +128,12 @@
         include_management_tools: yes
         state: present
       register: adds_install
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Display installation result
       debug:
         msg: "AD-DS installed: {{ 'Success' if adds_install.changed else 'Already installed' }}"
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
@@ -145,12 +145,12 @@
             $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
             
             Write-Output "Starting child domain promotion..."
-            Write-Output "New Domain Name: mauna"
+            Write-Output "New Domain Name: rainier"
             Write-Output "Parent Domain: alpine.lab"
-            Write-Output "Full FQDN: mauna.alpine.lab"
+            Write-Output "Full FQDN: rainier.alpine.lab"
             
             Install-ADDSDomain `
-              -NewDomainName "mauna" `
+              -NewDomainName "rainier" `
               -ParentDomainName "alpine.lab" `
               -DomainType "ChildDomain" `
               -SafeModeAdministratorPassword $SecurePassword `
@@ -172,17 +172,17 @@
       register: domain_promotion
       async: 1200
       poll: 30
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Display promotion status
       debug:
         msg: "Child domain promotion initiated. Server will reboot..."
       when: 
-        - not hostvars['localhost']['mauna_domain_exists']
+        - not hostvars['localhost']['rainier_domain_exists']
         - domain_promotion.changed
 
 - name: Wait for child domain PDC to come online
-  hosts: mauna_child_pdc
+  hosts: rainier_child_pdc
   gather_facts: no
   
   vars:
@@ -193,12 +193,12 @@
       wait_for_connection:
         timeout: 900
         delay: 60
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Wait additional time for AD services to start
       pause:
         seconds: 90
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
     - name: Test WinRM connectivity
       ansible.windows.win_ping:
@@ -206,10 +206,10 @@
       retries: 5
       delay: 15
       until: ping_result is succeeded
-      when: not hostvars['localhost']['mauna_domain_exists']
+      when: not hostvars['localhost']['rainier_domain_exists']
 
 - name: Verify child domain build and gather info
-  hosts: mauna_child_pdc
+  hosts: rainier_child_pdc
   gather_facts: no
   
   vars:
@@ -220,7 +220,7 @@
       ansible.windows.win_powershell:
         script: |
           try {
-            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            $domain = Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
             Write-Output "SUCCESS"
             Write-Output "Domain: $($domain.DNSRoot)"
             Write-Output "SID: $($domain.DomainSID.Value)"
@@ -242,13 +242,13 @@
 
     - name: Extract domain SID
       set_fact:
-        mauna_domain_sid: "{{ domain_verify.stdout_lines | select('search', 'SID:') | first | regex_replace('SID: ', '') }}"
+        rainier_domain_sid: "{{ domain_verify.stdout_lines | select('search', 'SID:') | first | regex_replace('SID: ', '') }}"
 
     - name: Display child domain information
       debug:
         msg:
           - "=========================================="
-          - "✅ MAUNA.ALPINE.LAB CHILD DOMAIN COMPLETE"
+          - "✅ RAINIER.ALPINE.LAB CHILD DOMAIN COMPLETE"
           - "=========================================="
           - "{{ domain_verify.stdout_lines }}"
           - "=========================================="
@@ -312,43 +312,43 @@
         state: directory
         mode: '0755'
 
-    - name: Save mauna.alpine.lab domain information
+    - name: Save rainier.alpine.lab domain information
       copy:
         content: |
-          # mauna.alpine.lab Child Domain Information
+          # rainier.alpine.lab Child Domain Information
           # Generated: {{ ansible_date_time.iso8601 }}
           
           domain_built: yes
-          domain_pdc: SLATE-DC
-          domain_pdc_ip: 192.168.35.32
-          domain_name: mauna.alpine.lab
-          domain_netbios: MAUNA
+          domain_pdc: MARBLE-DC
+          domain_pdc_ip: 192.168.35.34
+          domain_name: rainier.alpine.lab
+          domain_netbios: RAINIER
           parent_domain: alpine.lab
           forest: alpine.lab
-          domain_sid: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}
+          domain_sid: {{ hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] }}
           
           trust_status: verified
           cross_domain_auth: working
           
           next_steps:
-            - Run 4h-add-mauna-replica-dc.yml to add SHALE-DC replica
-        dest: "{{ playbook_dir }}/../state/mauna-domain-status.yml"
+            - Run 4h-add-rainier-replica-dc.yml to add QUARTZ-DC replica
+        dest: "{{ playbook_dir }}/../state/rainier-domain-status.yml"
         mode: '0644'
       when:
-        - groups['mauna_child_pdc'] is defined
-        - groups['mauna_child_pdc'] | length > 0
-        - hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] is defined
+        - groups['rainier_child_pdc'] is defined
+        - groups['rainier_child_pdc'] | length > 0
+        - hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] is defined
 
     - name: Update consolidated domain SIDs file
       lineinfile:
         path: "{{ playbook_dir }}/../state/domain-sids.yml"
-        line: "mauna.alpine.lab: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}"
+        line: "rainier.alpine.lab: {{ hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] }}"
         create: yes
         mode: '0644'
       when:
-        - groups['mauna_child_pdc'] is defined
-        - groups['mauna_child_pdc'] | length > 0
-        - hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] is defined
+        - groups['rainier_child_pdc'] is defined
+        - groups['rainier_child_pdc'] | length > 0
+        - hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] is defined
 
     - name: Update alpine forest status
       shell: |
@@ -362,16 +362,16 @@
       debug:
         msg:
           - "=========================================="
-          - "✅ MAUNA.ALPINE.LAB SUCCESSFULLY BUILT"
+          - "✅ RAINIER.ALPINE.LAB SUCCESSFULLY BUILT"
           - "=========================================="
-          - "Child Domain: mauna.alpine.lab"
+          - "Child Domain: rainier.alpine.lab"
           - "Parent Domain: alpine.lab"
           - "Forest: alpine.lab"
-          - "Domain PDC: SLATE-DC"
+          - "Domain PDC: MARBLE-DC"
           - "Status: Operational"
           - "Trust: Verified"
           - ""
           - "Next Steps:"
-          - "  1. Add replica DC: ansible-playbook 4h-add-mauna-replica-dc.yml"
+          - "  1. Add replica DC: ansible-playbook 4h-add-rainier-replica-dc.yml"
           - "  2. Build other child: ansible-playbook 4g-build-rainier-child-domain.yml"
           - "=========================================="
