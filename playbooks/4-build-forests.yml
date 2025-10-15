@@ -1,108 +1,532 @@
 ---
-- name: Build and validate forests/domains
+# ==========================================
+# ARBOR.LAB FOREST
+# ==========================================
+- name: Check arbor.lab domain status
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if arbor.lab domain exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomain -Identity "arbor.lab" -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: domain_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Set arbor domain fact
+      set_fact:
+        arbor_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+- name: Build arbor.lab forest if needed
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Promote to forest root PDC
+      microsoft.ad.domain:
+        dns_domain_name: arbor.lab
+        domain_netbios_name: ARBOR
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Wait for PDC to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Wait for ADWS on PDC
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_pdc is succeeded
+      register: adws_pdc
+
+    - name: Test PDC connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: pdc_test
+      failed_when: pdc_test.exit_code != 0
+
+- name: Check arbor.lab replica DC status
+  hosts: arbor_forest_root_replica
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { exit 0 } else { exit 1 }
+      register: is_dc
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: is_dc.exit_code != 0
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: arbor.lab
+        domain_admin_user: ARBOR\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+      when: is_dc.exit_code != 0
+
+    - name: Wait for replica to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: is_dc.exit_code != 0
+
+    - name: Wait for ADWS on replica
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_replica is succeeded
+      register: adws_replica
+
+    - name: Test replica connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: replica_test
+      failed_when: replica_test.exit_code != 0
+
+# ==========================================
+# ALPINE.LAB FOREST
+# ==========================================
+- name: Check alpine.lab domain status
+  hosts: alpine_forest_root_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if alpine.lab domain exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomain -Identity "alpine.lab" -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: domain_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Set alpine domain fact
+      set_fact:
+        alpine_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+- name: Build alpine.lab forest if needed
+  hosts: alpine_forest_root_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not hostvars['localhost']['alpine_domain_exists']
+
+    - name: Promote to forest root PDC
+      microsoft.ad.domain:
+        dns_domain_name: alpine.lab
+        domain_netbios_name: ALPINE
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+      when: not hostvars['localhost']['alpine_domain_exists']
+
+    - name: Wait for PDC to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: not hostvars['localhost']['alpine_domain_exists']
+
+    - name: Wait for ADWS on PDC
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_pdc is succeeded
+      register: adws_pdc
+
+    - name: Test PDC connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: pdc_test
+      failed_when: pdc_test.exit_code != 0
+
+- name: Check alpine.lab replica DC status
+  hosts: alpine_forest_root_replica
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { exit 0 } else { exit 1 }
+      register: is_dc
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: is_dc.exit_code != 0
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+      when: is_dc.exit_code != 0
+
+    - name: Wait for replica to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: is_dc.exit_code != 0
+
+    - name: Wait for ADWS on replica
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_replica is succeeded
+      register: adws_replica
+
+    - name: Test replica connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: replica_test
+      failed_when: replica_test.exit_code != 0
+
+# ==========================================
+# MAUNA.ALPINE.LAB CHILD DOMAIN
+# ==========================================
+- name: Check mauna.alpine.lab domain status
+  hosts: mauna_child_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if mauna.alpine.lab domain exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: domain_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Set mauna domain fact
+      set_fact:
+        mauna_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+- name: Build mauna.alpine.lab child domain if needed
+  hosts: mauna_child_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Promote to child domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+          Install-ADDSDomain `
+            -NewDomainName "mauna" `
+            -ParentDomainName "alpine.lab" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+      async: 1200
+      poll: 30
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Wait for PDC to come back
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Wait for ADWS on PDC
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_pdc is succeeded
+      register: adws_pdc
+
+    - name: Test PDC connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: pdc_test
+      failed_when: pdc_test.exit_code != 0
+
+- name: Check mauna.alpine.lab replica DC status
+  hosts: mauna_child_replica
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { exit 0 } else { exit 1 }
+      register: is_dc
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: is_dc.exit_code != 0
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: mauna.alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+      when: is_dc.exit_code != 0
+
+    - name: Wait for replica to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: is_dc.exit_code != 0
+
+    - name: Wait for ADWS on replica
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_replica is succeeded
+      register: adws_replica
+
+    - name: Test replica connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: replica_test
+      failed_when: replica_test.exit_code != 0
+
+# ==========================================
+# RAINIER.ALPINE.LAB CHILD DOMAIN
+# ==========================================
+- name: Check rainier.alpine.lab domain status
+  hosts: rainier_child_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if rainier.alpine.lab domain exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: domain_exists
+      failed_when: false
+      changed_when: false
+
+    - name: Set rainier domain fact
+      set_fact:
+        rainier_domain_exists: "{{ domain_exists.exit_code == 0 }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+- name: Build rainier.alpine.lab child domain if needed
+  hosts: rainier_child_pdc
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not hostvars['localhost']['rainier_domain_exists']
+
+    - name: Promote to child domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+          Install-ADDSDomain `
+            -NewDomainName "rainier" `
+            -ParentDomainName "alpine.lab" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+      async: 1200
+      poll: 30
+      when: not hostvars['localhost']['rainier_domain_exists']
+
+    - name: Wait for PDC to come back
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+      when: not hostvars['localhost']['rainier_domain_exists']
+
+    - name: Wait for ADWS on PDC
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_pdc is succeeded
+      register: adws_pdc
+
+    - name: Test PDC connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: pdc_test
+      failed_when: pdc_test.exit_code != 0
+
+- name: Check rainier.alpine.lab replica DC status
+  hosts: rainier_child_replica
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+  tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { exit 0 } else { exit 1 }
+      register: is_dc
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: is_dc.exit_code != 0
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: rainier.alpine.lab
+        domain_admin_user: ALPINE\Administrator
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+      when: is_dc.exit_code != 0
+
+    - name: Wait for replica to come back
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: is_dc.exit_code != 0
+
+    - name: Wait for ADWS on replica
+      ansible.windows.win_service:
+        name: ADWS
+        state: started
+      retries: 20
+      delay: 15
+      until: adws_replica is succeeded
+      register: adws_replica
+
+    - name: Test replica connectivity
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: replica_test
+      failed_when: replica_test.exit_code != 0
+
+- name: Forest build complete
   hosts: localhost
   gather_facts: no
-
-  vars:
-    safe_mode_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    ansible_user: Administrator
-    ansible_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    forests:
-      - name: arbor.lab
-        dcs:
-          - KOA-DC
-          - OAK-DC
-      - name: alpine.lab
-        dcs:
-          - GRANITE-DC
-          - BASALT-DC
-      - name: mauna.alpine.lab
-        dcs:
-          - SLATE-DC
-          - SHALE-DC
-      - name: rainier.alpine.lab
-        dcs:
-          - MARBLE-DC
-          - QUARTZ-DC
-
   tasks:
-
-    - name: Process each forest
-      block:
-
-        - name: Check if domain exists
-          ansible.windows.win_powershell:
-            script: |
-              try {
-                $domain = Get-ADDomain -Identity "{{ forest.name }}" -ErrorAction Stop
-                $result = @{ DomainFound = $true }
-              } catch {
-                $result = @{ DomainFound = $false }
-              }
-              $result | ConvertTo-Json -Compress
-          register: domain_check
-          ignore_errors: yes
-
-        - name: Set domain existence fact
-          set_fact:
-            domain_found: "{{ (domain_check.stdout | from_json).DomainFound | default(false) }}"
-
-        - name: Check reachability of all expected DCs
-          ansible.windows.win_powershell:
-            script: |
-              $dcs = @()
-              {% for dc in forest.dcs %}
-              $dcs += @{
-                Name = "{{ dc }}"
-                Reachable = Test-NetConnection -ComputerName "{{ dc }}" -Port 5985 -InformationLevel Quiet
-              }
-              {% endfor %}
-              $dcs | ConvertTo-Json -Compress
-          register: dc_reach_results
-
-        - name: Set fact - all expected DCs reachable
-          set_fact:
-            all_dcs_reachable: "{{ dc_reach_results.stdout | from_json | map(attribute='Reachable') | list | select('equalto', false) | list | length == 0 }}"
-
-        - name: Skip promotion if domain exists and all DCs reachable
-          ansible.builtin.meta: end_block
-          when: domain_found and all_dcs_reachable
-
-        - name: Promote missing DCs
-          block:
-
-            - name: Promote DC if missing
-              ansible.windows.win_domain:
-                dns_domain_name: "{{ forest.name }}"
-                domain_admin_user: "{{ ansible_user }}"
-                domain_admin_password: "{{ ansible_password }}"
-                safe_mode_admin_password: "{{ safe_mode_password }}"
-                state: domain_controller
-                install_dns: yes
-              when: "'{{ item }}' not in dc_reach_results.stdout | from_json | map(attribute='Reachable') | list | select('equalto', true) | list"
-              loop: "{{ forest.dcs }}"
-              loop_control:
-                loop_var: item
-              register: promote_result
-
-            - name: Wait 30s after promotion
-              ansible.builtin.pause:
-                seconds: 30
-
-            - name: Test connectivity to all DCs after promotion
-              ansible.windows.win_powershell:
-                script: |
-                  Test-NetConnection -ComputerName "{{ item }}" -Port 5985 -InformationLevel Quiet
-              loop: "{{ forest.dcs }}"
-              loop_control:
-                loop_var: item
-              register: post_promo_test
-
-            - name: Fail if any DC unreachable after promotion
-              fail:
-                msg: "One or more DCs in {{ forest.name }} are unreachable after promotion."
-              when: post_promo_test.results | map(attribute='stdout') | map('bool') | select('equalto', false) | list | length > 0
-
-      loop: "{{ forests }}"
-      loop_control:
-        loop_var: forest
+    - name: Display completion
+      debug:
+        msg: "All forests and domains built successfully"
