@@ -11,7 +11,7 @@
 - name: Pre-Build Environment Checks
   hosts: localhost
   gather_facts: yes
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
     required_vms:
@@ -66,7 +66,7 @@
         mode: '0755'
 
 - name: Check DNS resolution on all DCs
-  hosts: 
+  hosts:
     - arbor_forest_root_pdc
     - arbor_forest_root_replica
     - alpine_forest_root_pdc
@@ -151,7 +151,7 @@
   serial: 1
 
   tasks:
-    - name: Get C: drive free space
+    - name: "Get C: drive free space"
       ansible.windows.win_powershell:
         script: |
           $disk = Get-Volume -DriveLetter C
@@ -213,11 +213,11 @@
         content: |
           # Pre-Build Check Results
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           All checks passed: YES
           VMs checked: {{ hostvars | dict2items | selectattr('key', 'match', '.*-DC') | list | length }}
           Environment ready: YES
-          
+
           Next steps:
           1. Run: ansible-playbook 4b-build-arbor-forest-root.yml
           2. Run: ansible-playbook 4c-build-alpine-forest-root.yml
