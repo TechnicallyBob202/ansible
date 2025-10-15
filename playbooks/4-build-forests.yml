@@ -1,671 +1,159 @@
 ---
-# 4-build-forests.yml
-# Idempotent multi-forest/domain build:
-# - Pre-check: Get-ADDomain + Test-NetConnection for expected DCs
-# - If all checks pass => skip actions for that domain
-# - If any fail => perform install & promotion steps
-# - After promotion: Test-NetConnection loop to validate readiness before next promotions
-
-- name: Build arbor.lab - root PDC (KOA-DC)
-  hosts: arbor_forest_root_pdc
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "arbor.lab"
-    expected_dc_fqdns:
-      - "KOA-DC.arbor.lab"
-      - "OAK-DC.arbor.lab"
-    test_ports: [389, 135, 445]   # LDAP, RPC, SMB
-    test_retries: 60
-    test_delay: 10
-
-  tasks:
-    - name: Check if domain {{ domain_fqdn }} exists
-      ansible.windows.win_powershell:
-        script: |
-          try {
-            Get-ADDomain -Identity "{{ domain_fqdn }}" -ErrorAction Stop | Out-Null
-            Write-Output "Exists"
-          } catch {
-            Write-Output "Missing"
-          }
-      register: domain_check
-      failed_when: false
-      changed_when: false
-
-    - name: Test reachability of expected DCs for {{ domain_fqdn }}
-      ansible.windows.win_powershell:
-        script: |
-          $results = @()
-          $ports = {{ test_ports }}
-          $host = "{{ item }}"
-          foreach ($p in $ports) {
-            $t = Test-NetConnection -ComputerName $host -Port $p -WarningAction SilentlyContinue
-            $results += @{ host = $host; port = $p; ok = $t.TcpTestSucceeded }
-          }
-          $results | ConvertTo-Json -Compress
-      loop: "{{ expected_dc_fqdns }}"
-      register: dc_reach_results
-      failed_when: false
-      changed_when: false
-
-    - name: Set fact - all expected DCs reachable for {{ domain_fqdn }}?
-      set_fact:
-        dc_reachable_all: >-
-          {{ (dc_reach_results.results | map(attribute='stdout') | map('from_json') | map('map(attribute="ok")') | list | flatten | select('equalto', false) | list | length) == 0 }}
-
-    - name: Decide whether to skip work for {{ domain_fqdn }}
-      debug:
-        msg: "Domain exists={{ domain_check.stdout }}; all DCs reachable={{ dc_reachable_all }}"
-
-    - name: Install AD-Domain-Services (if domain missing or DCs not reachable)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Promote to forest root PDC (if needed)
-      microsoft.ad.domain:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_netbios_name: "ARBOR"
-        safe_mode_password: "{{ windows_password }}"
-        create_dns_delegation: no
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        reboot: yes
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Wait for this host to come back online (WinRM) after promotion
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Validate this DC responds by testing ports (quick)
-      ansible.windows.win_powershell:
-        script: |
-          $host = "{{ inventory_hostname }}.arbor.lab"
-          $ports = {{ test_ports }}
-          $timeout = (Get-Date).AddMinutes(30)
-          for ($i=0; $i -lt {{ test_retries }}; $i++) {
-            $all = $true
-            foreach ($p in $ports) {
-              $t = Test-NetConnection -ComputerName $host -Port $p -WarningAction SilentlyContinue
-              if (-not $t.TcpTestSucceeded) { $all = $false; break }
-            }
-            if ($all) { Write-Output "Ready"; exit 0 }
-            Start-Sleep -Seconds {{ test_delay }}
-          }
-          Write-Output "Timeout"; exit 1
-      register: local_post_check
-      retries: 1
-      failed_when: local_post_check.rc != 0
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-- name: Promote arbor.lab replica (OAK-DC)
-  hosts: arbor_forest_root_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "arbor.lab"
-    parent_dc_fqdn: "KOA-DC.arbor.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 10
-
-  tasks:
-    - name: Check if this host already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $c = Get-WmiObject Win32_ComputerSystem
-          if ($c.DomainRole -ge 4) { Write-Output "Yes" } else { Write-Output "No" }
-      register: is_dc
-      failed_when: false
-      changed_when: false
-
-    - name: Test parent DC reachability before replica promotion
-      ansible.windows.win_powershell:
-        script: |
-          $Parent = "{{ parent_dc_fqdn }}"
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          for ($i=1; $i -le $tries; $i++) {
-            $ok = $true
-            foreach ($p in $ports) {
-              $t = Test-NetConnection -ComputerName $Parent -Port $p -WarningAction SilentlyContinue
-              if (-not $t.TcpTestSucceeded) { $ok = $false; break }
-            }
-            if ($ok) { Write-Output "Reachable"; exit 0 }
-            Start-Sleep -Seconds $delay
-          }
-          Write-Error "Parent not reachable"; exit 1
-      register: parent_ok
-      failed_when: parent_ok.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: is_dc.stdout == "No"
-
-    - name: Promote to replica DC (if not already a DC)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ARBOR\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - is_dc.stdout == "No"
-        - parent_ok.rc == 0
-
-    - name: Wait for replica to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: is_dc.stdout == "No"
-
-# -------------------------------------------------------------------------
-# alpine.lab - forest root & replica
-# -------------------------------------------------------------------------
-- name: Build alpine.lab - root PDC (GRANITE-DC)
-  hosts: alpine_forest_root_pdc
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "alpine.lab"
-    expected_dc_fqdns:
-      - "GRANITE-DC.alpine.lab"
-      - "BASALT-DC.alpine.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 10
-
-  tasks:
-    - name: Check if domain {{ domain_fqdn }} exists
-      ansible.windows.win_powershell:
-        script: |
-          try { Get-ADDomain -Identity "{{ domain_fqdn }}" -ErrorAction Stop | Out-Null; Write-Output "Exists" } catch { Write-Output "Missing" }
-      register: domain_check
-      failed_when: false
-      changed_when: false
-
-    - name: Test reachability of expected DCs for {{ domain_fqdn }}
-      ansible.windows.win_powershell:
-        script: |
-          $results = @()
-          $ports = {{ test_ports }}
-          $host = "{{ item }}"
-          foreach ($p in $ports) {
-            $t = Test-NetConnection -ComputerName $host -Port $p -WarningAction SilentlyContinue
-            $results += @{ host = $host; port = $p; ok = $t.TcpTestSucceeded }
-          }
-          $results | ConvertTo-Json -Compress
-      loop: "{{ expected_dc_fqdns }}"
-      register: dc_reach_results
-      failed_when: false
-      changed_when: false
-
-    - name: Set fact - all expected DCs reachable for {{ domain_fqdn }}?
-      set_fact:
-        dc_reachable_all: >-
-          {{ (dc_reach_results.results | map(attribute='stdout') | map('from_json') | map('map(attribute="ok")') | list | flatten | select('equalto', false) | list | length) == 0 }}
-
-    - name: Install AD-Domain-Services (if domain missing or DCs not reachable)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Promote to alpine forest root PDC (if needed)
-      microsoft.ad.domain:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_netbios_name: "ALPINE"
-        safe_mode_password: "{{ windows_password }}"
-        create_dns_delegation: no
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        reboot: yes
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Wait for this host to come back online (WinRM) after promotion
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-- name: Promote alpine.lab replica (BASALT-DC)
-  hosts: alpine_forest_root_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "alpine.lab"
-    parent_dc_fqdn: "GRANITE-DC.alpine.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 10
-
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $c = Get-WmiObject Win32_ComputerSystem
-          if ($c.DomainRole -ge 4) { Write-Output "Yes" } else { Write-Output "No" }
-      register: is_dc
-      failed_when: false
-      changed_when: false
-
-    - name: Wait for parent DC reachability before promoting replica
-      ansible.windows.win_powershell:
-        script: |
-          $Parent = "{{ parent_dc_fqdn }}"
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          for ($i=1; $i -le $tries; $i++) {
-            $ok = $true
-            foreach ($p in $ports) {
-              $t = Test-NetConnection -ComputerName $Parent -Port $p -WarningAction SilentlyContinue
-              if (-not $t.TcpTestSucceeded) { $ok = $false; break }
-            }
-            if ($ok) { Write-Output "Reachable"; exit 0 }
-            Start-Sleep -Seconds $delay
-          }
-          Write-Error "Parent not reachable"; exit 1
-      register: parent_ok
-      failed_when: parent_ok.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: is_dc.stdout == "No"
-
-    - name: Promote to alpine replica DC (if not already a DC)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - is_dc.stdout == "No"
-        - parent_ok.rc == 0
-
-    - name: Wait for replica to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: is_dc.stdout == "No"
-
-# -------------------------------------------------------------------------
-# Child domain: mauna.alpine.lab (SLATE-DC PDC, SHALE-DC replica)
-# -------------------------------------------------------------------------
-- name: Create mauna.alpine.lab Child Domain PDC (SLATE-DC)
-  hosts: mauna_child_pdc
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "mauna.alpine.lab"
-    expected_dc_fqdns:
-      - "SLATE-DC.mauna.alpine.lab"
-      - "SHALE-DC.mauna.alpine.lab"
-    parent_dc_fqdns:
-      - "GRANITE-DC.alpine.lab"   # change if you use other alpine root DC
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 15
-
-  tasks:
-    - name: Check if child domain {{ domain_fqdn }} exists
-      ansible.windows.win_powershell:
-        script: |
-          try { Get-ADDomain -Identity "{{ domain_fqdn }}" -ErrorAction Stop | Out-Null; Write-Output "Exists" } catch { Write-Output "Missing" }
-      register: domain_check
-      failed_when: false
-      changed_when: false
-
-    - name: Test reachability of expected DCs for {{ domain_fqdn }}
-      ansible.windows.win_powershell:
-        script: |
-          $results = @()
-          $ports = {{ test_ports }}
-          $host = "{{ item }}"
-          foreach ($p in $ports) {
-            $t = Test-NetConnection -ComputerName $host -Port $p -WarningAction SilentlyContinue
-            $results += @{ host = $host; port = $p; ok = $t.TcpTestSucceeded }
-          }
-          $results | ConvertTo-Json -Compress
-      loop: "{{ expected_dc_fqdns }}"
-      register: dc_reach_results
-      failed_when: false
-      changed_when: false
-
-    - name: Set fact - all expected DCs reachable for {{ domain_fqdn }}?
-      set_fact:
-        dc_reachable_all: >-
-          {{ (dc_reach_results.results | map(attribute='stdout') | map('from_json') | map('map(attribute="ok")') | list | flatten | select('equalto', false) | list | length) == 0 }}
-
-    - name: Test parent (alpine) DC reachability before child domain work
-      ansible.windows.win_powershell:
-        script: |
-          $parents = {{ parent_dc_fqdns }}
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          $allok = $true
-          foreach ($parent in $parents) {
-            $ok = $false
-            for ($i=1; $i -le $tries; $i++) {
-              $ok_local = $true
-              foreach ($p in $ports) {
-                $t = Test-NetConnection -ComputerName $parent -Port $p -WarningAction SilentlyContinue
-                if (-not $t.TcpTestSucceeded) { $ok_local = $false; break }
-              }
-              if ($ok_local) { $ok = $true; break }
-              Start-Sleep -Seconds $delay
-            }
-            if (-not $ok) { $allok = $false; break }
-          }
-          if ($allok) { Write-Output "ParentsReachable"; exit 0 } else { Write-Error "ParentsNotReachable"; exit 1 }
-      register: parents_reachable
-      failed_when: parents_reachable.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Promote to mauna child domain PDC (if needed)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        parent_domain_name: alpine.lab
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - not (domain_check.stdout == "Exists" and dc_reachable_all)
-        - parents_reachable.rc == 0
-
-    - name: Wait for mauna PDC to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-- name: Promote mauna.alpine.lab replica (SHALE-DC)
-  hosts: mauna_child_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "mauna.alpine.lab"
-    parent_dc_fqdns:
-      - "GRANITE-DC.alpine.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 15
-
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $c = Get-WmiObject Win32_ComputerSystem
-          if ($c.DomainRole -ge 4) { Write-Output "Yes" } else { Write-Output "No" }
-      register: is_dc
-      failed_when: false
-      changed_when: false
-
-    - name: Wait for parent DCs reachable before replica promotion
-      ansible.windows.win_powershell:
-        script: |
-          $parents = {{ parent_dc_fqdns }}
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          $allok = $true
-          foreach ($parent in $parents) {
-            $ok = $false
-            for ($i=1; $i -le $tries; $i++) {
-              $ok_local = $true
-              foreach ($p in $ports) {
-                $t = Test-NetConnection -ComputerName $parent -Port $p -WarningAction SilentlyContinue
-                if (-not $t.TcpTestSucceeded) { $ok_local = $false; break }
-              }
-              if ($ok_local) { $ok = $true; break }
-              Start-Sleep -Seconds $delay
-            }
-            if (-not $ok) { $allok = $false; break }
-          }
-          if ($allok) { Write-Output "ParentsReachable"; exit 0 } else { Write-Error "ParentsNotReachable"; exit 1 }
-      register: parents_reachable
-      failed_when: parents_reachable.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: is_dc.stdout == "No"
-
-    - name: Promote to mauna replica DC (if not already a DC)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - is_dc.stdout == "No"
-        - parents_reachable.rc == 0
-
-    - name: Wait for mauna replica to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: is_dc.stdout == "No"
-
-# -------------------------------------------------------------------------
-# Child domain: rainier.alpine.lab (MARBLE-DC PDC, QUARTZ-DC replica)
-# -------------------------------------------------------------------------
-- name: Create rainier.alpine.lab Child Domain PDC (MARBLE-DC)
-  hosts: rainier_child_pdc
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "rainier.alpine.lab"
-    expected_dc_fqdns:
-      - "MARBLE-DC.rainier.alpine.lab"
-      - "QUARTZ-DC.rainier.alpine.lab"
-    parent_dc_fqdns:
-      - "GRANITE-DC.alpine.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 15
-
-  tasks:
-    - name: Check if child domain {{ domain_fqdn }} exists
-      ansible.windows.win_powershell:
-        script: |
-          try { Get-ADDomain -Identity "{{ domain_fqdn }}" -ErrorAction Stop | Out-Null; Write-Output "Exists" } catch { Write-Output "Missing" }
-      register: domain_check
-      failed_when: false
-      changed_when: false
-
-    - name: Test reachability of expected DCs for {{ domain_fqdn }}
-      ansible.windows.win_powershell:
-        script: |
-          $results = @()
-          $ports = {{ test_ports }}
-          $host = "{{ item }}"
-          foreach ($p in $ports) {
-            $t = Test-NetConnection -ComputerName $host -Port $p -WarningAction SilentlyContinue
-            $results += @{ host = $host; port = $p; ok = $t.TcpTestSucceeded }
-          }
-          $results | ConvertTo-Json -Compress
-      loop: "{{ expected_dc_fqdns }}"
-      register: dc_reach_results
-      failed_when: false
-      changed_when: false
-
-    - name: Set fact - all expected DCs reachable for {{ domain_fqdn }}?
-      set_fact:
-        dc_reachable_all: >-
-          {{ (dc_reach_results.results | map(attribute='stdout') | map('from_json') | map('map(attribute="ok")') | list | flatten | select('equalto', false) | list | length) == 0 }}
-
-    - name: Test parent (alpine) DC reachability before child domain work
-      ansible.windows.win_powershell:
-        script: |
-          $parents = {{ parent_dc_fqdns }}
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          $allok = $true
-          foreach ($parent in $parents) {
-            $ok = $false
-            for ($i=1; $i -le $tries; $i++) {
-              $ok_local = $true
-              foreach ($p in $ports) {
-                $t = Test-NetConnection -ComputerName $parent -Port $p -WarningAction SilentlyContinue
-                if (-not $t.TcpTestSucceeded) { $ok_local = $false; break }
-              }
-              if ($ok_local) { $ok = $true; break }
-              Start-Sleep -Seconds $delay
-            }
-            if (-not $ok) { $allok = $false; break }
-          }
-          if ($allok) { Write-Output "ParentsReachable"; exit 0 } else { Write-Error "ParentsNotReachable"; exit 1 }
-      register: parents_reachable
-      failed_when: parents_reachable.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-    - name: Promote to rainier child domain PDC (if needed)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        parent_domain_name: alpine.lab
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - not (domain_check.stdout == "Exists" and dc_reachable_all)
-        - parents_reachable.rc == 0
-
-    - name: Wait for rainier PDC to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: not (domain_check.stdout == "Exists" and dc_reachable_all)
-
-- name: Promote rainier.alpine.lab replica (QUARTZ-DC)
-  hosts: rainier_child_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
-    domain_fqdn: "rainier.alpine.lab"
-    parent_dc_fqdns:
-      - "GRANITE-DC.alpine.lab"
-    test_ports: [389, 135, 445]
-    test_retries: 60
-    test_delay: 15
-
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $c = Get-WmiObject Win32_ComputerSystem
-          if ($c.DomainRole -ge 4) { Write-Output "Yes" } else { Write-Output "No" }
-      register: is_dc
-      failed_when: false
-      changed_when: false
-
-    - name: Wait for parent DCs reachable before replica promotion
-      ansible.windows.win_powershell:
-        script: |
-          $parents = {{ parent_dc_fqdns }}
-          $ports = {{ test_ports }}
-          $tries = {{ test_retries }}
-          $delay = {{ test_delay }}
-          $allok = $true
-          foreach ($parent in $parents) {
-            $ok = $false
-            for ($i=1; $i -le $tries; $i++) {
-              $ok_local = $true
-              foreach ($p in $ports) {
-                $t = Test-NetConnection -ComputerName $parent -Port $p -WarningAction SilentlyContinue
-                if (-not $t.TcpTestSucceeded) { $ok_local = $false; break }
-              }
-              if ($ok_local) { $ok = $true; break }
-              Start-Sleep -Seconds $delay
-            }
-            if (-not $ok) { $allok = $false; break }
-          }
-          if ($allok) { Write-Output "ParentsReachable"; exit 0 } else { Write-Error "ParentsNotReachable"; exit 1 }
-      register: parents_reachable
-      failed_when: parents_reachable.rc != 0
-
-    - name: Install AD-Domain-Services (if needed)
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: is_dc.stdout == "No"
-
-    - name: Promote to rainier replica DC (if not already a DC)
-      microsoft.ad.domain_controller:
-        dns_domain_name: "{{ domain_fqdn }}"
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when:
-        - is_dc.stdout == "No"
-        - parents_reachable.rc == 0
-
-    - name: Wait for rainier replica to come back online (WinRM)
-      wait_for_connection:
-        timeout: 1800
-        delay: 15
-      when: is_dc.stdout == "No"
-
-# -------------------------------------------------------------------------
-# Done
-# -------------------------------------------------------------------------
-- name: Forest build complete
+- name: Validate and Build Forests
   hosts: localhost
   gather_facts: no
+  vars:
+    forests:
+      - name: arbor.lab
+        netbios: ARBOR
+        dcs:
+          - KOA-DC
+          - OAK-DC
+      - name: alpine.lab
+        netbios: ALPINE
+        dcs:
+          - GRANITE-DC
+          - BASALT-DC
+      - name: mauna.alpine.lab
+        netbios: MAUNA
+        dcs:
+          - SLATE-DC
+          - SHALE-DC
+      - name: rainier.alpine.lab
+        netbios: RAINIER
+        dcs:
+          - MARBLE-DC
+          - QUARTZ-DC
+
+    ansible_user: Administrator
+    ansible_connection: winrm
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_port: 5985
+    safe_mode_password: "{{ windows_safemode_password }}"
+
   tasks:
-    - name: Display completion
-      debug:
-        msg: "Forest build run completed. Re-run is safe and idempotent: existing domains and reachable DCs are skipped."
+
+    - name: Process each forest
+      loop: "{{ forests }}"
+      loop_control:
+        loop_var: forest
+      block:
+
+        # --- Verify existing domain ---
+        - name: Check if domain exists
+          ansible.windows.win_powershell:
+            script: |
+              try {
+                $domain = Get-ADDomain -Identity "{{ forest.name }}" -ErrorAction Stop
+                $controllers = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
+                $result = @{
+                  DomainFound = $true
+                  Controllers = $controllers
+                }
+              } catch {
+                $result = @{
+                  DomainFound = $false
+                  Controllers = @()
+                }
+              }
+              $result | ConvertTo-Json -Compress
+          register: domain_check
+          ignore_errors: yes
+
+        - name: Parse domain check
+          ansible.builtin.set_fact:
+            domain_found: "{{ (domain_check.stdout | from_json).DomainFound | default(false) }}"
+            known_dcs: "{{ (domain_check.stdout | from_json).Controllers | default([]) | map('lower') | list }}"
+
+        # --- Skip healthy domain ---
+        - name: Skip healthy domain
+          when:
+            - domain_found
+            - (forest.dcs | map('lower') | difference(known_dcs)) | length == 0
+          block:
+            - name: Domain is healthy
+              ansible.builtin.debug:
+                msg: "✅ Domain {{ forest.name }} is healthy — skipping."
+            - ansible.builtin.meta: end_host
+
+        # --- Promote root domain ---
+        - name: Promote root domain controller
+          when: not domain_found
+          ansible.windows.win_domain:
+            dns_domain_name: "{{ forest.name }}"
+            safe_mode_password: "{{ safe_mode_password }}"
+            domain_admin_user: "{{ ansible_user }}"
+            domain_admin_password: "{{ ansible_password }}"
+          register: promote_root
+
+        # --- Wait for root DC to be reachable ---
+        - name: Wait for root DC connectivity
+          vars:
+            primary_dc: "{{ forest.dcs[0] }}"
+          ansible.windows.win_powershell:
+            script: |
+              $max = 60
+              for ($i = 0; $i -lt $max; $i++) {
+                $ok = Test-NetConnection -ComputerName "{{ primary_dc }}" -Port 5985 -InformationLevel Quiet
+                if ($ok) { exit 0 }
+                Start-Sleep -Seconds 5
+              }
+              throw "Primary DC {{ primary_dc }} not reachable after 5 minutes."
+          when: promote_root is changed
+
+        # --- Promote any additional DCs ---
+        - name: Promote additional DCs
+          loop: "{{ forest.dcs[1:] }}"
+          loop_control:
+            loop_var: dc_name
+          when: not domain_found
+          ansible.windows.win_domain_controller:
+            dns_domain_name: "{{ forest.name }}"
+            domain_admin_user: "{{ ansible_user }}"
+            domain_admin_password: "{{ ansible_password }}"
+            safe_mode_password: "{{ safe_mode_password }}"
+            state: domain_controller
+          register: promote_others
+          ignore_errors: yes
+
+        # --- Test connectivity for all DCs ---
+        - name: Test connectivity for each DC
+          ansible.windows.win_powershell:
+            script: |
+              $ok = Test-NetConnection -ComputerName "{{ item }}" -Port 5985 -InformationLevel Quiet
+              [pscustomobject]@{ dc = "{{ item }}"; ok = $ok } | ConvertTo-Json -Compress
+          loop: "{{ forest.dcs }}"
+          register: reachability
+          ignore_errors: yes
+
+        - name: Evaluate reachability
+          ansible.builtin.set_fact:
+            all_dcs_reachable: >-
+              {{
+                reachability.results
+                | map(attribute='stdout')
+                | select('defined')
+                | map('from_json')
+                | map(attribute='ok')
+                | list
+                | select('equalto', false)
+                | length == 0
+              }}
+
+        - name: Log DC reachability
+          ansible.builtin.debug:
+            msg: >-
+              {% if all_dcs_reachable %}
+              ✅ All DCs reachable for {{ forest.name }}.
+              {% else %}
+              ❌ One or more DCs for {{ forest.name }} are unreachable.
+              {% endif %}
+
+        - name: Abort if any DCs unreachable
+          when: not all_dcs_reachable
+          ansible.builtin.meta: end_play
+
+        - name: Domain setup complete
+          ansible.builtin.debug:
+            msg: "🎉 Completed setup for {{ forest.name }}."
