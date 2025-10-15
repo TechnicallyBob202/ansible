@@ -4,9 +4,21 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
+- name: Derive PDC group name from replica group
+  set_fact:
+    pdc_group: "{{ (group_names | select('match', '.*_replica$') | first) | regex_replace('_replica$', '_pdc') }}"
+  when: not is_domain_controller
+
+- name: Validate derived PDC group exists and has hosts
+  assert:
+    that:
+      - pdc_group is defined
+      - (groups[pdc_group] | default([])) | length > 0
+    fail_msg: "Could not derive a non-empty PDC group from replica groups. Check inventory naming and membership."
+
 - name: Get PDC hostname for domain credentials
   set_fact:
-    pdc_hostname: "{{ groups[group_names | select('match', '.*_pdc$') | first] | first }}"
+    pdc_hostname: "{{ groups[pdc_group] | first }}"
   when: not is_domain_controller
 
 - name: Wait for PDC to be fully operational

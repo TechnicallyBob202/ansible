@@ -1,0 +1,223 @@
+all:
+  vars:
+    ansible_user: Administrator
+    ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    ansible_connection: winrm
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_port: 5985
+
+  children:
+    infrastructure:
+      hosts:
+        ATLAS:
+          ansible_host: 192.168.35.10
+          vmid: 3510
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9001
+          vm_cores: 2
+          vm_memory: 6144
+          vm_disk: 100G
+          role: "ADFR Management"
+
+        SUMMIT:
+          ansible_host: 192.168.35.11
+          vmid: 3511
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9002
+          vm_cores: 2
+          vm_memory: 6144
+          vm_disk: 100G
+          role: "DSP Management"
+
+        PEAK:
+          ansible_host: 192.168.35.12
+          vmid: 3512
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9001
+          vm_cores: 4
+          vm_memory: 8192
+          vm_disk: 200G
+          role: "SQL Server"
+
+        RIDGE:
+          ansible_host: 192.168.35.13
+          vmid: 3513
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9001
+          vm_cores: 2
+          vm_memory: 4096
+          vm_disk: 500G
+          role: "Primary DP"
+
+        CREST:
+          ansible_host: 192.168.35.14
+          vmid: 3514
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9002
+          vm_cores: 2
+          vm_memory: 4096
+          vm_disk: 500G
+          role: "Secondary DP"
+
+    arbor_forest:
+      children:
+        arbor_forest_root_pdc:
+          hosts:
+            KOA-DC:
+              ansible_host: 192.168.35.20
+              vmid: 3520
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: arbor.lab
+              netbios_name: ARBOR
+              role: "Forest Root PDC"
+
+        arbor_forest_root_replica:
+          hosts:
+            OAK-DC:
+              ansible_host: 192.168.35.21
+              vmid: 3521
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: arbor.lab
+              netbios_name: ARBOR
+              role: "Forest Root Replica"
+
+    alpine_forest:
+      children:
+        alpine_forest_root_pdc:
+          hosts:
+            GRANITE-DC:
+              ansible_host: 192.168.35.30
+              vmid: 3530
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: alpine.lab
+              netbios_name: ALPINE
+              role: "Forest Root PDC"
+
+        alpine_forest_root_replica:
+          hosts:
+            BASALT-DC:
+              ansible_host: 192.168.35.31
+              vmid: 3531
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: alpine.lab
+              netbios_name: ALPINE
+              role: "Forest Root Replica"
+
+        mauna_child_pdc:
+          hosts:
+            SLATE-DC:
+              ansible_host: 192.168.35.32
+              vmid: 3532
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: mauna.alpine.lab
+              netbios_name: MAUNA
+              parent_domain: alpine.lab
+              role: "Child Domain PDC"
+
+        mauna_child_replica:
+          hosts:
+            SHALE-DC:
+              ansible_host: 192.168.35.33
+              vmid: 3533
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: mauna.alpine.lab
+              netbios_name: MAUNA
+              parent_domain: alpine.lab
+              role: "Child Domain Replica"
+
+        rainier_child_pdc:
+          hosts:
+            MARBLE-DC:
+              ansible_host: 192.168.35.34
+              vmid: 3534
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: rainier.alpine.lab
+              netbios_name: RAINIER
+              parent_domain: alpine.lab
+              role: "Child Domain PDC"
+
+        rainier_child_replica:
+          hosts:
+            QUARTZ-DC:
+              ansible_host: 192.168.35.35
+              vmid: 3535
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 3072
+              vm_disk: 80G
+              domain_name: rainier.alpine.lab
+              netbios_name: RAINIER
+              parent_domain: alpine.lab
+              role: "Child Domain Replica"
+
+    recovery_vms:
+      hosts:
+        MESA:
+          ansible_host: 192.168.35.50
+          vmid: 3550
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9001
+          vm_cores: 2
+          vm_memory: 3072
+          vm_disk: 80G
+          role: "Recovery VM"
+
+        BLUFF:
+          ansible_host: 192.168.35.51
+          vmid: 3551
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9002
+          vm_cores: 2
+          vm_memory: 3072
+          vm_disk: 80G
+          role: "Recovery VM"
+
+    domain_controllers:
+      children:
+        arbor_forest:
+        alpine_forest:
