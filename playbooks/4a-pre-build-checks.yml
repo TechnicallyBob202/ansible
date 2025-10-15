@@ -101,7 +101,7 @@
 
     - name: Display DNS configuration
       debug:
-        msg: "{{ dns_check.stdout_lines }}"
+        msg: "{{ dns_check.stdout_lines | default(['DNS check failed']) }}"
 
 - name: Check for existing domain memberships
   hosts:
