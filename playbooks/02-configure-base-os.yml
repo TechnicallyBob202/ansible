@@ -41,18 +41,15 @@
         name: windows
         tasks_from: set_static_ip.yml
 
-    - name: Wait for network change
-      pause:
-        seconds: 15
-
     - name: Update ansible_host to static IP
       set_fact:
         ansible_host: "{{ target_ip }}"
 
-    - name: Wait for static IP
+    - name: Wait for all IPs to settle (only if any changed)
       pause:
         seconds: 10
       run_once: yes
+      when: hostvars | dict2items | selectattr('value.ip_changed', 'defined') | selectattr('value.ip_changed', 'equalto', true) | list | length > 0
 
 # Phase 3: Configure DNS and Hostname (parallel)
 - name: Configure DNS and Hostname
