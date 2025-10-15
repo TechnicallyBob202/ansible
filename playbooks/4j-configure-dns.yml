@@ -1,114 +1,156 @@
 ---
-# ==========================================
-# CONFIGURE DNS DYNAMICALLY FOR ALL DCs
-# Uses inventory relationships to set proper DNS hierarchy
-# ==========================================
-# Logic:
-#   - Primary DNS: First other DC in same domain group
-#   - Secondary DNS: 127.0.0.1 (self)
-#   - Tertiary DNS: Parent domain DC (if child domain)
-# ==========================================
-
-- name: Configure DNS for all domain controllers
+- name: Configure DNS forwarders and conditional forwarding
   hosts: domain_controllers
   gather_facts: no
-  serial: 1
-  
   vars:
-    # Map child domains to their parent DC
-    parent_dc_map:
-      mauna_child_pdc: "192.168.35.30"
-      mauna_child_replica: "192.168.35.30"
-      rainier_child_pdc: "192.168.35.30"
-      rainier_child_replica: "192.168.35.30"
-  
+    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    
   tasks:
-    - name: Determine partner DC IP
-      set_fact:
-        partner_dc_ip: >-
-          {{
-            groups[group_names | select('match', '.*_(pdc|replica)$') | first]
-            | difference([inventory_hostname])
-            | map('extract', hostvars, 'ansible_host')
-            | first
-            | default('127.0.0.1')
-          }}
-      
-    - name: Determine if this is a child domain
-      set_fact:
-        is_child_domain: "{{ 'child' in (group_names | join(' ')) }}"
-    
-    - name: Get parent DC IP for child domains
-      set_fact:
-        parent_dc_ip: >-
-          {{
-            parent_dc_map[group_names | select('match', '.*_child_(pdc|replica)$') | first]
-            | default('')
-          }}
-      when: is_child_domain | bool
-    
-    - name: Build DNS server list (root domain)
-      set_fact:
-        dns_servers:
-          - "{{ partner_dc_ip }}"
-          - "127.0.0.1"
-      when: not (is_child_domain | bool)
-    
-    - name: Build DNS server list (child domain)
-      set_fact:
-        dns_servers:
-          - "{{ partner_dc_ip }}"
-          - "127.0.0.1"
-          - "{{ parent_dc_ip }}"
-      when: 
-        - is_child_domain | bool
-        - parent_dc_ip != ''
-    
-    - name: Display DNS configuration to be applied
-      debug:
-        msg:
-          - "{{ inventory_hostname }}: Setting DNS servers"
-          - "  Primary: {{ dns_servers[0] }} (partner DC)"
-          - "  Secondary: {{ dns_servers[1] }} (self)"
-          - "{{ '  Tertiary: ' + dns_servers[2] + ' (parent DC)' if dns_servers | length > 2 else '  Tertiary: none (root domain)' }}"
-    
-    - name: Apply DNS configuration
+    - name: Get current domain
       ansible.windows.win_powershell:
         script: |
-          $dnsServers = @({{ dns_servers | map('regex_replace', '^(.*)$', '"\1"') | join(',') }})
-          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-          
-          Write-Output "Current DNS: $((Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses -join ', ')"
-          Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
-          Write-Output "New DNS: $((Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses -join ', ')"
-      register: dns_result
-    
-    - name: Display result
-      debug:
-        msg: "{{ dns_result.stdout_lines }}"
-
-- name: Verify DNS configuration
-  hosts: domain_controllers
-  gather_facts: no
-  
-  tasks:
-    - name: Check DNS resolution
-      ansible.windows.win_powershell:
-        script: |
-          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-          $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-          
-          Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
-          
-          # Test resolution
           try {
-            $test = Resolve-DnsName $env:USERDNSDOMAIN -ErrorAction Stop
-            Write-Output "Domain resolution: SUCCESS"
+            $domain = Get-ADDomain -ErrorAction Stop
+            $output = @{
+              DNSRoot = $domain.DNSRoot
+              NetBIOSName = $domain.NetBIOSName
+            }
+            $output | ConvertTo-Json -Compress
           } catch {
-            Write-Output "Domain resolution: FAILED"
+            Write-Output "NOT_A_DC"
+            exit 1
           }
-      register: verify_result
-    
-    - name: Display verification
+      register: current_domain
+      failed_when: false
+      changed_when: false
+
+    - name: Parse domain info
+      set_fact:
+        domain_info: "{{ current_domain.output[0] | from_json }}"
+      when: 
+        - current_domain.rc == 0
+        - current_domain.output is defined
+        - current_domain.output | length > 0
+
+    - name: Skip non-DCs
+      meta: end_host
+      when: current_domain.rc != 0
+
+    - name: Display current domain
       debug:
-        msg: "{{ inventory_hostname }}: {{ verify_result.stdout_lines }}"
+        msg: "Configuring DNS for {{ domain_info.DNSRoot }} ({{ domain_info.NetBIOSName }})"
+      when: domain_info is defined
+
+    - name: Configure DNS forwarders (Cloudflare and Google)
+      ansible.windows.win_powershell:
+        script: |
+          $forwarders = @("1.1.1.1", "8.8.8.8")
+          Set-DnsServerForwarder -IPAddress $forwarders -PassThru
+          Write-Output "DNS forwarders configured: $($forwarders -join ', ')"
+      register: forwarder_result
+      changed_when: true
+
+    - name: Display forwarder result
+      debug:
+        msg: "{{ forwarder_result.output | default(['Forwarders configured']) }}"
+      when: forwarder_result.output is defined
+
+    - name: Configure conditional forwarder to arbor.lab (from alpine.lab DCs)
+      ansible.windows.win_powershell:
+        script: |
+          $zoneName = "arbor.lab"
+          $masterServers = @("192.168.35.20", "192.168.35.21")
+          
+          # Check if conditional forwarder exists
+          $existingZone = Get-DnsServerZone -Name $zoneName -ErrorAction SilentlyContinue
+          
+          if ($existingZone -and $existingZone.ZoneType -eq "Forwarder") {
+            Write-Output "Conditional forwarder for $zoneName already exists"
+            exit 0
+          } elseif ($existingZone) {
+            Write-Output "Zone $zoneName exists but is not a forwarder zone"
+            exit 1
+          } else {
+            Add-DnsServerConditionalForwarderZone -Name $zoneName -MasterServers $masterServers -PassThru
+            Write-Output "Conditional forwarder for $zoneName created successfully"
+            exit 0
+          }
+      register: arbor_forwarder
+      failed_when: arbor_forwarder.rc == 1
+      changed_when: arbor_forwarder.rc == 0 and 'created successfully' in (arbor_forwarder.output | join(' '))
+      when: domain_info.DNSRoot == 'alpine.lab' or domain_info.DNSRoot == 'mauna.alpine.lab' or domain_info.DNSRoot == 'rainier.alpine.lab'
+
+    - name: Display arbor.lab forwarder result
+      debug:
+        msg: "{{ arbor_forwarder.output | default(['Skipped']) }}"
+      when: 
+        - arbor_forwarder is defined
+        - arbor_forwarder.output is defined
+
+    - name: Configure conditional forwarder to alpine.lab (from arbor.lab DCs)
+      ansible.windows.win_powershell:
+        script: |
+          $zoneName = "alpine.lab"
+          $masterServers = @("192.168.35.30", "192.168.35.31")
+          
+          # Check if conditional forwarder exists
+          $existingZone = Get-DnsServerZone -Name $zoneName -ErrorAction SilentlyContinue
+          
+          if ($existingZone -and $existingZone.ZoneType -eq "Forwarder") {
+            Write-Output "Conditional forwarder for $zoneName already exists"
+            exit 0
+          } elseif ($existingZone) {
+            Write-Output "Zone $zoneName exists but is not a forwarder zone"
+            exit 1
+          } else {
+            Add-DnsServerConditionalForwarderZone -Name $zoneName -MasterServers $masterServers -PassThru
+            Write-Output "Conditional forwarder for $zoneName created successfully"
+            exit 0
+          }
+      register: alpine_forwarder
+      failed_when: alpine_forwarder.rc == 1
+      changed_when: alpine_forwarder.rc == 0 and 'created successfully' in (alpine_forwarder.output | join(' '))
+      when: domain_info.DNSRoot == 'arbor.lab'
+
+    - name: Display alpine.lab forwarder result
+      debug:
+        msg: "{{ alpine_forwarder.output | default(['Skipped']) }}"
+      when: 
+        - alpine_forwarder is defined
+        - alpine_forwarder.output is defined
+
+    - name: Verify DNS configuration
+      ansible.windows.win_powershell:
+        script: |
+          $config = @{}
+          
+          # Get forwarders
+          $forwarders = Get-DnsServerForwarder
+          $config.Forwarders = $forwarders.IPAddress.IPAddressToString -join ", "
+          
+          # Get conditional forwarders
+          $conditionalZones = Get-DnsServerZone | Where-Object { $_.ZoneType -eq "Forwarder" }
+          $config.ConditionalForwarders = ($conditionalZones | ForEach-Object { $_.ZoneName }) -join ", "
+          
+          if (-not $config.ConditionalForwarders) {
+            $config.ConditionalForwarders = "None"
+          }
+          
+          $config | ConvertTo-Json -Compress
+      register: dns_verification
+      changed_when: false
+
+    - name: Parse and display DNS configuration
+      debug:
+        msg: "{{ dns_verification.output[0] | from_json }}"
+      when: 
+        - dns_verification.output is defined
+        - dns_verification.output | length > 0
+
+- name: DNS configuration summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Display completion message
+      debug:
+        msg: "DNS configuration complete for all domain controllers"
