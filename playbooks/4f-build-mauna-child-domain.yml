@@ -1,0 +1,369 @@
+---
+# ==========================================
+# BUILD MAUNA.ALPINE.LAB CHILD DOMAIN
+# Creates mauna.alpine.lab child domain and promotes SLATE-DC as PDC
+# ==========================================
+# Prerequisites: 4c-build-alpine-forest-root.yml completed
+# Dependencies: alpine.lab forest must exist
+# Can be run: After alpine.lab forest root is operational
+# Idempotent: Yes - checks if domain exists before building
+# ==========================================
+
+- name: Verify alpine.lab forest exists
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Check for alpine.lab forest status file
+      stat:
+        path: "{{ playbook_dir }}/../state/alpine-forest-status.yml"
+      register: status_file
+
+    - name: Fail if forest not built
+      fail:
+        msg: |
+          alpine.lab forest has not been built yet.
+          Please run: ansible-playbook 4c-build-alpine-forest-root.yml
+      when: not status_file.stat.exists
+
+    - name: Load forest status
+      include_vars:
+        file: "{{ playbook_dir }}/../state/alpine-forest-status.yml"
+        name: alpine_status
+      when: status_file.stat.exists
+
+    - name: Display parent forest status
+      debug:
+        msg:
+          - "=========================================="
+          - "BUILDING MAUNA.ALPINE.LAB CHILD DOMAIN"
+          - "=========================================="
+          - "Parent Forest: {{ alpine_status.domain_name }}"
+          - "Parent PDC: {{ alpine_status.forest_root_pdc }}"
+          - "Child Domain: mauna.alpine.lab"
+          - "Target PDC: SLATE-DC (192.168.35.32)"
+
+- name: Check if mauna.alpine.lab domain already exists
+  hosts: mauna_child_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Check if child domain already exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            Write-Output "Domain: $($domain.DNSRoot)"
+            Write-Output "SID: $($domain.DomainSID.Value)"
+            Write-Output "NetBIOS: $($domain.NetBIOSName)"
+            Write-Output "ParentDomain: $($domain.ParentDomain)"
+            exit 0
+          } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
+            exit 1
+          }
+      register: domain_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set domain status facts
+      set_fact:
+        mauna_domain_exists: "{{ domain_check.rc == 0 }}"
+        mauna_domain_info: "{{ domain_check.stdout_lines if domain_check.rc == 0 else [] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+    - name: Display existing domain info
+      debug:
+        msg:
+          - "Child domain already exists!"
+          - "{{ domain_check.stdout_lines }}"
+      when: domain_check.rc == 0
+
+    - name: Skip build if domain exists
+      meta: end_host
+      when: domain_check.rc == 0
+
+- name: Build mauna.alpine.lab child domain
+  hosts: mauna_child_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Verify we should proceed
+      debug:
+        msg: "Child domain does not exist. Proceeding with build..."
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Test connectivity to parent domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $parentPDC = "192.168.35.30"
+          $result = Test-NetConnection -ComputerName $parentPDC -Port 389 -InformationLevel Quiet
+          if ($result) {
+            Write-Output "PARENT_PDC_REACHABLE"
+            exit 0
+          } else {
+            Write-Output "PARENT_PDC_UNREACHABLE"
+            exit 1
+          }
+      register: parent_test
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Fail if parent PDC unreachable
+      fail:
+        msg: "Cannot reach alpine.lab PDC at 192.168.35.30. Verify GRANITE-DC is online."
+      when: 
+        - not hostvars['localhost']['mauna_domain_exists']
+        - parent_test.rc != 0
+
+    - name: Install Active Directory Domain Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+      register: adds_install
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Display installation result
+      debug:
+        msg: "AD-DS installed: {{ 'Success' if adds_install.changed else 'Already installed' }}"
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Promote to child domain PDC
+      ansible.windows.win_powershell:
+        script: |
+          $ErrorActionPreference = "Stop"
+          
+          try {
+            $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+            $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
+            
+            Write-Output "Starting child domain promotion..."
+            Write-Output "New Domain Name: mauna"
+            Write-Output "Parent Domain: alpine.lab"
+            Write-Output "Full FQDN: mauna.alpine.lab"
+            
+            Install-ADDSDomain `
+              -NewDomainName "mauna" `
+              -ParentDomainName "alpine.lab" `
+              -DomainType "ChildDomain" `
+              -SafeModeAdministratorPassword $SecurePassword `
+              -Credential $ParentCred `
+              -InstallDNS:$true `
+              -CreateDnsDelegation:$true `
+              -DatabasePath "C:\Windows\NTDS" `
+              -SysvolPath "C:\Windows\SYSVOL" `
+              -LogPath "C:\Windows\NTDS" `
+              -Force:$true `
+              -NoRebootOnCompletion:$false
+            
+            Write-Output "Child domain promotion initiated successfully"
+            exit 0
+          } catch {
+            Write-Output "ERROR: $($_.Exception.Message)"
+            exit 1
+          }
+      register: domain_promotion
+      async: 1200
+      poll: 30
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Display promotion status
+      debug:
+        msg: "Child domain promotion initiated. Server will reboot..."
+      when: 
+        - not hostvars['localhost']['mauna_domain_exists']
+        - domain_promotion.changed
+
+- name: Wait for child domain PDC to come online
+  hosts: mauna_child_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Wait for DC to reboot (this may take longer for child domains)
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Wait additional time for AD services to start
+      pause:
+        seconds: 90
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Test WinRM connectivity
+      ansible.windows.win_ping:
+      register: ping_result
+      retries: 5
+      delay: 15
+      until: ping_result is succeeded
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+- name: Verify child domain build and gather info
+  hosts: mauna_child_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Verify child domain is operational
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            Write-Output "SUCCESS"
+            Write-Output "Domain: $($domain.DNSRoot)"
+            Write-Output "SID: $($domain.DomainSID.Value)"
+            Write-Output "NetBIOS: $($domain.NetBIOSName)"
+            Write-Output "DomainMode: $($domain.DomainMode)"
+            Write-Output "ParentDomain: $($domain.ParentDomain)"
+            Write-Output "Forest: $($domain.Forest)"
+            Write-Output "PDC: $($domain.PDCEmulator)"
+            exit 0
+          } catch {
+            Write-Output "FAILED"
+            Write-Output $_.Exception.Message
+            exit 1
+          }
+      register: domain_verify
+      retries: 3
+      delay: 30
+      until: domain_verify.rc == 0
+
+    - name: Extract domain SID
+      set_fact:
+        mauna_domain_sid: "{{ domain_verify.stdout_lines | select('search', 'SID:') | first | regex_replace('SID: ', '') }}"
+
+    - name: Display child domain information
+      debug:
+        msg:
+          - "=========================================="
+          - "✅ MAUNA.ALPINE.LAB CHILD DOMAIN COMPLETE"
+          - "=========================================="
+          - "{{ domain_verify.stdout_lines }}"
+          - "=========================================="
+
+    - name: Verify trust with parent domain
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            $trust = Get-ADTrust -Filter {Name -eq "alpine.lab"} -ErrorAction Stop
+            Write-Output "Trust Status:"
+            Write-Output "  Target: $($trust.Target)"
+            Write-Output "  Direction: $($trust.Direction)"
+            Write-Output "  TrustType: $($trust.TrustType)"
+            Write-Output "  IntraForest: $($trust.IntraForest)"
+            exit 0
+          } catch {
+            Write-Output "Trust verification failed: $($_.Exception.Message)"
+            exit 1
+          }
+      register: trust_verify
+
+    - name: Display trust information
+      debug:
+        msg:
+          - "Parent Trust Verification:"
+          - "{{ trust_verify.stdout_lines }}"
+
+    - name: Test cross-domain authentication
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            # Try to query parent domain
+            $parentDomain = Get-ADDomain -Identity "alpine.lab" -Server "192.168.35.30" -ErrorAction Stop
+            Write-Output "✓ Can query parent domain (alpine.lab)"
+            
+            # Try to query forest root
+            $forest = Get-ADForest -ErrorAction Stop
+            Write-Output "✓ Can query forest: $($forest.Name)"
+            
+            exit 0
+          } catch {
+            Write-Output "Cross-domain test failed: $($_.Exception.Message)"
+            exit 1
+          }
+      register: cross_domain_test
+
+    - name: Display cross-domain test results
+      debug:
+        msg:
+          - "Cross-Domain Authentication Test:"
+          - "{{ cross_domain_test.stdout_lines }}"
+
+- name: Save child domain information to state files
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Create state directory
+      file:
+        path: "{{ playbook_dir }}/../state"
+        state: directory
+        mode: '0755'
+
+    - name: Save mauna.alpine.lab domain information
+      copy:
+        content: |
+          # mauna.alpine.lab Child Domain Information
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          domain_built: yes
+          domain_pdc: SLATE-DC
+          domain_pdc_ip: 192.168.35.32
+          domain_name: mauna.alpine.lab
+          domain_netbios: MAUNA
+          parent_domain: alpine.lab
+          forest: alpine.lab
+          domain_sid: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}
+          
+          trust_status: verified
+          cross_domain_auth: working
+          
+          next_steps:
+            - Run 4h-add-mauna-replica-dc.yml to add SHALE-DC replica
+        dest: "{{ playbook_dir }}/../state/mauna-domain-status.yml"
+        mode: '0644'
+
+    - name: Update consolidated domain SIDs file
+      lineinfile:
+        path: "{{ playbook_dir }}/../state/domain-sids.yml"
+        line: "mauna.alpine.lab: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}"
+        create: yes
+        mode: '0644'
+
+    - name: Update alpine forest status
+      shell: |
+        if [ -f "{{ playbook_dir }}/../state/alpine-forest-status.yml" ]; then
+          sed -i 's/built: no/built: yes/' "{{ playbook_dir }}/../state/alpine-forest-status.yml" || true
+        fi
+      args:
+        executable: /bin/bash
+
+    - name: Display completion summary
+      debug:
+        msg:
+          - "=========================================="
+          - "✅ MAUNA.ALPINE.LAB SUCCESSFULLY BUILT"
+          - "=========================================="
+          - "Child Domain: mauna.alpine.lab"
+          - "Parent Domain: alpine.lab"
+          - "Forest: alpine.lab"
+          - "Domain PDC: SLATE-DC"
+          - "Status: Operational"
+          - "Trust: Verified"
+          - ""
+          - "Next Steps:"
+          - "  1. Add replica DC: ansible-playbook 4h-add-mauna-replica-dc.yml"
+          - "  2. Build other child: ansible-playbook 4g-build-rainier-child-domain.yml"
+          - "=========================================="

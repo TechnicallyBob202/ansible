@@ -1,0 +1,251 @@
+---
+# ==========================================
+# BUILD ARBOR.LAB FOREST ROOT
+# Creates the arbor.lab forest and promotes KOA-DC as forest root PDC
+# ==========================================
+# Prerequisites: 4a-pre-build-checks.yml completed
+# Dependencies: None (first forest to build)
+# Can be run: Independently or as part of full build
+# Idempotent: Yes - checks if domain exists before building
+# ==========================================
+
+- name: Check if arbor.lab forest already exists
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Display build plan
+      debug:
+        msg:
+          - "=========================================="
+          - "BUILDING ARBOR.LAB FOREST ROOT"
+          - "=========================================="
+          - "Target: {{ inventory_hostname }} ({{ ansible_host }})"
+          - "Domain: arbor.lab"
+          - "NetBIOS: ARBOR"
+          - "Role: Forest Root PDC"
+
+    - name: Check if domain already exists
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            $domain = Get-ADDomain -Identity "arbor.lab" -ErrorAction Stop
+            Write-Output "Domain: $($domain.DNSRoot)"
+            Write-Output "SID: $($domain.DomainSID.Value)"
+            Write-Output "NetBIOS: $($domain.NetBIOSName)"
+            Write-Output "ForestMode: $($domain.Forest)"
+            exit 0
+          } catch {
+            Write-Output "DOMAIN_NOT_FOUND"
+            exit 1
+          }
+      register: domain_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set domain status facts
+      set_fact:
+        arbor_domain_exists: "{{ domain_check.rc == 0 }}"
+        arbor_domain_info: "{{ domain_check.stdout_lines if domain_check.rc == 0 else [] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+
+    - name: Display existing domain info
+      debug:
+        msg:
+          - "Domain already exists!"
+          - "{{ domain_check.stdout_lines }}"
+      when: domain_check.rc == 0
+
+    - name: Skip build if domain exists
+      meta: end_host
+      when: domain_check.rc == 0
+
+- name: Build arbor.lab forest root
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Verify we should proceed
+      debug:
+        msg: "Domain does not exist. Proceeding with forest build..."
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Install Active Directory Domain Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+        state: present
+      register: adds_install
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Display installation result
+      debug:
+        msg: "AD-DS installed: {{ 'Success' if adds_install.changed else 'Already installed' }}"
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Promote to forest root domain controller
+      microsoft.ad.domain:
+        dns_domain_name: arbor.lab
+        domain_netbios_name: ARBOR
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        log_path: C:\Windows\NTDS
+        reboot: yes
+      register: domain_promotion
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Display promotion status
+      debug:
+        msg: "Forest promotion initiated. Server will reboot..."
+      when: 
+        - not hostvars['localhost']['arbor_domain_exists']
+        - domain_promotion.changed
+
+- name: Wait for forest root to come online
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Wait for DC to reboot and come back online
+      wait_for_connection:
+        timeout: 600
+        delay: 30
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Wait additional time for AD services to start
+      pause:
+        seconds: 60
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+    - name: Test WinRM connectivity
+      ansible.windows.win_ping:
+      register: ping_result
+      retries: 5
+      delay: 10
+      until: ping_result is succeeded
+      when: not hostvars['localhost']['arbor_domain_exists']
+
+- name: Verify forest build and gather info
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+  
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Verify domain is operational
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            $domain = Get-ADDomain -Identity "arbor.lab" -ErrorAction Stop
+            Write-Output "SUCCESS"
+            Write-Output "Domain: $($domain.DNSRoot)"
+            Write-Output "SID: $($domain.DomainSID.Value)"
+            Write-Output "NetBIOS: $($domain.NetBIOSName)"
+            Write-Output "DomainMode: $($domain.DomainMode)"
+            Write-Output "ForestMode: $($domain.Forest)"
+            Write-Output "PDC: $($domain.PDCEmulator)"
+            exit 0
+          } catch {
+            Write-Output "FAILED"
+            Write-Output $_.Exception.Message
+            exit 1
+          }
+      register: domain_verify
+      retries: 3
+      delay: 30
+      until: domain_verify.rc == 0
+
+    - name: Extract domain SID
+      set_fact:
+        arbor_domain_sid: "{{ domain_verify.stdout_lines | select('search', 'SID:') | first | regex_replace('SID: ', '') }}"
+
+    - name: Display forest information
+      debug:
+        msg:
+          - "=========================================="
+          - "✅ ARBOR.LAB FOREST BUILD COMPLETE"
+          - "=========================================="
+          - "{{ domain_verify.stdout_lines }}"
+          - "=========================================="
+
+    - name: Get FSMO role holders
+      ansible.windows.win_powershell:
+        script: |
+          $forest = Get-ADForest
+          $domain = Get-ADDomain
+          Write-Output "Schema Master: $($forest.SchemaMaster)"
+          Write-Output "Domain Naming Master: $($forest.DomainNamingMaster)"
+          Write-Output "RID Master: $($domain.RIDMaster)"
+          Write-Output "PDC Emulator: $($domain.PDCEmulator)"
+          Write-Output "Infrastructure Master: $($domain.InfrastructureMaster)"
+      register: fsmo_roles
+
+    - name: Display FSMO roles
+      debug:
+        msg:
+          - "FSMO Roles:"
+          - "{{ fsmo_roles.stdout_lines }}"
+
+- name: Save forest information to state files
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Create state directory
+      file:
+        path: "{{ playbook_dir }}/../state"
+        state: directory
+        mode: '0755'
+
+    - name: Save arbor.lab domain information
+      copy:
+        content: |
+          # arbor.lab Forest Information
+          # Generated: {{ ansible_date_time.iso8601 }}
+          
+          domain_built: yes
+          forest_root_pdc: KOA-DC
+          forest_root_pdc_ip: 192.168.35.20
+          domain_name: arbor.lab
+          domain_netbios: ARBOR
+          domain_sid: {{ hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] }}
+          
+          next_steps:
+            - Run 4d-add-arbor-replica-dc.yml to add OAK-DC replica
+        dest: "{{ playbook_dir }}/../state/arbor-forest-status.yml"
+        mode: '0644'
+
+    - name: Update consolidated domain SIDs file
+      lineinfile:
+        path: "{{ playbook_dir }}/../state/domain-sids.yml"
+        line: "arbor.lab: {{ hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] }}"
+        create: yes
+        mode: '0644'
+
+    - name: Display completion summary
+      debug:
+        msg:
+          - "=========================================="
+          - "✅ ARBOR.LAB FOREST SUCCESSFULLY BUILT"
+          - "=========================================="
+          - "Forest Root PDC: KOA-DC"
+          - "Domain: arbor.lab"
+          - "Status: Operational"
+          - ""
+          - "Next Steps:"
+          - "  1. Add replica DC: ansible-playbook 4d-add-arbor-replica-dc.yml"
+          - "  2. Continue with alpine.lab: ansible-playbook 4c-build-alpine-forest-root.yml"
+          - "=========================================="
