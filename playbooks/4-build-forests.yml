@@ -1,39 +1,186 @@
 ---
 # ==========================================
-# AUTOMATED FOREST & DOMAIN BUILD FOR ALL DOMAINS
+# DOMAIN BUILD PLAYBOOK
+# Handles 4 domains, root PDCs and replicas
 # ==========================================
 
-- name: Build forests and domains
+- name: Build and verify all forests/domains
   hosts: all
   gather_facts: no
   vars:
     windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
     domains:
-      - fqdn: "arbor.lab"
-        netbios: "ARBOR"
-        root_pdc: "arbor_forest_root_pdc"
-        replicas: ["arbor_forest_root_replica"]
-        admin_user: "Administrator"
-      - fqdn: "alpine.lab"
-        netbios: "ALPINE"
-        root_pdc: "alpine_forest_root_pdc"
-        replicas: ["alpine_forest_root_replica"]
-        admin_user: "Administrator"
-      - fqdn: "mauna.alpine.lab"
-        netbios: "MAUNA"
-        root_pdc: "mauna_child_pdc"
-        replicas: ["mauna_child_replica"]
-        admin_user: "ALPINE\\Administrator"
-      - fqdn: "rainier.alpine.lab"
-        netbios: "RAINIER"
-        root_pdc: "rainier_child_pdc"
-        replicas: ["rainier_child_replica"]
-        admin_user: "ALPINE\\Administrator"
+      - name: arbor.lab
+        netbios: ARBOR
+        root_pdc: arbor_forest_root_pdc
+        replicas: arbor_forest_root_replica
+      - name: alpine.lab
+        netbios: ALPINE
+        root_pdc: alpine_forest_root_pdc
+        replicas: alpine_forest_root_replica
+      - name: mauna.alpine.lab
+        netbios: MAUNA
+        root_pdc: mauna_child_pdc
+        replicas: mauna_child_replica
+        parent_domain: alpine.lab
+      - name: rainier.alpine.lab
+        netbios: RAINIER
+        root_pdc: rainier_child_pdc
+        replicas: rainier_child_replica
+        parent_domain: alpine.lab
 
   tasks:
 
-    - name: Process each domain
-      include_tasks: 00-domain-build.yml
+    - name: Loop over each domain
+      vars:
+        domain_name: "{{ item.name }}"
       loop: "{{ domains }}"
       loop_control:
-        loop_var: domain
+        loop_var: item
+      block:
+
+        # ------------------------------------------
+        # Check if domain exists
+        # ------------------------------------------
+        - name: Check if {{ domain_name }} exists
+          ansible.windows.win_powershell:
+            script: |
+              try {
+                $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+                Write-Output $domain.DomainSID.Value
+                exit 0
+              } catch {
+                Write-Output "DOMAIN_NOT_FOUND"
+                exit 1
+              }
+          register: domain_check
+          failed_when: false
+          changed_when: false
+          delegate_to: "{{ item.root_pdc }}"
+
+        - name: Set domain facts for {{ domain_name }}
+          set_fact:
+            "{{ domain_name | replace('.','_') }}_exists": "{{ domain_check.rc == 0 }}"
+            "{{ domain_name | replace('.','_') }}_sid": "{{ domain_check.stdout_lines[0] if domain_check.rc == 0 else '' }}"
+          delegate_to: localhost
+          delegate_facts: yes
+
+        # ------------------------------------------
+        # Build root PDC if needed
+        # ------------------------------------------
+        - name: Build root PDC for {{ domain_name }} if needed
+          when: not hostvars['localhost'][ domain_name | replace('.','_') + '_exists' ]
+          block:
+            - name: Install AD-Domain-Services on root PDC
+              ansible.windows.win_feature:
+                name: AD-Domain-Services
+                include_management_tools: yes
+              delegate_to: "{{ item.root_pdc }}"
+
+            - name: Promote root PDC for {{ domain_name }}
+              microsoft.ad.domain:
+                dns_domain_name: "{{ domain_name }}"
+                domain_netbios_name: "{{ item.netbios }}"
+                safe_mode_password: "{{ windows_password }}"
+                create_dns_delegation: no
+                database_path: C:\Windows\NTDS
+                sysvol_path: C:\Windows\SYSVOL
+                reboot: yes
+              delegate_to: "{{ item.root_pdc }}"
+
+            - name: Wait for root PDC to come back
+              wait_for_connection:
+                timeout: 600
+                delay: 30
+              delegate_to: "{{ item.root_pdc }}"
+
+            - name: Test root PDC connectivity
+              ansible.windows.win_powershell:
+                script: Test-NetConnection -ComputerName {{ item.root_pdc }} -Port 5985 -InformationLevel Quiet
+              register: root_test
+              failed_when: root_test.rc != 0
+              delegate_to: "{{ item.root_pdc }}"
+
+            - name: Get domain SID for {{ domain_name }} after creation
+              ansible.windows.win_powershell:
+                script: |
+                  $domain = Get-ADDomain -Identity "{{ domain_name }}"
+                  Write-Output $domain.DomainSID.Value
+              register: new_domain_sid
+              delegate_to: "{{ item.root_pdc }}"
+
+            - name: Update domain SID fact
+              set_fact:
+                "{{ domain_name | replace('.','_') }}_sid": "{{ new_domain_sid.stdout_lines[0] }}"
+              delegate_to: localhost
+              delegate_facts: yes
+
+        # ------------------------------------------
+        # Build replica DCs
+        # ------------------------------------------
+        - name: Build replica DCs for {{ domain_name }}
+          block:
+            - name: Check if {{ inventory_hostname }} is already a DC
+              ansible.windows.win_powershell:
+                script: |
+                  $DC = Get-WmiObject Win32_ComputerSystem
+                  if ($DC.DomainRole -ge 4) { exit 0 } else { exit 1 }
+              register: is_dc
+              failed_when: false
+              changed_when: false
+
+            - name: Install AD-Domain-Services on replica
+              ansible.windows.win_feature:
+                name: AD-Domain-Services
+                include_management_tools: yes
+              when: is_dc.rc != 0
+
+            - name: Promote replica DC for {{ domain_name }}
+              microsoft.ad.domain_controller:
+                dns_domain_name: "{{ domain_name }}"
+                domain_admin_user: "{{ (item.parent_domain | default(item.name.split('.')[0])) + '\Administrator' }}"
+                domain_admin_password: "{{ windows_password }}"
+                safe_mode_password: "{{ windows_password }}"
+                database_path: C:\Windows\NTDS
+                sysvol_path: C:\Windows\SYSVOL
+                state: domain_controller
+                reboot: yes
+              when: is_dc.rc != 0
+
+            - name: Wait for replica DC to come back
+              wait_for_connection:
+                timeout: 600
+                delay: 30
+              when: is_dc.rc != 0
+
+            - name: Test replica connectivity
+              ansible.windows.win_powershell:
+                script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+              register: replica_test
+              failed_when: replica_test.rc != 0
+
+          delegate_to: "{{ item.replicas }}"
+          loop: "{{ item.replicas | default([]) }}"
+          loop_control:
+            loop_var: inventory_hostname
+
+# ==========================================
+# WRITE DOMAIN SIDS TO FILE
+# ==========================================
+- name: Write domain SIDs to file
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Create domain SIDs file
+      copy:
+        content: |
+          # Lab Domain SIDs
+          # Generated: {{ ansible_date_time.iso8601 }}
+          {% for d in domains %}
+          {{ d.name }}={{ hostvars['localhost'][d.name | replace('.','_') + '_sid'] }}
+          {% endfor %}
+        dest: "{{ playbook_dir }}/../files/domain-sids.txt"
+
+    - name: Display completion
+      debug:
+        msg: "All forests and domains built successfully. Domain SIDs saved to files/domain-sids.txt"
