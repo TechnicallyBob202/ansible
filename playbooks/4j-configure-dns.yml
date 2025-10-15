@@ -1,0 +1,114 @@
+---
+# ==========================================
+# CONFIGURE DNS DYNAMICALLY FOR ALL DCs
+# Uses inventory relationships to set proper DNS hierarchy
+# ==========================================
+# Logic:
+#   - Primary DNS: First other DC in same domain group
+#   - Secondary DNS: 127.0.0.1 (self)
+#   - Tertiary DNS: Parent domain DC (if child domain)
+# ==========================================
+
+- name: Configure DNS for all domain controllers
+  hosts: domain_controllers
+  gather_facts: no
+  serial: 1
+  
+  vars:
+    # Map child domains to their parent DC
+    parent_dc_map:
+      mauna_child_pdc: "192.168.35.30"
+      mauna_child_replica: "192.168.35.30"
+      rainier_child_pdc: "192.168.35.30"
+      rainier_child_replica: "192.168.35.30"
+  
+  tasks:
+    - name: Determine partner DC IP
+      set_fact:
+        partner_dc_ip: >-
+          {{
+            groups[group_names | select('match', '.*_(pdc|replica)$') | first]
+            | difference([inventory_hostname])
+            | map('extract', hostvars, 'ansible_host')
+            | first
+            | default('127.0.0.1')
+          }}
+      
+    - name: Determine if this is a child domain
+      set_fact:
+        is_child_domain: "{{ 'child' in (group_names | join(' ')) }}"
+    
+    - name: Get parent DC IP for child domains
+      set_fact:
+        parent_dc_ip: >-
+          {{
+            parent_dc_map[group_names | select('match', '.*_child_(pdc|replica)$') | first]
+            | default('')
+          }}
+      when: is_child_domain | bool
+    
+    - name: Build DNS server list (root domain)
+      set_fact:
+        dns_servers:
+          - "{{ partner_dc_ip }}"
+          - "127.0.0.1"
+      when: not (is_child_domain | bool)
+    
+    - name: Build DNS server list (child domain)
+      set_fact:
+        dns_servers:
+          - "{{ partner_dc_ip }}"
+          - "127.0.0.1"
+          - "{{ parent_dc_ip }}"
+      when: 
+        - is_child_domain | bool
+        - parent_dc_ip != ''
+    
+    - name: Display DNS configuration to be applied
+      debug:
+        msg:
+          - "{{ inventory_hostname }}: Setting DNS servers"
+          - "  Primary: {{ dns_servers[0] }} (partner DC)"
+          - "  Secondary: {{ dns_servers[1] }} (self)"
+          - "{{ '  Tertiary: ' + dns_servers[2] + ' (parent DC)' if dns_servers | length > 2 else '  Tertiary: none (root domain)' }}"
+    
+    - name: Apply DNS configuration
+      ansible.windows.win_powershell:
+        script: |
+          $dnsServers = @({{ dns_servers | map('regex_replace', '^(.*)$', '"\1"') | join(',') }})
+          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+          
+          Write-Output "Current DNS: $((Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses -join ', ')"
+          Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
+          Write-Output "New DNS: $((Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses -join ', ')"
+      register: dns_result
+    
+    - name: Display result
+      debug:
+        msg: "{{ dns_result.stdout_lines }}"
+
+- name: Verify DNS configuration
+  hosts: domain_controllers
+  gather_facts: no
+  
+  tasks:
+    - name: Check DNS resolution
+      ansible.windows.win_powershell:
+        script: |
+          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+          $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+          
+          Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+          
+          # Test resolution
+          try {
+            $test = Resolve-DnsName $env:USERDNSDOMAIN -ErrorAction Stop
+            Write-Output "Domain resolution: SUCCESS"
+          } catch {
+            Write-Output "Domain resolution: FAILED"
+          }
+      register: verify_result
+    
+    - name: Display verification
+      debug:
+        msg: "{{ inventory_hostname }}: {{ verify_result.stdout_lines }}"

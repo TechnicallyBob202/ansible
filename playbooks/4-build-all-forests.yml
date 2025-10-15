@@ -54,6 +54,7 @@
 # ==========================================
 # PHASE 6: POST-CONFIGURATION
 # ==========================================
+- import_playbook: 4j-configure-dns.yml
 # - import_playbook: 4j-configure-ad-sites.yml  # Uncomment when created
 # - import_playbook: 4k-create-service-accounts.yml  # Uncomment when created
 # - import_playbook: 4l-validate-replication.yml  # Uncomment when created
