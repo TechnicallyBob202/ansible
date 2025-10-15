@@ -43,14 +43,14 @@
 # ==========================================
 # PHASE 4: CHILD DOMAINS
 # ==========================================
-- import_playbook: 4f-build-mauna-child-domain.yml
-- import_playbook: 4g-build-rainier-child-domain.yml
+- import_playbook: 4f-build-mauna-pdc.yml
+- import_playbook: 4g-build-rainier-pdc.yml
 
 # ==========================================
 # PHASE 5: CHILD REPLICA DCs
 # ==========================================
-- import_playbook: 4h-add-mauna-replica-dc.yml
-- import_playbook: 4i-add-rainier-replica-dc.yml
+- import_playbook: 4h-add-mauna-replica.yml
+- import_playbook: 4i-add-rainier-replica.yml
 
 # ==========================================
 # PHASE 6: POST-CONFIGURATION
