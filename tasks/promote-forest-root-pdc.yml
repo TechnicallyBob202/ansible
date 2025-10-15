@@ -1,0 +1,52 @@
+---
+# Input variables required:
+#   - domain_dns_name: e.g., "arbor.lab"
+#   - domain_netbios_name: e.g., "ARBOR"
+#   - windows_password: safe mode password
+
+- name: Promote {{ inventory_hostname }} to forest root PDC for {{ domain_dns_name }}
+  microsoft.ad.domain:
+    dns_domain_name: "{{ domain_dns_name }}"
+    domain_netbios_name: "{{ domain_netbios_name }}"
+    safe_mode_password: "{{ windows_password }}"
+    create_dns_delegation: no
+    database_path: C:\Windows\NTDS
+    sysvol_path: C:\Windows\SYSVOL
+    reboot: yes
+  register: domain_promotion
+
+- name: Wait for {{ inventory_hostname }} to come back after reboot
+  wait_for_connection:
+    timeout: 600
+    delay: 30
+
+- name: Verify {{ domain_dns_name }} domain promotion
+  ansible.windows.win_powershell:
+    script: |
+      Start-Sleep -Seconds 10
+      $domain = Get-ADDomain -Identity "{{ domain_dns_name }}"
+      Write-Output "Domain: $($domain.DNSRoot)"
+      Write-Output "NetBIOS: $($domain.NetBIOSName)"
+      Write-Output "SID: $($domain.DomainSID.Value)"
+      Write-Output "ForestMode: $($domain.Forest)"
+  register: verify_promotion
+  retries: 3
+  delay: 10
+  until: verify_promotion is succeeded
+
+- name: Display {{ domain_dns_name }} promotion results
+  debug:
+    msg: "{{ verify_promotion.output }}"
+  when: verify_promotion.output is defined
+
+- name: Get {{ domain_dns_name }} domain SID
+  ansible.windows.win_powershell:
+    script: |
+      $domain = Get-ADDomain -Identity "{{ domain_dns_name }}"
+      Write-Output $domain.DomainSID.Value
+  register: get_domain_sid
+
+- name: Set domain SID fact
+  set_fact:
+    domain_sid: "{{ get_domain_sid.output[0] }}"
+  when: get_domain_sid.output is defined and get_domain_sid.output | length > 0

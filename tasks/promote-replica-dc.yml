@@ -1,0 +1,22 @@
+---
+# Input variables required:
+#   - domain_dns_name: e.g., "arbor.lab"
+#   - domain_admin_user: e.g., "ARBOR\Administrator"
+#   - windows_password: domain admin password
+
+- name: Promote {{ inventory_hostname }} to replica DC in {{ domain_dns_name }}
+  microsoft.ad.domain_controller:
+    dns_domain_name: "{{ domain_dns_name }}"
+    domain_admin_user: "{{ domain_admin_user }}"
+    domain_admin_password: "{{ windows_password }}"
+    safe_mode_password: "{{ windows_password }}"
+    database_path: C:\Windows\NTDS
+    sysvol_path: C:\Windows\SYSVOL
+    state: domain_controller
+    reboot: yes
+  register: dc_promotion
+
+- name: Wait for {{ inventory_hostname }} to come back after reboot
+  wait_for_connection:
+    timeout: 600
+    delay: 30

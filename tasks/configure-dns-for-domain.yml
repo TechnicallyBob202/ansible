@@ -1,0 +1,25 @@
+---
+# Input variables required:
+#   - dns_servers: list of DNS server IPs
+
+- name: Configure DNS servers on {{ inventory_hostname }}
+  ansible.windows.win_powershell:
+    script: |
+      $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+
+      $dnsServers = @(
+        {% for dns_server in dns_servers %}
+        "{{ dns_server }}"{{ "," if not loop.last else "" }}
+        {% endfor %}
+      )
+
+      Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
+
+      $configured = (Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses
+      Write-Output "DNS servers configured: $($configured -join ', ')"
+  register: dns_config_result
+
+- name: Display DNS configuration
+  debug:
+    msg: "{{ dns_config_result.output }}"
+  when: dns_config_result.output is defined
