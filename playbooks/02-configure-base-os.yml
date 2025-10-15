@@ -72,7 +72,7 @@
 - name: Reboot hosts that changed hostname
   hosts: all
   gather_facts: no
-  serial: 1
+  serial: 0
 
   tasks:
     - name: Reboot if needed
