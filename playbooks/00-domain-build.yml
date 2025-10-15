@@ -1,0 +1,152 @@
+---
+# ==========================================
+# DOMAIN BUILD LOGIC
+# ==========================================
+
+- name: Set domain variable prefix
+  set_fact:
+    domain_var_prefix: "{{ domain.fqdn.split('.')[0] | lower }}"
+  delegate_to: localhost
+  delegate_facts: yes
+
+- name: Check if domain exists
+  ansible.windows.win_powershell:
+    script: |
+      try {
+        $domain = Get-ADDomain -Identity "{{ domain.fqdn }}" -ErrorAction Stop
+        @{ Exists = $true; SID = $domain.DomainSID.Value } | ConvertTo-Json -Compress
+      } catch {
+        @{ Exists = $false; SID = "" } | ConvertTo-Json -Compress
+      }
+  register: domain_check
+  failed_when: false
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    "{{ domain_var_prefix }}_domain_exists": "{{ (domain_check.stdout | from_json).Exists | default(false) }}"
+    "{{ domain_var_prefix }}_domain_sid": "{{ (domain_check.stdout | from_json).SID | default('') }}"
+  delegate_to: localhost
+  delegate_facts: yes
+
+# ==========================================
+# BUILD FOREST ROOT PDC
+# ==========================================
+- name: Build forest root PDC if needed
+  hosts: "{{ domain.root_pdc }}"
+  gather_facts: no
+  tasks:
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not hostvars['localhost'][domain_var_prefix + '_domain_exists']
+
+    - name: Promote to forest root PDC
+      microsoft.ad.domain:
+        dns_domain_name: "{{ domain.fqdn }}"
+        domain_netbios_name: "{{ domain.netbios }}"
+        safe_mode_password: "{{ windows_password }}"
+        create_dns_delegation: no
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        reboot: yes
+      when: not hostvars['localhost'][domain_var_prefix + '_domain_exists']
+
+    - name: Wait for PDC to be reachable
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: pdc_test
+      retries: 20
+      delay: 30
+      until: pdc_test.stdout | bool
+      failed_when: pdc_test.stdout | bool == false
+
+# ==========================================
+# PROMOTE REPLICA DCs
+# ==========================================
+- name: Promote replica DCs
+  hosts: "{{ domain.replicas }}"
+  gather_facts: no
+  tasks:
+
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { $true } else { $false }
+      register: is_dc
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not is_dc.stdout | bool
+
+    - name: Promote to replica DC
+      microsoft.ad.domain_controller:
+        dns_domain_name: "{{ domain.fqdn }}"
+        domain_admin_user: "{{ domain.admin_user }}"
+        domain_admin_password: "{{ windows_password }}"
+        safe_mode_password: "{{ windows_password }}"
+        database_path: C:\Windows\NTDS
+        sysvol_path: C:\Windows\SYSVOL
+        state: domain_controller
+        reboot: yes
+      when: not is_dc.stdout | bool
+
+    - name: Wait for replica to be reachable
+      ansible.windows.win_powershell:
+        script: Test-NetConnection -ComputerName {{ inventory_hostname }} -Port 5985 -InformationLevel Quiet
+      register: replica_test
+      retries: 20
+      delay: 30
+      until: replica_test.stdout | bool
+      failed_when: replica_test.stdout | bool == false
+
+# ==========================================
+# UPDATE DOMAIN SID FACT
+# ==========================================
+- name: Update domain SID fact
+  hosts: "{{ domain.root_pdc }}"
+  gather_facts: no
+  tasks:
+    - name: Get domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "{{ domain.fqdn }}"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost'][domain_var_prefix + '_domain_exists']
+
+    - name: Set domain SID fact
+      set_fact:
+        "{{ domain_var_prefix }}_domain_sid": "{{ new_domain_sid.stdout_lines[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when: not hostvars['localhost'][domain_var_prefix + '_domain_exists']
+
+# ==========================================
+# WRITE DOMAIN SIDs TO FILE
+# ==========================================
+- name: Write domain SIDs to file
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Create domain SIDs file
+      copy:
+        content: |
+          # Lab Domain SIDs
+          # Generated: {{ ansible_date_time.iso8601 }}
+          arbor.lab={{ arbor_domain_sid }}
+          alpine.lab={{ alpine_domain_sid }}
+          mauna.alpine.lab={{ mauna_domain_sid }}
+          rainier.alpine.lab={{ rainier_domain_sid }}
+        dest: "{{ playbook_dir }}/../files/domain-sids.txt"
+
+    - name: Display completion
+      debug:
+        msg: "All forests and domains built successfully. Domain SIDs saved to files/domain-sids.txt"
