@@ -33,7 +33,7 @@
   tasks:
 
     - name: Process each domain
-      include_tasks: domain_build.yml
+      include_tasks: 00-domain_build.yml
       loop: "{{ domains }}"
       loop_control:
         loop_var: domain
