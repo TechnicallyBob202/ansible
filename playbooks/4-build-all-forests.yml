@@ -51,10 +51,6 @@
           - "Estimated time: 60-90 minutes"
           - "=========================================="
 
-    - name: Pause before starting
-      pause:
-        prompt: "Press ENTER to begin full lab build, or Ctrl+C to cancel"
-
     # ==========================================
     # PHASE 1: PRE-BUILD CHECKS
     # ==========================================
