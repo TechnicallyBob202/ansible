@@ -34,7 +34,7 @@
 
     - name: Wait for feature installation
       pause:
-        seconds: 10
+        seconds: 60
       run_once: yes
 
 # =============================================================================
