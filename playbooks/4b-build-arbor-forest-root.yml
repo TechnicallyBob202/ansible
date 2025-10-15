@@ -12,7 +12,7 @@
 - name: Check if arbor.lab forest already exists
   hosts: arbor_forest_root_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -67,7 +67,7 @@
 - name: Build arbor.lab forest root
   hosts: arbor_forest_root_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -106,14 +106,14 @@
     - name: Display promotion status
       debug:
         msg: "Forest promotion initiated. Server will reboot..."
-      when: 
+      when:
         - not hostvars['localhost']['arbor_domain_exists']
         - domain_promotion.changed
 
 - name: Wait for forest root to come online
   hosts: arbor_forest_root_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -140,7 +140,7 @@
 - name: Verify forest build and gather info
   hosts: arbor_forest_root_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -215,18 +215,22 @@
         content: |
           # arbor.lab Forest Information
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           domain_built: yes
           forest_root_pdc: KOA-DC
           forest_root_pdc_ip: 192.168.35.20
           domain_name: arbor.lab
           domain_netbios: ARBOR
           domain_sid: {{ hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] }}
-          
+
           next_steps:
             - Run 4d-add-arbor-replica-dc.yml to add OAK-DC replica
         dest: "{{ playbook_dir }}/../state/arbor-forest-status.yml"
         mode: '0644'
+      when:
+        - groups['arbor_forest_root_pdc'] is defined
+        - groups['arbor_forest_root_pdc'] | length > 0
+        - hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] is defined
 
     - name: Update consolidated domain SIDs file
       lineinfile:
@@ -234,6 +238,10 @@
         line: "arbor.lab: {{ hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] }}"
         create: yes
         mode: '0644'
+      when:
+        - groups['arbor_forest_root_pdc'] is defined
+        - groups['arbor_forest_root_pdc'] | length > 0
+        - hostvars[groups['arbor_forest_root_pdc'][0]]['arbor_domain_sid'] is defined
 
     - name: Display completion summary
       debug:

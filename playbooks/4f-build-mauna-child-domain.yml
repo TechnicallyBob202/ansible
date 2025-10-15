@@ -46,7 +46,7 @@
 - name: Check if mauna.alpine.lab domain already exists
   hosts: mauna_child_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -90,7 +90,7 @@
 - name: Build mauna.alpine.lab child domain
   hosts: mauna_child_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -118,7 +118,7 @@
     - name: Fail if parent PDC unreachable
       fail:
         msg: "Cannot reach alpine.lab PDC at 192.168.35.30. Verify GRANITE-DC is online."
-      when: 
+      when:
         - not hostvars['localhost']['mauna_domain_exists']
         - parent_test.rc != 0
 
@@ -139,16 +139,16 @@
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = "Stop"
-          
+
           try {
             $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
             $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
-            
+
             Write-Output "Starting child domain promotion..."
             Write-Output "New Domain Name: mauna"
             Write-Output "Parent Domain: alpine.lab"
             Write-Output "Full FQDN: mauna.alpine.lab"
-            
+
             Install-ADDSDomain `
               -NewDomainName "mauna" `
               -ParentDomainName "alpine.lab" `
@@ -162,7 +162,7 @@
               -LogPath "C:\Windows\NTDS" `
               -Force:$true `
               -NoRebootOnCompletion:$false
-            
+
             Write-Output "Child domain promotion initiated successfully"
             exit 0
           } catch {
@@ -177,14 +177,14 @@
     - name: Display promotion status
       debug:
         msg: "Child domain promotion initiated. Server will reboot..."
-      when: 
+      when:
         - not hostvars['localhost']['mauna_domain_exists']
         - domain_promotion.changed
 
 - name: Wait for child domain PDC to come online
   hosts: mauna_child_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -211,7 +211,7 @@
 - name: Verify child domain build and gather info
   hosts: mauna_child_pdc
   gather_facts: no
-  
+
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 
@@ -283,11 +283,11 @@
             # Try to query parent domain
             $parentDomain = Get-ADDomain -Identity "alpine.lab" -Server "192.168.35.30" -ErrorAction Stop
             Write-Output "✓ Can query parent domain (alpine.lab)"
-            
+
             # Try to query forest root
             $forest = Get-ADForest -ErrorAction Stop
             Write-Output "✓ Can query forest: $($forest.Name)"
-            
+
             exit 0
           } catch {
             Write-Output "Cross-domain test failed: $($_.Exception.Message)"
@@ -317,7 +317,7 @@
         content: |
           # mauna.alpine.lab Child Domain Information
           # Generated: {{ ansible_date_time.iso8601 }}
-          
+
           domain_built: yes
           domain_pdc: SLATE-DC
           domain_pdc_ip: 192.168.35.32
@@ -326,14 +326,18 @@
           parent_domain: alpine.lab
           forest: alpine.lab
           domain_sid: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}
-          
+
           trust_status: verified
           cross_domain_auth: working
-          
+
           next_steps:
             - Run 4h-add-mauna-replica-dc.yml to add SHALE-DC replica
         dest: "{{ playbook_dir }}/../state/mauna-domain-status.yml"
         mode: '0644'
+      when:
+        - groups['mauna_child_pdc'] is defined
+        - groups['mauna_child_pdc'] | length > 0
+        - hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] is defined
 
     - name: Update consolidated domain SIDs file
       lineinfile:
@@ -341,6 +345,10 @@
         line: "mauna.alpine.lab: {{ hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] }}"
         create: yes
         mode: '0644'
+      when:
+        - groups['mauna_child_pdc'] is defined
+        - groups['mauna_child_pdc'] | length > 0
+        - hostvars[groups['mauna_child_pdc'][0]]['mauna_domain_sid'] is defined
 
     - name: Update alpine forest status
       shell: |

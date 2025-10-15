@@ -51,6 +51,10 @@
           - "Estimated time: 60-90 minutes"
           - "=========================================="
 
+    - name: Pause before starting
+      pause:
+        prompt: "Press ENTER to begin full lab build, or Ctrl+C to cancel"
+
     # ==========================================
     # PHASE 1: PRE-BUILD CHECKS
     # ==========================================
@@ -64,7 +68,7 @@
           - "=========================================="
 
     - name: Run pre-build checks playbook
-      command: ansible-playbook "{{ playbook_dir_path }}/4a-pre-build-checks.yml"
+      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4a-pre-build-checks.yml"
       register: prebuild_result
       ignore_errors: yes
 
@@ -90,7 +94,7 @@
           - "=========================================="
 
     - name: Build arbor.lab forest root
-      command: ansible-playbook "{{ playbook_dir_path }}/4b-build-arbor-forest-root.yml"
+      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4b-build-arbor-forest-root.yml"
       register: arbor_root_result
       ignore_errors: yes
 
@@ -100,7 +104,7 @@
       when: arbor_root_result.rc != 0
 
     - name: Build alpine.lab forest root
-      command: ansible-playbook "{{ playbook_dir_path }}/4c-build-alpine-forest-root.yml"
+      command: ansible-playbook -i "{{ playbook_dir_path }}/../inventory/adfr-lab" "{{ playbook_dir_path }}/4c-build-alpine-forest-root.yml"
       register: alpine_root_result
       ignore_errors: yes
 
