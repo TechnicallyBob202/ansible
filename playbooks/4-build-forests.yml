@@ -1,11 +1,13 @@
 ---
+# 4-build-forests.yml
+# Build two forests (arbor.lab, alpine.lab) and child domains (mauna, rainier)
+# Replaces ADWS service checks with explicit network readiness checks to the parent DC.
+
 - name: Build arbor.lab Forest Root
   hosts: arbor_forest_root_pdc
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -16,14 +18,14 @@
       failed_when: false
       changed_when: false
 
-    - name: Install AD-Domain-Services
+    - name: Install AD-Domain-Services (if not already a DC)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
       when: dc_check.output[0] | int == 0
 
-    - name: Promote to forest root PDC
+    - name: Promote to forest root PDC (if not already a DC)
       microsoft.ad.domain:
         dns_domain_name: arbor.lab
         domain_netbios_name: ARBOR
@@ -34,19 +36,32 @@
         reboot: yes
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for arbor PDC to come back online (WinRM)
       wait_for_connection:
-        timeout: 600
-        delay: 30
+        timeout: 1800
+        delay: 15
+      when: dc_check.output[0] | int == 0
+
+    - name: Verify arbor PDC responds as a domain controller (quick check)
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomainController -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: arbor_dc_ready
+      retries: 20
+      delay: 15
+      until: arbor_dc_ready.rc == 0
       when: dc_check.output[0] | int == 0
 
 - name: Promote arbor.lab Replica DC
   hosts: arbor_forest_root_replica
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -57,14 +72,14 @@
       failed_when: false
       changed_when: false
 
-    - name: Install AD-Domain-Services
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
       when: dc_check.output[0] | int == 0
 
-    - name: Promote to replica DC
+    - name: Promote to arbor replica DC (if not already a DC)
       microsoft.ad.domain_controller:
         dns_domain_name: arbor.lab
         domain_admin_user: ARBOR\Administrator
@@ -76,19 +91,35 @@
         reboot: yes
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for arbor replica DC to come back online (WinRM)
       wait_for_connection:
-        timeout: 600
-        delay: 30
+        timeout: 1800
+        delay: 15
       when: dc_check.output[0] | int == 0
 
+    - name: Verify replica DC responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomainController -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: arbor_replica_ready
+      retries: 20
+      delay: 15
+      until: arbor_replica_ready.rc == 0
+      when: dc_check.output[0] | int == 0
+
+# ---------------------------------------------------------------------
+# alpine.lab forest root + replica
+# ---------------------------------------------------------------------
 - name: Build alpine.lab Forest Root
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -99,14 +130,14 @@
       failed_when: false
       changed_when: false
 
-    - name: Install AD-Domain-Services
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
       when: dc_check.output[0] | int == 0
 
-    - name: Promote to forest root PDC
+    - name: Promote to alpine forest root PDC (if not already a DC)
       microsoft.ad.domain:
         dns_domain_name: alpine.lab
         domain_netbios_name: ALPINE
@@ -117,19 +148,32 @@
         reboot: yes
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for alpine PDC to come back online (WinRM)
       wait_for_connection:
-        timeout: 600
-        delay: 30
+        timeout: 1800
+        delay: 15
+      when: dc_check.output[0] | int == 0
+
+    - name: Verify alpine PDC responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomainController -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: alpine_dc_ready
+      retries: 20
+      delay: 15
+      until: alpine_dc_ready.rc == 0
       when: dc_check.output[0] | int == 0
 
 - name: Promote alpine.lab Replica DC
   hosts: alpine_forest_root_replica
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -140,14 +184,14 @@
       failed_when: false
       changed_when: false
 
-    - name: Install AD-Domain-Services
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
       when: dc_check.output[0] | int == 0
 
-    - name: Promote to replica DC
+    - name: Promote alpine replica DC (if not already a DC)
       microsoft.ad.domain_controller:
         dns_domain_name: alpine.lab
         domain_admin_user: ALPINE\Administrator
@@ -159,57 +203,168 @@
         reboot: yes
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for alpine replica to come back online (WinRM)
       wait_for_connection:
-        timeout: 600
-        delay: 30
+        timeout: 1800
+        delay: 15
       when: dc_check.output[0] | int == 0
 
-- name: Promote mauna.alpine.lab Child Domain PDC
+    - name: Verify alpine replica responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try {
+            Get-ADDomainController -ErrorAction Stop
+            exit 0
+          } catch {
+            exit 1
+          }
+      register: alpine_replica_ready
+      retries: 20
+      delay: 15
+      until: alpine_replica_ready.rc == 0
+      when: dc_check.output[0] | int == 0
+
+# ---------------------------------------------------------------------
+# Child domains under alpine.lab
+# For each child PDC we first ensure the parent DC is reachable on LDAP (389)
+# and other required ports before attempting promotion.
+# Adjust parent_dc_fqdn to the actual alpine forest root DC FQDN in your env.
+# ---------------------------------------------------------------------
+
+- name: Create mauna.alpine.lab Child Domain PDC
   hosts: mauna_child_pdc
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
+    parent_dc_fqdn: "GRANITE-DC.alpine.lab"     # change if your alpine root DC FQDN differs
   tasks:
-    - name: Install AD-Domain-Services
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.output[0] | int == 0
 
-    - name: Promote to child domain PDC
+    - name: Wait until parent DC is reachable (LDAP/RPC) before child promotion
+      ansible.windows.win_powershell:
+        script: |
+          $Parent = "{{ parent_dc_fqdn }}"
+          $MaxRetries = 60
+          $Delay = 15
+          $Success = $false
+
+          for ($i = 1; $i -le $MaxRetries; $i++) {
+            Write-Host "Attempt $i: testing $Parent ports 389 (LDAP) and 445 (SMB/RPC)..."
+            $ldap = Test-NetConnection -ComputerName $Parent -Port 389 -WarningAction SilentlyContinue
+            $smb  = Test-NetConnection -ComputerName $Parent -Port 445 -WarningAction SilentlyContinue
+            if ($ldap.TcpTestSucceeded -and $smb.TcpTestSucceeded) {
+              Write-Host "Parent DC reachable on required ports."
+              $Success = $true
+              break
+            }
+            Start-Sleep -Seconds $Delay
+          }
+
+          if (-not $Success) {
+            Write-Error "Parent DC $Parent not reachable on required ports after $($MaxRetries*$Delay) seconds."
+            exit 1
+          } else { exit 0 }
+      register: parent_reach
+      failed_when: parent_reach.rc != 0
+      when: dc_check.output[0] | int == 0
+
+    - name: Promote to mauna child domain PDC (if not already a DC)
       microsoft.ad.domain_controller:
         dns_domain_name: mauna.alpine.lab
         domain_admin_user: ALPINE\Administrator
         domain_admin_password: "{{ windows_password }}"
         safe_mode_password: "{{ windows_password }}"
+        parent_domain_name: alpine.lab
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when:
+        - dc_check.output[0] | int == 0
+        - parent_reach.rc == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for mauna PDC to come back online (WinRM)
       wait_for_connection:
-        timeout: 900
-        delay: 60
+        timeout: 1800
+        delay: 15
+      when: dc_check.output[0] | int == 0
+
+    - name: Verify mauna PDC responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try { Get-ADDomainController -ErrorAction Stop; exit 0 } catch { exit 1 }
+      register: mauna_ready
+      retries: 20
+      delay: 15
+      until: mauna_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
 - name: Promote mauna.alpine.lab Child Domain Replica DC
   hosts: mauna_child_replica
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
+    parent_dc_fqdn: "GRANITE-DC.alpine.lab"
   tasks:
-    - name: Install AD-Domain-Services
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.output[0] | int == 0
 
-    - name: Promote to child domain replica
+    - name: Wait until parent DC is reachable (LDAP/RPC) before replica promotion
+      ansible.windows.win_powershell:
+        script: |
+          $Parent = "{{ parent_dc_fqdn }}"
+          $MaxRetries = 60
+          $Delay = 15
+          $Success = $false
+
+          for ($i = 1; $i -le $MaxRetries; $i++) {
+            Write-Host "Attempt $i: testing $Parent ports 389 (LDAP) and 445 (SMB/RPC)..."
+            $ldap = Test-NetConnection -ComputerName $Parent -Port 389 -WarningAction SilentlyContinue
+            $smb  = Test-NetConnection -ComputerName $Parent -Port 445 -WarningAction SilentlyContinue
+            if ($ldap.TcpTestSucceeded -and $smb.TcpTestSucceeded) {
+              Write-Host "Parent DC reachable on required ports."
+              $Success = $true
+              break
+            }
+            Start-Sleep -Seconds $Delay
+          }
+
+          if (-not $Success) {
+            Write-Error "Parent DC $Parent not reachable on required ports after $($MaxRetries*$Delay) seconds."
+            exit 1
+          } else { exit 0 }
+      register: parent_reach
+      failed_when: parent_reach.rc != 0
+      when: dc_check.output[0] | int == 0
+
+    - name: Promote to mauna replica DC (if not already a DC)
       microsoft.ad.domain_controller:
         dns_domain_name: mauna.alpine.lab
         domain_admin_user: ALPINE\Administrator
@@ -219,68 +374,157 @@
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when:
+        - dc_check.output[0] | int == 0
+        - parent_reach.rc == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for mauna replica to come back online (WinRM)
       wait_for_connection:
-        timeout: 900
-        delay: 60
+        timeout: 1800
+        delay: 15
+      when: dc_check.output[0] | int == 0
 
-- name: Promote rainier.alpine.lab Child Domain PDC
+    - name: Verify mauna replica responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try { Get-ADDomainController -ErrorAction Stop; exit 0 } catch { exit 1 }
+      register: mauna_replica_ready
+      retries: 20
+      delay: 15
+      until: mauna_replica_ready.rc == 0
+      when: dc_check.output[0] | int == 0
+
+# ---------------------------------------------------------------------
+# rainier child domain (same pattern)
+# ---------------------------------------------------------------------
+- name: Create rainier.alpine.lab Child Domain PDC
   hosts: rainier_child_pdc
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
+    parent_dc_fqdn: "GRANITE-DC.alpine.lab"
   tasks:
-    - name: Install AD-Domain-Services
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.output[0] | int == 0
 
-    - name: Promote to child domain PDC
+    - name: Wait until parent DC is reachable (LDAP/RPC) before child promotion
+      ansible.windows.win_powershell:
+        script: |
+          $Parent = "{{ parent_dc_fqdn }}"
+          $MaxRetries = 60
+          $Delay = 15
+          $Success = $false
+
+          for ($i = 1; $i -le $MaxRetries; $i++) {
+            Write-Host "Attempt $i: testing $Parent ports 389 (LDAP) and 445 (SMB/RPC)..."
+            $ldap = Test-NetConnection -ComputerName $Parent -Port 389 -WarningAction SilentlyContinue
+            $smb  = Test-NetConnection -ComputerName $Parent -Port 445 -WarningAction SilentlyContinue
+            if ($ldap.TcpTestSucceeded -and $smb.TcpTestSucceeded) {
+              Write-Host "Parent DC reachable on required ports."
+              $Success = $true
+              break
+            }
+            Start-Sleep -Seconds $Delay
+          }
+
+          if (-not $Success) {
+            Write-Error "Parent DC $Parent not reachable on required ports after $($MaxRetries*$Delay) seconds."
+            exit 1
+          } else { exit 0 }
+      register: parent_reach
+      failed_when: parent_reach.rc != 0
+      when: dc_check.output[0] | int == 0
+
+    - name: Promote to rainier child domain PDC (if not already a DC)
       microsoft.ad.domain_controller:
         dns_domain_name: rainier.alpine.lab
         domain_admin_user: ALPINE\Administrator
         domain_admin_password: "{{ windows_password }}"
         safe_mode_password: "{{ windows_password }}"
+        parent_domain_name: alpine.lab
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
         state: domain_controller
         reboot: yes
+      when:
+        - dc_check.output[0] | int == 0
+        - parent_reach.rc == 0
 
-    - name: Wait for DC to come back online
+    - name: Wait for rainier PDC to come back online (WinRM)
       wait_for_connection:
-        timeout: 900
-        delay: 60
+        timeout: 1800
+        delay: 15
+      when: dc_check.output[0] | int == 0
+
+    - name: Verify rainier PDC responds as a domain controller
+      ansible.windows.win_powershell:
+        script: |
+          try { Get-ADDomainController -ErrorAction Stop; exit 0 } catch { exit 1 }
+      register: rainier_ready
+      retries: 20
+      delay: 15
+      until: rainier_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
 - name: Promote rainier.alpine.lab Child Domain Replica DC
   hosts: rainier_child_replica
   gather_facts: no
-
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
+    parent_dc_fqdn: "GRANITE-DC.alpine.lab"
   tasks:
-    - name: Install AD-Domain-Services
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $DC = Get-WmiObject Win32_ComputerSystem
+          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install AD-Domain-Services (if needed)
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
         state: present
+      when: dc_check.output[0] | int == 0
 
-    - name: Promote to child domain replica
-      microsoft.ad.domain_controller:
-        dns_domain_name: rainier.alpine.lab
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
+    - name: Wait until parent DC is reachable (LDAP/RPC) before replica promotion
+      ansible.windows.win_powershell:
+        script: |
+          $Parent = "{{ parent_dc_fqdn }}"
+          $MaxRetries = 60
+          $Delay = 15
+          $Success = $false
 
-    - name: Wait for DC to come back online
-      wait_for_connection:
-        timeout: 900
-        delay: 60
+          for ($i = 1; $i -le $MaxRetries; $i++) {
+            Write-Host "Attempt $i: testing $Parent ports 389 (LDAP) and 445 (SMB/RPC)..."
+            $ldap = Test-NetConnection -ComputerName $Parent -Port 389 -WarningAction SilentlyContinue
+            $smb  = Test-NetConnection -ComputerName $Parent -Port 445 -WarningAction SilentlyContinue
+            if ($ldap.TcpTestSucceeded -and $smb.TcpTestSucceeded) {
+              Write-Host "Parent DC reachable on required ports."
+              $Success = $true
+              break
+            }
+            Start-Sleep -Seconds $Delay
+          }
+
+          if (-not $Success) {
+            Write-Error "Parent DC $Parent not reachable on required ports after $($MaxRetries*$Delay) seconds."
+            exit 1
+          } else { exit 0 }
+      register: parent_reach
+      failed
