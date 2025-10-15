@@ -48,7 +48,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 - name: Promote arbor.lab Replica DC
@@ -101,7 +101,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 # -------------------------
@@ -156,7 +156,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 - name: Promote alpine.lab Replica DC
@@ -209,7 +209,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 # -------------------------
@@ -272,7 +272,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 - name: Promote mauna.alpine.lab Replica DC
@@ -325,7 +325,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 # -------------------------
@@ -388,7 +388,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 - name: Promote rainier.alpine.lab Replica DC
@@ -441,7 +441,7 @@
       register: adws_check
       retries: 40
       delay: 15
-      until: adws_check.status == "running"
+      until: adws_check.services[0].state == "running"
       when: dc_check.output[0] | int == 0
 
 # -------------------------
