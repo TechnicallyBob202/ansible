@@ -8,11 +8,11 @@
   register: adapter_name
   changed_when: false
 
-- name: Check if IP is already configured
+- name: Check if target IP is already configured
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter | Where-Object {$_.Name -eq "{{ adapter_name.stdout | trim }}"}
     $currentIP = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4 -ErrorAction SilentlyContinue
-    if ($currentIP.IPAddress -eq "{{ ansible_host }}") {
+    if ($currentIP.IPAddress -eq "{{ target_ip }}") {
       Write-Output "CONFIGURED"
     } else {
       Write-Output "NOT_CONFIGURED"
@@ -32,7 +32,7 @@
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter | Where-Object {$_.Name -eq "{{ adapter_name.stdout | trim }}"}
     New-NetIPAddress -InterfaceAlias $adapter.Name `
-      -IPAddress "{{ ansible_host }}" `
+      -IPAddress "{{ target_ip }}" `
       -PrefixLength {{ windows_ip_prefix }} `
       -DefaultGateway {{ windows_gateway }} `
       -ErrorAction Stop
@@ -42,24 +42,6 @@
   register: ip_config
   ignore_errors: yes
 
-- name: Wait for network change to settle
-  pause:
-    seconds: 15
-  when: ip_config.changed
-
-- name: Update ansible_host to new static IP
-  set_fact:
-    ansible_host: "{{ ansible_host }}"
-  when: ip_config.changed
-
-- name: Test connectivity to new IP
-  wait_for:
-    host: "{{ ansible_host }}"
-    port: 5985
-    timeout: "{{ windows_connection_timeout }}"
-  delegate_to: localhost
-  when: ip_config.changed
-
 - name: Display IP configuration result
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured' if ip_config.changed else 'already set' }} to {{ ansible_host }}"
+    msg: "{{ inventory_hostname }} - IP {{ 'configured' if ip_config.changed else 'already set' }} to {{ target_ip }}"

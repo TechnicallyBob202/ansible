@@ -9,13 +9,17 @@
         msg: "Configuring network for {{ ansible_play_hosts | length }} VMs"
       run_once: yes
 
-# Phase 1: ALWAYS discover DHCP IPs first
+# Phase 1: Save target IPs and discover DHCP
 - name: Discover DHCP IPs
   hosts: all
   gather_facts: no
   serial: 0
 
   tasks:
+    - name: Save target static IP from inventory
+      set_fact:
+        target_ip: "{{ ansible_host }}"
+
     - name: Discover current DHCP IP from Proxmox
       include_role:
         name: windows
@@ -24,7 +28,6 @@
     - name: Update ansible_host to use DHCP IP
       set_fact:
         ansible_host: "{{ discovered_dhcp_ip }}"
-        target_static_ip: "{{ hostvars[inventory_hostname].ansible_host }}"
 
 # Phase 2: Configure static IPs
 - name: Configure Static IP Addresses
@@ -38,13 +41,17 @@
         name: windows
         tasks_from: set_static_ip.yml
 
+    - name: Wait for network change
+      pause:
+        seconds: 15
+
     - name: Update ansible_host to static IP
       set_fact:
-        ansible_host: "{{ target_static_ip }}"
+        ansible_host: "{{ target_ip }}"
 
-    - name: Wait for network changes
+    - name: Wait for static IP
       pause:
-        seconds: 20
+        seconds: 10
       run_once: yes
 
 # Phase 3: Configure DNS and Hostname
