@@ -8,13 +8,13 @@ __pycache__/
 # Fact cache
 /tmp/ansible_facts/
 
-# Sensitive files
+# Sensitive files - DO NOT COMMIT
 *.vault
 *password*
 *secret*
 .env
 
-# Generated files
+# Generated files (these get created during playbook runs)
 files/domain-sids.txt
 files/fsmo-roles.txt
 files/deployment-timestamp.txt
@@ -39,4 +39,6 @@ Thumbs.db
 
 # Logs
 *.log
-```
+
+# Local testing
+test_output/

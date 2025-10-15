@@ -18,8 +18,10 @@
       run_once: yes
 
     - name: Deploy VM (clone + configure + start)
-      include_role:
-        name: proxmox
+      block:
+        - name: Run proxmox deployment tasks
+          include_role:
+            name: proxmox
       delegate_to: localhost
 
     - name: Wait for all VMs to complete deployment
