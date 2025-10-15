@@ -9,21 +9,4 @@
   ansible.windows.win_powershell:
     script: |
       try {
-        $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-        Write-Output "EXISTS"
-        Write-Output $domain.DomainSID.Value
-      } catch {
-        Write-Output "NOT_EXISTS"
-      }
-  register: domain_check
-  failed_when: false
-  changed_when: false
-
-- name: Set {{ domain_name }} domain facts
-  set_fact:
-    domain_exists: "{{ 'EXISTS' in domain_check.output[0] if domain_check.output is defined and domain_check.output | length > 0 else false }}"
-    domain_sid: "{{ domain_check.output[1] if domain_check.output is defined and domain_check.output | length > 1 else '' }}"
-
-- name: Display {{ domain_name }} domain status
-  debug:
-    msg: "{{ domain_name }} domain {{ 'already exists (SID: ' + domain_sid + ')' if domain_exists else 'does not exist - will create' }}"
+        $domain = Get-

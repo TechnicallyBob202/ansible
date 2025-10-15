@@ -46,14 +46,14 @@
       ansible.windows.win_powershell:
         script: |
           $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-
+          
           # Get self IP
           $selfIP = (Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).IPAddress
-
+          
           # Build DNS server list based on domain
           $domain = (Get-ADDomain).DNSRoot
           $dnsServers = @($selfIP)  # Self first
-
+          
           switch ($domain) {
             "arbor.lab" {
               $allDCs = @("192.168.35.20", "192.168.35.21")
@@ -76,10 +76,10 @@
               $dnsServers += @("192.168.35.30", "192.168.35.31")
             }
           }
-
+          
           # Set DNS servers
           Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses $dnsServers
-
+          
           # Verify
           $configured = (Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses
           Write-Output "Configured DNS servers: $($configured -join ', ')"
@@ -94,7 +94,7 @@
       ansible.windows.win_powershell:
         script: |
           $results = @()
-
+          
           # Test arbor.lab
           try {
             $resolve = Resolve-DnsName "arbor.lab" -Type SOA -ErrorAction Stop
@@ -102,7 +102,7 @@
           } catch {
             $results += "✗ arbor.lab failed"
           }
-
+          
           # Test alpine.lab
           try {
             $resolve = Resolve-DnsName "alpine.lab" -Type SOA -ErrorAction Stop
@@ -110,7 +110,7 @@
           } catch {
             $results += "✗ alpine.lab failed"
           }
-
+          
           # Test child domains
           try {
             $resolve = Resolve-DnsName "mauna.alpine.lab" -Type SOA -ErrorAction Stop
@@ -118,14 +118,14 @@
           } catch {
             $results += "✗ mauna.alpine.lab failed"
           }
-
+          
           try {
             $resolve = Resolve-DnsName "rainier.alpine.lab" -Type SOA -ErrorAction Stop
             $results += "✓ rainier.alpine.lab resolves"
           } catch {
             $results += "✗ rainier.alpine.lab failed"
           }
-
+          
           $results | ForEach-Object { Write-Output $_ }
       register: dns_test_result
       failed_when: false
