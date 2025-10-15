@@ -1,312 +1,216 @@
 ---
-# ==========================================
-# ADD REPLICA DC TO ARBOR.LAB
-# Promotes OAK-DC as replica domain controller in arbor.lab
-# ==========================================
-# Prerequisites: 4b-build-arbor-forest-root.yml completed
-# Dependencies: arbor.lab forest must exist
-# Can be run: After forest root is built
-# Idempotent: Yes - checks if already promoted
-# ==========================================
-
-- name: Verify arbor.lab forest exists
-  hosts: localhost
+- name: Build mauna.alpine.lab Child Domain
+  hosts: mauna_child_pdc
   gather_facts: no
-
-  tasks:
-    - name: Check for arbor.lab forest status file
-      stat:
-        path: "{{ playbook_dir }}/../state/arbor-forest-status.yml"
-      register: status_file
-
-    - name: Fail if forest not built
-      fail:
-        msg: |
-          arbor.lab forest has not been built yet.
-          Please run: ansible-playbook 4b-build-arbor-forest-root.yml
-      when: not status_file.stat.exists
-
-    - name: Load forest status
-      include_vars:
-        file: "{{ playbook_dir }}/../state/arbor-forest-status.yml"
-        name: arbor_status
-      when: status_file.stat.exists
-
-    - name: Display forest status
-      debug:
-        msg:
-          - "=========================================="
-          - "ADDING REPLICA DC TO ARBOR.LAB"
-          - "=========================================="
-          - "Target: OAK-DC (192.168.35.21)"
-          - "Existing PDC: {{ arbor_status.forest_root_pdc }}"
-          - "Domain: {{ arbor_status.domain_name }}"
-
-- name: Check if OAK-DC is already a domain controller
-  hosts: arbor_forest_root_replica
-  gather_facts: no
-  
   vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
 
   tasks:
-    - name: Check current domain role
+    - name: Check if domain already exists
       ansible.windows.win_powershell:
         script: |
-          $CS = Get-WmiObject Win32_ComputerSystem
-          Write-Output "ComputerName: $($CS.Name)"
-          Write-Output "Domain: $($CS.Domain)"
-          Write-Output "DomainRole: $($CS.DomainRole)"
-          Write-Output "PartOfDomain: $($CS.PartOfDomain)"
-          
-          # DomainRole values:
-          # 0 = Standalone Workstation
-          # 1 = Member Workstation
-          # 2 = Standalone Server
-          # 3 = Member Server
-          # 4 = Backup Domain Controller
-          # 5 = Primary Domain Controller
-          
-          if ($CS.DomainRole -ge 4) {
-            Write-Output "STATUS: Already a Domain Controller"
-            exit 0
-          } else {
-            Write-Output "STATUS: Not a Domain Controller"
-            exit 1
+          try {
+            $domain = Get-ADDomain -Identity "mauna.alpine.lab" -ErrorAction Stop
+            Write-Output "EXISTS"
+            Write-Output $domain.DomainSID.Value
+          } catch {
+            Write-Output "NOT_EXISTS"
           }
-      register: dc_status
+      register: domain_check
       failed_when: false
       changed_when: false
 
-    - name: Set replica status fact
+    - name: Set domain status facts
       set_fact:
-        already_dc: "{{ dc_status.rc == 0 }}"
-        current_domain: "{{ dc_status.stdout_lines | select('search', 'Domain:') | first | regex_replace('Domain: ', '') if dc_status.stdout_lines else 'WORKGROUP' }}"
+        mauna_domain_exists: "{{ 'EXISTS' in domain_check.output[0] if domain_check.output is defined and domain_check.output | length > 0 else false }}"
+        mauna_domain_sid: "{{ domain_check.output[1] if domain_check.output is defined and domain_check.output | length > 1 else '' }}"
+      delegate_to: localhost
+      delegate_facts: yes
 
-    - name: Display current status
+    - name: Display domain status
       debug:
-        msg:
-          - "Current Status:"
-          - "{{ dc_status.stdout_lines }}"
-          - ""
-          - "{{ 'Already promoted - skipping' if already_dc else 'Ready to promote' }}"
+        msg: "mauna.alpine.lab domain {{ 'already exists' if hostvars['localhost']['mauna_domain_exists'] else 'does not exist - will create' }}"
 
-    - name: Skip if already a DC
-      meta: end_host
-      when: already_dc
-
-- name: Promote OAK-DC to replica domain controller
-  hosts: arbor_forest_root_replica
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Install Active Directory Domain Services
+    - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-        state: present
-      register: adds_install
+      when: not hostvars['localhost']['mauna_domain_exists']
+      register: ad_install
 
-    - name: Display installation result
-      debug:
-        msg: "AD-DS feature: {{ 'Installed' if adds_install.changed else 'Already present' }}"
-
-    - name: Test connectivity to existing PDC
+    - name: Promote to child domain PDC
       ansible.windows.win_powershell:
         script: |
-          $pdc = "192.168.35.20"
-          $result = Test-NetConnection -ComputerName $pdc -Port 389 -InformationLevel Quiet
-          if ($result) {
-            Write-Output "PDC_REACHABLE"
-            exit 0
+          $ErrorActionPreference = "Stop"
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
+
+          Install-ADDSDomain `
+            -NewDomainName "mauna" `
+            -ParentDomainName "alpine.lab" `
+            -DomainType "ChildDomain" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -CreateDnsDelegation `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+
+          Write-Output "Domain creation initiated"
+      when: not hostvars['localhost']['mauna_domain_exists']
+      async: 1200
+      poll: 0
+      register: domain_promotion
+
+    - name: Wait for promotion to complete
+      async_status:
+        jid: "{{ domain_promotion.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 40
+      delay: 30
+      when:
+        - not hostvars['localhost']['mauna_domain_exists']
+        - domain_promotion.ansible_job_id is defined
+
+    - name: Wait for PDC to come back after reboot
+      wait_for_connection:
+        timeout: 900
+        delay: 60
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Verify domain promotion
+      ansible.windows.win_powershell:
+        script: |
+          Start-Sleep -Seconds 30
+          $domain = Get-ADDomain -Identity "mauna.alpine.lab"
+          Write-Output "Domain: $($domain.DNSRoot)"
+          Write-Output "NetBIOS: $($domain.NetBIOSName)"
+          Write-Output "SID: $($domain.DomainSID.Value)"
+          Write-Output "Parent: $($domain.ParentDomain)"
+      register: verify_domain
+      when: not hostvars['localhost']['mauna_domain_exists']
+      retries: 5
+      delay: 30
+      until: verify_domain is succeeded
+
+    - name: Display verification results
+      debug:
+        msg: "{{ verify_domain.output }}"
+      when:
+        - not hostvars['localhost']['mauna_domain_exists']
+        - verify_domain.output is defined
+
+    - name: Get domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "mauna.alpine.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
+      when: not hostvars['localhost']['mauna_domain_exists']
+
+    - name: Update domain SID fact
+      set_fact:
+        mauna_domain_sid: "{{ new_domain_sid.output[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when:
+        - not hostvars['localhost']['mauna_domain_exists']
+        - new_domain_sid.output is defined
+        - new_domain_sid.output | length > 0
+
+- name: Add mauna.alpine.lab Replica DC
+  hosts: mauna_child_replica
+  gather_facts: no
+  vars:
+    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Check if already a DC
+      ansible.windows.win_powershell:
+        script: |
+          $CS = Get-WmiObject Win32_ComputerSystem
+          if ($CS.DomainRole -ge 4) {
+            Write-Output "IS_DC"
           } else {
-            Write-Output "PDC_UNREACHABLE"
-            exit 1
+            Write-Output "NOT_DC"
           }
-      register: pdc_test
+      register: dc_check
+      failed_when: false
+      changed_when: false
 
-    - name: Fail if PDC is unreachable
-      fail:
-        msg: "Cannot reach forest root PDC at 192.168.35.20. Verify KOA-DC is online."
-      when: pdc_test.rc != 0
+    - name: Set DC status
+      set_fact:
+        is_already_dc: "{{ 'IS_DC' in dc_check.output[0] if dc_check.output is defined and dc_check.output | length > 0 else false }}"
 
-    - name: Promote to replica domain controller
+    - name: Display DC status
+      debug:
+        msg: "{{ inventory_hostname }} {{ 'is already a DC' if is_already_dc else 'is not a DC - will promote' }}"
+
+    - name: Install AD-Domain-Services
+      ansible.windows.win_feature:
+        name: AD-Domain-Services
+        include_management_tools: yes
+      when: not is_already_dc
+      register: ad_install
+
+    - name: Promote to replica DC
       microsoft.ad.domain_controller:
-        dns_domain_name: arbor.lab
-        domain_admin_user: "ARBOR\\Administrator"
+        dns_domain_name: mauna.alpine.lab
+        domain_admin_user: ALPINE\Administrator
         domain_admin_password: "{{ windows_password }}"
         safe_mode_password: "{{ windows_password }}"
         database_path: C:\Windows\NTDS
         sysvol_path: C:\Windows\SYSVOL
-        log_path: C:\Windows\NTDS
         state: domain_controller
         reboot: yes
+      when: not is_already_dc
       register: dc_promotion
 
-    - name: Display promotion status
-      debug:
-        msg: "Replica DC promotion initiated. Server will reboot..."
-      when: dc_promotion.changed
-
-- name: Wait for replica DC to come online
-  hosts: arbor_forest_root_replica
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Wait for DC to reboot
+    - name: Wait for replica to come back after reboot
       wait_for_connection:
         timeout: 600
         delay: 30
+      when: not is_already_dc
 
-    - name: Wait for AD services to start
-      pause:
-        seconds: 60
-
-    - name: Test WinRM connectivity
-      ansible.windows.win_ping:
-      register: ping_result
-      retries: 5
-      delay: 10
-      until: ping_result is succeeded
-
-- name: Verify replica DC and test replication
-  hosts: arbor_forest_root_replica
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Verify DC is operational
+    - name: Verify DC promotion
       ansible.windows.win_powershell:
         script: |
-          try {
-            $dc = Get-ADDomainController -Identity $env:COMPUTERNAME -ErrorAction Stop
-            Write-Output "SUCCESS"
-            Write-Output "Hostname: $($dc.HostName)"
-            Write-Output "Site: $($dc.Site)"
-            Write-Output "IsGlobalCatalog: $($dc.IsGlobalCatalog)"
-            Write-Output "IsReadOnly: $($dc.IsReadOnly)"
-            Write-Output "OperatingSystem: $($dc.OperatingSystem)"
-            exit 0
-          } catch {
-            Write-Output "FAILED: $($_.Exception.Message)"
-            exit 1
-          }
-      register: dc_verify
-      retries: 3
-      delay: 30
-      until: dc_verify.rc == 0
+          $CS = Get-WmiObject Win32_ComputerSystem
+          Write-Output "Hostname: $($CS.Name)"
+          Write-Output "Domain: $($CS.Domain)"
+          Write-Output "Role: $($CS.DomainRole)"
 
-    - name: Display DC information
+          $DC = Get-ADDomainController -Identity $env:COMPUTERNAME
+          Write-Output "Site: $($DC.Site)"
+          Write-Output "IsGC: $($DC.IsGlobalCatalog)"
+      register: verify_dc
+      when: not is_already_dc
+
+    - name: Display verification results
       debug:
-        msg:
-          - "{{ dc_verify.stdout_lines }}"
+        msg: "{{ verify_dc.output }}"
+      when:
+        - not is_already_dc
+        - verify_dc.output is defined
 
-    - name: Test replication with PDC
-      ansible.windows.win_powershell:
-        script: |
-          try {
-            # Get replication partners
-            $partners = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -ErrorAction Stop
-            
-            Write-Output "Replication Partners:"
-            foreach ($partner in $partners) {
-              Write-Output "  Partner: $($partner.Partner)"
-              Write-Output "  LastSuccess: $($partner.LastReplicationSuccess)"
-              Write-Output "  ConsecutiveFailures: $($partner.ConsecutiveReplicationFailures)"
-            }
-            
-            # Force replication
-            Write-Output ""
-            Write-Output "Forcing replication sync..."
-            repadmin /syncall /AdeP
-            
-            exit 0
-          } catch {
-            Write-Output "REPLICATION_CHECK_FAILED: $($_.Exception.Message)"
-            exit 1
-          }
-      register: replication_test
-
-    - name: Display replication status
-      debug:
-        msg:
-          - "Replication Status:"
-          - "{{ replication_test.stdout_lines }}"
-
-    - name: Verify replication is healthy
-      ansible.windows.win_powershell:
-        script: |
-          $failures = Get-ADReplicationFailure -Target $env:COMPUTERNAME -ErrorAction SilentlyContinue
-          if ($failures) {
-            Write-Output "REPLICATION_FAILURES_DETECTED"
-            $failures | Format-List
-            exit 1
-          } else {
-            Write-Output "REPLICATION_HEALTHY"
-            exit 0
-          }
-      register: replication_health
-
-    - name: Display replication health
-      debug:
-        msg: "Replication Health: {{ 'HEALTHY' if replication_health.rc == 0 else 'HAS FAILURES' }}"
-
-- name: Update state files
+- name: Save mauna.alpine.lab Domain SID
   hosts: localhost
   gather_facts: yes
-
   tasks:
-    - name: Update arbor.lab forest status
+    - name: Create domain SIDs file
       copy:
         content: |
-          # arbor.lab Forest Information
+          # mauna.alpine.lab Domain SID
           # Generated: {{ ansible_date_time.iso8601 }}
-          
-          domain_built: yes
-          forest_root_pdc: KOA-DC
-          forest_root_pdc_ip: 192.168.35.20
-          replica_dc: OAK-DC
-          replica_dc_ip: 192.168.35.21
-          replica_added: yes
-          domain_name: arbor.lab
-          domain_netbios: ARBOR
-          
-          domain_controllers:
-            - name: KOA-DC
-              ip: 192.168.35.20
-              role: PDC
-            - name: OAK-DC
-              ip: 192.168.35.21
-              role: Replica
-          
-          replication_status: healthy
-          last_verified: {{ ansible_date_time.iso8601 }}
-          
-          next_steps:
-            - Configure AD Sites and Services
-            - Create service accounts
-        dest: "{{ playbook_dir }}/../state/arbor-forest-status.yml"
-        mode: '0644'
 
-    - name: Display completion summary
+          mauna.alpine.lab={{ hostvars['localhost']['mauna_domain_sid'] }}
+        dest: "{{ playbook_dir }}/../files/mauna-domain-sid.txt"
+      when: hostvars['localhost']['mauna_domain_sid'] is defined
+
+    - name: Display completion
       debug:
-        msg:
-          - "=========================================="
-          - "✅ REPLICA DC ADDED TO ARBOR.LAB"
-          - "=========================================="
-          - "Forest: arbor.lab"
-          - "PDC: KOA-DC (192.168.35.20)"
-          - "Replica: OAK-DC (192.168.35.21)"
-          - "Status: Operational"
-          - "Replication: Healthy"
-          - ""
-          - "arbor.lab forest is now complete!"
-          - "=========================================="
+        msg: "mauna.alpine.lab child domain build complete. Domain SID: {{ hostvars['localhost']['mauna_domain_sid'] }}"

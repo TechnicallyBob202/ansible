@@ -1,69 +1,20 @@
 ---
-# ==========================================
-# BUILD RAINIER.ALPINE.LAB CHILD DOMAIN
-# Creates rainier.alpine.lab child domain and promotes MARBLE-DC as PDC
-# ==========================================
-# Prerequisites: 4c-build-alpine-forest-root.yml completed
-# Dependencies: alpine.lab forest must exist
-# Can be run: After alpine.lab forest root is operational
-# Idempotent: Yes - checks if domain exists before building
-# ==========================================
-
-- name: Verify alpine.lab forest exists
-  hosts: localhost
-  gather_facts: no
-
-  tasks:
-    - name: Check for alpine.lab forest status file
-      stat:
-        path: "{{ playbook_dir }}/../state/alpine-forest-status.yml"
-      register: status_file
-
-    - name: Fail if forest not built
-      fail:
-        msg: |
-          alpine.lab forest has not been built yet.
-          Please run: ansible-playbook 4c-build-alpine-forest-root.yml
-      when: not status_file.stat.exists
-
-    - name: Load forest status
-      include_vars:
-        file: "{{ playbook_dir }}/../state/alpine-forest-status.yml"
-        name: alpine_status
-      when: status_file.stat.exists
-
-    - name: Display parent forest status
-      debug:
-        msg:
-          - "=========================================="
-          - "BUILDING RAINIER.ALPINE.LAB CHILD DOMAIN"
-          - "=========================================="
-          - "Parent Forest: {{ alpine_status.domain_name }}"
-          - "Parent PDC: {{ alpine_status.forest_root_pdc }}"
-          - "Child Domain: rainier.alpine.lab"
-          - "Target PDC: MARBLE-DC (192.168.35.34)"
-
-- name: Check if rainier.alpine.lab domain already exists
+- name: Build rainier.alpine.lab Child Domain PDC
   hosts: rainier_child_pdc
   gather_facts: no
-  
   vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+    windows_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
 
   tasks:
-    - name: Check if child domain already exists
+    - name: Check if domain already exists
       ansible.windows.win_powershell:
         script: |
           try {
             $domain = Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
-            Write-Output "Domain: $($domain.DNSRoot)"
-            Write-Output "SID: $($domain.DomainSID.Value)"
-            Write-Output "NetBIOS: $($domain.NetBIOSName)"
-            Write-Output "ParentDomain: $($domain.ParentDomain)"
-            exit 0
+            Write-Output "EXISTS"
+            Write-Output $domain.DomainSID.Value
           } catch {
-            Write-Output "DOMAIN_NOT_FOUND"
-            exit 1
+            Write-Output "NOT_EXISTS"
           }
       register: domain_check
       failed_when: false
@@ -71,307 +22,120 @@
 
     - name: Set domain status facts
       set_fact:
-        rainier_domain_exists: "{{ domain_check.rc == 0 }}"
-        rainier_domain_info: "{{ domain_check.stdout_lines if domain_check.rc == 0 else [] }}"
+        rainier_domain_exists: "{{ 'EXISTS' in domain_check.output[0] if domain_check.output is defined and domain_check.output | length > 0 else false }}"
+        rainier_domain_sid: "{{ domain_check.output[1] if domain_check.output is defined and domain_check.output | length > 1 else '' }}"
       delegate_to: localhost
       delegate_facts: yes
 
-    - name: Display existing domain info
+    - name: Display domain status
       debug:
-        msg:
-          - "Child domain already exists!"
-          - "{{ domain_check.stdout_lines }}"
-      when: domain_check.rc == 0
+        msg: "rainier.alpine.lab domain {{ 'already exists' if hostvars['localhost']['rainier_domain_exists'] else 'does not exist - will create' }}"
 
-    - name: Skip build if domain exists
-      meta: end_host
-      when: domain_check.rc == 0
-
-- name: Build rainier.alpine.lab child domain
-  hosts: rainier_child_pdc
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Verify we should proceed
-      debug:
-        msg: "Child domain does not exist. Proceeding with build..."
-      when: not hostvars['localhost']['rainier_domain_exists']
-
-    - name: Test connectivity to parent domain PDC
-      ansible.windows.win_powershell:
-        script: |
-          $parentPDC = "192.168.35.30"
-          $result = Test-NetConnection -ComputerName $parentPDC -Port 389 -InformationLevel Quiet
-          if ($result) {
-            Write-Output "PARENT_PDC_REACHABLE"
-            exit 0
-          } else {
-            Write-Output "PARENT_PDC_UNREACHABLE"
-            exit 1
-          }
-      register: parent_test
-      when: not hostvars['localhost']['rainier_domain_exists']
-
-    - name: Fail if parent PDC unreachable
-      fail:
-        msg: "Cannot reach alpine.lab PDC at 192.168.35.30. Verify GRANITE-DC is online."
-      when: 
-        - not hostvars['localhost']['rainier_domain_exists']
-        - parent_test.rc != 0
-
-    - name: Install Active Directory Domain Services
+    - name: Install AD-Domain-Services
       ansible.windows.win_feature:
         name: AD-Domain-Services
         include_management_tools: yes
-        state: present
-      register: adds_install
       when: not hostvars['localhost']['rainier_domain_exists']
-
-    - name: Display installation result
-      debug:
-        msg: "AD-DS installed: {{ 'Success' if adds_install.changed else 'Already installed' }}"
-      when: not hostvars['localhost']['rainier_domain_exists']
+      register: ad_install
 
     - name: Promote to child domain PDC
       ansible.windows.win_powershell:
         script: |
           $ErrorActionPreference = "Stop"
-          
-          try {
-            $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
-            $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
-            
-            Write-Output "Starting child domain promotion..."
-            Write-Output "New Domain Name: rainier"
-            Write-Output "Parent Domain: alpine.lab"
-            Write-Output "Full FQDN: rainier.alpine.lab"
-            
-            Install-ADDSDomain `
-              -NewDomainName "rainier" `
-              -ParentDomainName "alpine.lab" `
-              -DomainType "ChildDomain" `
-              -SafeModeAdministratorPassword $SecurePassword `
-              -Credential $ParentCred `
-              -InstallDNS:$true `
-              -CreateDnsDelegation:$true `
-              -DatabasePath "C:\Windows\NTDS" `
-              -SysvolPath "C:\Windows\SYSVOL" `
-              -LogPath "C:\Windows\NTDS" `
-              -Force:$true `
-              -NoRebootOnCompletion:$false
-            
-            Write-Output "Child domain promotion initiated successfully"
-            exit 0
-          } catch {
-            Write-Output "ERROR: $($_.Exception.Message)"
-            exit 1
-          }
-      register: domain_promotion
-      async: 1200
-      poll: 30
+          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
+
+          Install-ADDSDomain `
+            -NewDomainName "rainier" `
+            -ParentDomainName "alpine.lab" `
+            -DomainType "ChildDomain" `
+            -SafeModeAdministratorPassword $SecurePassword `
+            -Credential $ParentCred `
+            -InstallDNS `
+            -CreateDnsDelegation `
+            -DatabasePath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -LogPath "C:\Windows\NTDS" `
+            -Force `
+            -NoRebootOnCompletion:$false
+
+          Write-Output "Domain creation initiated"
       when: not hostvars['localhost']['rainier_domain_exists']
+      async: 1200
+      poll: 0
+      register: domain_promotion
 
-    - name: Display promotion status
-      debug:
-        msg: "Child domain promotion initiated. Server will reboot..."
-      when: 
+    - name: Wait for promotion to complete
+      async_status:
+        jid: "{{ domain_promotion.ansible_job_id }}"
+      register: job_result
+      until: job_result.finished
+      retries: 40
+      delay: 30
+      when:
         - not hostvars['localhost']['rainier_domain_exists']
-        - domain_promotion.changed
+        - domain_promotion.ansible_job_id is defined
 
-- name: Wait for child domain PDC to come online
-  hosts: rainier_child_pdc
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Wait for DC to reboot (this may take longer for child domains)
+    - name: Wait for PDC to come back after reboot
       wait_for_connection:
         timeout: 900
         delay: 60
       when: not hostvars['localhost']['rainier_domain_exists']
 
-    - name: Wait additional time for AD services to start
-      pause:
-        seconds: 90
+    - name: Verify domain promotion
+      ansible.windows.win_powershell:
+        script: |
+          Start-Sleep -Seconds 30
+          $domain = Get-ADDomain -Identity "rainier.alpine.lab"
+          Write-Output "Domain: $($domain.DNSRoot)"
+          Write-Output "NetBIOS: $($domain.NetBIOSName)"
+          Write-Output "SID: $($domain.DomainSID.Value)"
+          Write-Output "Parent: $($domain.ParentDomain)"
+      register: verify_domain
       when: not hostvars['localhost']['rainier_domain_exists']
-
-    - name: Test WinRM connectivity
-      ansible.windows.win_ping:
-      register: ping_result
       retries: 5
-      delay: 15
-      until: ping_result is succeeded
+      delay: 30
+      until: verify_domain is succeeded
+
+    - name: Display verification results
+      debug:
+        msg: "{{ verify_domain.output }}"
+      when:
+        - not hostvars['localhost']['rainier_domain_exists']
+        - verify_domain.output is defined
+
+    - name: Get domain SID after creation
+      ansible.windows.win_powershell:
+        script: |
+          $domain = Get-ADDomain -Identity "rainier.alpine.lab"
+          Write-Output $domain.DomainSID.Value
+      register: new_domain_sid
       when: not hostvars['localhost']['rainier_domain_exists']
 
-- name: Verify child domain build and gather info
-  hosts: rainier_child_pdc
-  gather_facts: no
-  
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-  tasks:
-    - name: Verify child domain is operational
-      ansible.windows.win_powershell:
-        script: |
-          try {
-            $domain = Get-ADDomain -Identity "rainier.alpine.lab" -ErrorAction Stop
-            Write-Output "SUCCESS"
-            Write-Output "Domain: $($domain.DNSRoot)"
-            Write-Output "SID: $($domain.DomainSID.Value)"
-            Write-Output "NetBIOS: $($domain.NetBIOSName)"
-            Write-Output "DomainMode: $($domain.DomainMode)"
-            Write-Output "ParentDomain: $($domain.ParentDomain)"
-            Write-Output "Forest: $($domain.Forest)"
-            Write-Output "PDC: $($domain.PDCEmulator)"
-            exit 0
-          } catch {
-            Write-Output "FAILED"
-            Write-Output $_.Exception.Message
-            exit 1
-          }
-      register: domain_verify
-      retries: 3
-      delay: 30
-      until: domain_verify.rc == 0
-
-    - name: Extract domain SID
+    - name: Update domain SID fact
       set_fact:
-        rainier_domain_sid: "{{ domain_verify.stdout_lines | select('search', 'SID:') | first | regex_replace('SID: ', '') }}"
+        rainier_domain_sid: "{{ new_domain_sid.output[0] }}"
+      delegate_to: localhost
+      delegate_facts: yes
+      when:
+        - not hostvars['localhost']['rainier_domain_exists']
+        - new_domain_sid.output is defined
+        - new_domain_sid.output | length > 0
 
-    - name: Display child domain information
-      debug:
-        msg:
-          - "=========================================="
-          - "✅ RAINIER.ALPINE.LAB CHILD DOMAIN COMPLETE"
-          - "=========================================="
-          - "{{ domain_verify.stdout_lines }}"
-          - "=========================================="
-
-    - name: Verify trust with parent domain
-      ansible.windows.win_powershell:
-        script: |
-          try {
-            $trust = Get-ADTrust -Filter {Name -eq "alpine.lab"} -ErrorAction Stop
-            Write-Output "Trust Status:"
-            Write-Output "  Target: $($trust.Target)"
-            Write-Output "  Direction: $($trust.Direction)"
-            Write-Output "  TrustType: $($trust.TrustType)"
-            Write-Output "  IntraForest: $($trust.IntraForest)"
-            exit 0
-          } catch {
-            Write-Output "Trust verification failed: $($_.Exception.Message)"
-            exit 1
-          }
-      register: trust_verify
-
-    - name: Display trust information
-      debug:
-        msg:
-          - "Parent Trust Verification:"
-          - "{{ trust_verify.stdout_lines }}"
-
-    - name: Test cross-domain authentication
-      ansible.windows.win_powershell:
-        script: |
-          try {
-            # Try to query parent domain
-            $parentDomain = Get-ADDomain -Identity "alpine.lab" -Server "192.168.35.30" -ErrorAction Stop
-            Write-Output "✓ Can query parent domain (alpine.lab)"
-            
-            # Try to query forest root
-            $forest = Get-ADForest -ErrorAction Stop
-            Write-Output "✓ Can query forest: $($forest.Name)"
-            
-            exit 0
-          } catch {
-            Write-Output "Cross-domain test failed: $($_.Exception.Message)"
-            exit 1
-          }
-      register: cross_domain_test
-
-    - name: Display cross-domain test results
-      debug:
-        msg:
-          - "Cross-Domain Authentication Test:"
-          - "{{ cross_domain_test.stdout_lines }}"
-
-- name: Save child domain information to state files
+- name: Save rainier.alpine.lab Domain SID
   hosts: localhost
   gather_facts: yes
-
   tasks:
-    - name: Create state directory
-      file:
-        path: "{{ playbook_dir }}/../state"
-        state: directory
-        mode: '0755'
-
-    - name: Save rainier.alpine.lab domain information
+    - name: Create domain SIDs file
       copy:
         content: |
-          # rainier.alpine.lab Child Domain Information
+          # rainier.alpine.lab Domain SID
           # Generated: {{ ansible_date_time.iso8601 }}
-          
-          domain_built: yes
-          domain_pdc: MARBLE-DC
-          domain_pdc_ip: 192.168.35.34
-          domain_name: rainier.alpine.lab
-          domain_netbios: RAINIER
-          parent_domain: alpine.lab
-          forest: alpine.lab
-          domain_sid: {{ hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] }}
-          
-          trust_status: verified
-          cross_domain_auth: working
-          
-          next_steps:
-            - Run 4h-add-rainier-replica-dc.yml to add QUARTZ-DC replica
-        dest: "{{ playbook_dir }}/../state/rainier-domain-status.yml"
-        mode: '0644'
-      when:
-        - groups['rainier_child_pdc'] is defined
-        - groups['rainier_child_pdc'] | length > 0
-        - hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] is defined
 
-    - name: Update consolidated domain SIDs file
-      lineinfile:
-        path: "{{ playbook_dir }}/../state/domain-sids.yml"
-        line: "rainier.alpine.lab: {{ hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] }}"
-        create: yes
-        mode: '0644'
-      when:
-        - groups['rainier_child_pdc'] is defined
-        - groups['rainier_child_pdc'] | length > 0
-        - hostvars[groups['rainier_child_pdc'][0]]['rainier_domain_sid'] is defined
+          rainier.alpine.lab={{ hostvars['localhost']['rainier_domain_sid'] }}
+        dest: "{{ playbook_dir }}/../files/rainier-domain-sid.txt"
+      when: hostvars['localhost']['rainier_domain_sid'] is defined
 
-    - name: Update alpine forest status
-      shell: |
-        if [ -f "{{ playbook_dir }}/../state/alpine-forest-status.yml" ]; then
-          sed -i 's/built: no/built: yes/' "{{ playbook_dir }}/../state/alpine-forest-status.yml" || true
-        fi
-      args:
-        executable: /bin/bash
-
-    - name: Display completion summary
+    - name: Display completion
       debug:
-        msg:
-          - "=========================================="
-          - "✅ RAINIER.ALPINE.LAB SUCCESSFULLY BUILT"
-          - "=========================================="
-          - "Child Domain: rainier.alpine.lab"
-          - "Parent Domain: alpine.lab"
-          - "Forest: alpine.lab"
-          - "Domain PDC: MARBLE-DC"
-          - "Status: Operational"
-          - "Trust: Verified"
-          - ""
-          - "Next Steps:"
-          - "  1. Add replica DC: ansible-playbook 4h-add-rainier-replica-dc.yml"
-          - "  2. Build other child: ansible-playbook 4g-build-rainier-child-domain.yml"
-          - "=========================================="
+        msg: "rainier.alpine.lab child domain PDC build complete. Domain SID: {{ hostvars['localhost']['rainier_domain_sid'] }}"

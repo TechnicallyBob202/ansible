@@ -65,44 +65,6 @@
         state: directory
         mode: '0755'
 
-- name: Check DNS resolution on all DCs
-  hosts:
-    - arbor_forest_root_pdc
-    - arbor_forest_root_replica
-    - alpine_forest_root_pdc
-    - alpine_forest_root_replica
-    - mauna_child_pdc
-    - mauna_child_replica
-    - rainier_child_pdc
-    - rainier_child_replica
-  gather_facts: no
-  serial: 1
-
-  tasks:
-    - name: Verify DNS servers are configured
-      ansible.windows.win_powershell:
-        script: |
-          $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-          $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-          Write-Output "Adapter: $($adapter.Name)"
-          Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
-
-          # Just check that SOME DNS is configured, don't be picky
-          if ($dns.ServerAddresses.Count -gt 0) {
-            Write-Output "STATUS: DNS configured"
-            exit 0
-          } else {
-            Write-Output "STATUS: No DNS"
-            exit 1
-          }
-      register: dns_check
-      failed_when: false
-      changed_when: false
-
-    - name: Display DNS configuration
-      debug:
-        msg: "{{ dns_check.stdout_lines | default(['DNS check failed']) }}"
-
 - name: Check for existing domain memberships
   hosts:
     - arbor_forest_root_pdc
