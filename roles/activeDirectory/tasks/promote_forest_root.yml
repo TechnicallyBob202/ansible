@@ -1,46 +1,29 @@
 ---
-# Promote server to replica domain controller in existing domain
+# Promote server to forest root domain controller (first DC in new forest)
 
-- name: Check if already a DC
+- name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Get PDC hostname for domain credentials
-  set_fact:
-    pdc_hostname: "{{ groups[group_names | select('match', '.*_pdc$') | first] | first }}"
-  when: not is_domain_controller
-
-- name: Wait for PDC to be fully operational
-  ansible.windows.win_shell: |
-    Test-ComputerSecureChannel -Server {{ pdc_hostname }} -ErrorAction Stop
-    Write-Output "OK"
-  register: pdc_test
-  retries: 20
-  delay: 30
-  until: pdc_test.rc == 0
-  failed_when: false
-  when: not is_domain_controller
-
-- name: Promote to replica DC
-  microsoft.ad.domain_controller:
+- name: Promote to forest root PDC
+  microsoft.ad.domain:
     dns_domain_name: "{{ domain_name }}"
-    domain_admin_user: "{{ netbios_name }}\\Administrator"
-    domain_admin_password: "{{ ad_safe_mode_password }}"
+    domain_netbios_name: "{{ netbios_name }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
+    create_dns_delegation: "{{ ad_create_dns_delegation }}"
+    install_dns: "{{ ad_install_dns }}"
     database_path: "{{ ad_database_path }}"
     sysvol_path: "{{ ad_sysvol_path }}"
     log_path: "{{ ad_log_path }}"
-    install_dns: "{{ ad_install_dns }}"
-    state: domain_controller
     reboot: yes
-  when: not is_domain_controller
-  register: replica_promotion
+  when: not domain_exists
+  register: forest_promotion
   # NOTE: async/poll removed - not supported with reboot=yes
 
-- name: Wait for replica to reboot and come back
+- name: Wait for forest root to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: replica_promotion.changed
+  when: forest_promotion.changed
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
@@ -50,10 +33,31 @@
   retries: 10
   delay: 30
   until: adws_service.state == 'running'
-  when: replica_promotion.changed
+  when: forest_promotion.changed
+
+- name: Get new domain SID
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: new_domain_sid
+  when: forest_promotion.changed
+
+- name: Update domain SID fact
+  set_fact:
+    domain_sid: "{{ new_domain_sid.stdout | trim }}"
+  when: forest_promotion.changed
+
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ domain_sid }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when: forest_promotion.changed
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Forest Root {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
+      - "  NetBIOS: {{ netbios_name }}"
+      - "  SID: {{ domain_sid }}"

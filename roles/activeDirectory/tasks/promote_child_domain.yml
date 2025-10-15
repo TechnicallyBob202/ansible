@@ -28,8 +28,7 @@
       -NoRebootOnCompletion:$false
   when: not domain_exists
   register: child_promotion
-  async: "{{ ad_promotion_timeout }}"
-  poll: 30
+  # NOTE: Cannot use async with PowerShell commands that trigger reboots
 
 - name: Wait for child domain DC to reboot and come back
   wait_for_connection:
