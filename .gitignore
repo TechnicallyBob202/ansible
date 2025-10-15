@@ -1,6 +1,42 @@
+# Ansible
 *.retry
-.vault_pass
+ansible.log
+.ansible/
 __pycache__/
 *.pyc
-.vscode/
+
+# Fact cache
+/tmp/ansible_facts/
+
+# Sensitive files
+*.vault
+*password*
+*secret*
+.env
+
+# Generated files
+files/domain-sids.txt
+files/fsmo-roles.txt
+files/deployment-timestamp.txt
+files/lab-summary.md
+inventory/adfr-lab-updated.yml
+
+# Temporary files
+/tmp/
+*.tmp
+*.bak
+*.swp
+*~
+
+# OS files
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Logs
+*.log
+```

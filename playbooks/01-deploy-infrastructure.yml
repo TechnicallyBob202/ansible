@@ -1,0 +1,38 @@
+---
+- name: Deploy Lab VMs from Inventory
+  hosts: all
+  gather_facts: no
+  serial: 0  # Deploy all in parallel (limited by Proxmox host)
+
+  vars:
+    proxmox_user: root@pam
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    proxmox_operation: deploy
+
+  tasks:
+    - name: Display deployment plan
+      debug:
+        msg:
+          - "Deploying {{ ansible_play_hosts | length }} VMs"
+          - "This will take approximately 10-15 minutes"
+      run_once: yes
+
+    - name: Deploy VM (clone + configure + start)
+      include_role:
+        name: proxmox
+      delegate_to: localhost
+
+    - name: Wait for all VMs to complete deployment
+      pause:
+        seconds: 30
+      run_once: yes
+
+    - name: Wait for VMs to boot
+      include_role:
+        name: windows
+        tasks_from: wait_for_boot.yml
+
+    - name: Deployment complete
+      debug:
+        msg: "All {{ ansible_play_hosts | length }} VMs deployed and booted"
+      run_once: yes

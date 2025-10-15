@@ -1,0 +1,30 @@
+---
+# Full deployment: clone + configure + start
+
+- name: Clone VM from template
+  include_tasks: clone.yml
+
+- name: Wait for clone to complete
+  pause:
+    seconds: 10
+  when: clone_result.changed
+
+- name: Configure VM network
+  include_tasks: configure_network.yml
+
+- name: Configure VM hardware
+  include_tasks: configure_hardware.yml
+
+- name: Start VM
+  include_tasks: start.yml
+
+- name: Deployment summary
+  debug:
+    msg:
+      - "VM {{ inventory_hostname }} deployment complete"
+      - "  VMID: {{ vmid }}"
+      - "  Node: {{ proxmox_node }}"
+      - "  Cores: {{ vm_cores }}"
+      - "  Memory: {{ vm_memory }} MB"
+      - "  Disk: {{ vm_disk }}"
+      - "  IP: {{ ansible_host }}"

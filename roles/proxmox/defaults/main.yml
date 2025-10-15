@@ -1,0 +1,16 @@
+---
+# Proxmox connection defaults
+proxmox_user: root@pam
+proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+proxmox_validate_certs: no
+
+# VM defaults
+proxmox_pool: "ADFR-DSP"
+proxmox_network_bridge: vmbr0
+proxmox_network_vlan: 35
+proxmox_vm_tags: "adfr-dsp"
+
+# Timing defaults
+proxmox_clone_timeout: 600
+proxmox_boot_wait_seconds: 60
+proxmox_stop_timeout: 300

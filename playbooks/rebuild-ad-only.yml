@@ -1,0 +1,19 @@
+---
+- name: Rebuild Active Directory (VMs Already Exist)
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Warning
+      debug:
+        msg:
+          - "This will rebuild AD forests on existing VMs"
+          - "VMs must already be deployed and accessible"
+          - "Press Ctrl+C to abort"
+
+    - name: Wait
+      pause:
+        seconds: 10
+
+- import_playbook: 03-build-ad-forests.yml
+- import_playbook: 04-verify-lab.yml

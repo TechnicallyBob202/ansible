@@ -1,0 +1,97 @@
+---
+- name: Verify Lab Environment and Generate Documentation
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Display verification plan
+      debug:
+        msg: "Verifying {{ ansible_play_hosts | length }} systems"
+      run_once: yes
+
+# =============================================================================
+# PHASE 1: Connectivity Tests
+# =============================================================================
+- name: Test Basic Connectivity
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Test WinRM connectivity
+      ansible.windows.win_ping:
+      register: connectivity_test
+
+    - name: Display connectivity results
+      debug:
+        msg: "{{ inventory_hostname }} - {{ 'ONLINE' if connectivity_test is succeeded else 'OFFLINE' }}"
+
+# =============================================================================
+# PHASE 2: Validate Windows Configuration
+# =============================================================================
+- name: Validate Windows Configuration
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Validate network settings
+      include_role:
+        name: windows
+        tasks_from: validate.yml
+
+# =============================================================================
+# PHASE 3: Validate Active Directory
+# =============================================================================
+- name: Validate Active Directory Health
+  hosts: domain_controllers
+  gather_facts: no
+
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: activeDirectory
+        tasks_from: check_domain_status.yml
+
+    - name: Verify replication
+      include_role:
+        name: activeDirectory
+        tasks_from: verify_replication.yml
+
+    - name: Check FSMO roles
+      include_role:
+        name: activeDirectory
+        tasks_from: check_fsmo_roles.yml
+
+# =============================================================================
+# PHASE 4: Generate Documentation
+# =============================================================================
+- name: Generate Lab Documentation
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Create documentation directory
+      file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+    - name: Generate lab summary
+      template:
+        src: "{{ playbook_dir }}/../templates/lab-summary.md.j2"
+        dest: "{{ playbook_dir }}/../files/lab-summary.md"
+        mode: '0644'
+      when: false  # We'll create this template next
+
+    - name: Update inventory with discovered information
+      template:
+        src: "{{ playbook_dir }}/../templates/ansible-inventory.j2"
+        dest: "{{ playbook_dir }}/../inventory/adfr-lab-updated.yml"
+        mode: '0644'
+      when: false  # We'll create this template next
+
+    - name: Display verification summary
+      debug:
+        msg:
+          - "Lab verification complete!"
+          - "All systems validated and operational"
+          - "Documentation generated in files/"

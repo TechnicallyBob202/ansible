@@ -1,0 +1,31 @@
+---
+# Main task file for proxmox role
+# This file routes to specific task files based on the operation
+
+- name: Include clone tasks
+  include_tasks: clone.yml
+  when: proxmox_operation == 'clone'
+
+- name: Include configure network tasks
+  include_tasks: configure_network.yml
+  when: proxmox_operation == 'configure_network'
+
+- name: Include configure hardware tasks
+  include_tasks: configure_hardware.yml
+  when: proxmox_operation == 'configure_hardware'
+
+- name: Include start tasks
+  include_tasks: start.yml
+  when: proxmox_operation == 'start'
+
+- name: Include stop tasks
+  include_tasks: stop.yml
+  when: proxmox_operation == 'stop'
+
+- name: Include destroy tasks
+  include_tasks: destroy.yml
+  when: proxmox_operation == 'destroy'
+
+- name: Include full deploy tasks (clone + configure + start)
+  include_tasks: deploy.yml
+  when: proxmox_operation == 'deploy'

@@ -1,0 +1,32 @@
+---
+# Stop a VM
+
+- name: Check current VM state
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_state
+  failed_when: false
+
+- name: Stop VM if running
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: stopped
+    force: no
+    timeout: "{{ proxmox_stop_timeout }}"
+  when: vm_state.status is defined and vm_state.status == 'running'
+  register: stop_result
+
+- name: Display stop result
+  debug:
+    msg: "VM {{ inventory_hostname }} - {{ 'stopped' if stop_result.changed else 'already stopped' }}"

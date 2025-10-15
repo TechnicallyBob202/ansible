@@ -1,0 +1,20 @@
+---
+# Windows connection defaults
+windows_admin_user: Administrator
+windows_admin_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+# Network defaults
+windows_gateway: 192.168.35.1
+windows_dns_servers:
+  - 192.168.35.20  # KOA-DC (arbor.lab)
+  - 192.168.35.30  # GRANITE-DC (alpine.lab)
+windows_dns_suffix: lab
+
+# Reboot defaults
+windows_reboot_timeout: 600
+windows_connection_timeout: 30
+windows_post_reboot_delay: 30
+
+# IP configuration
+windows_ip_prefix: 24
+windows_dhcp_discovery_timeout: 60

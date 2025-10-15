@@ -10,43 +10,34 @@
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     validate_certs: no
 
-    # All VM IDs to cleanup
     vm_ids_host1:
       - 3510  # ATLAS
-      - 3511  # SUMMIT
       - 3512  # PEAK
       - 3513  # RIDGE
-      - 3520  # KOA-DC01
-      - 3530  # GRANITE-DC01
-      - 3532  # SLATE-DC01
-      - 3534  # MARBLE-DC01
-      - 3550  # MESA-R01
+      - 3520  # KOA-DC
+      - 3530  # GRANITE-DC
+      - 3532  # SLATE-DC
+      - 3534  # MARBLE-DC
+      - 3550  # MESA
 
     vm_ids_host2:
+      - 3511  # SUMMIT
       - 3514  # CREST
-      - 3519  # SLOPE
-      - 3521  # OAK-DC01
-      - 3531  # BASALT-DC01
-      - 3533  # SHALE-DC01
-      - 3535  # QUARTZ-DC01
-      - 3551  # BLUFF-R01
-      - 3552  # CLIFF-R01
+      - 3521  # OAK-DC
+      - 3531  # BASALT-DC
+      - 3533  # SHALE-DC
+      - 3535  # QUARTZ-DC
+      - 3551  # BLUFF
 
   tasks:
     - name: Display cleanup plan
       debug:
         msg:
-          - "=========================================="
-          - "CLEANUP: Destroying All Lab VMs"
-          - "=========================================="
-          - "Host 1 ({{ proxmox_host1 }}): {{ vm_ids_host1 | length }} VMs"
-          - "Host 2 ({{ proxmox_host2 }}): {{ vm_ids_host2 | length }} VMs"
-          - "=========================================="
-          - "WARNING: This will permanently delete all VMs!"
-          - "Starting cleanup in 5 seconds..."
-          - "=========================================="
+          - "Destroying {{ (vm_ids_host1 | length) + (vm_ids_host2 | length) }} VMs"
+          - "Host 1: {{ vm_ids_host1 | length }} VMs"
+          - "Host 2: {{ vm_ids_host2 | length }} VMs"
 
-    - name: Wait 5 seconds before cleanup
+    - name: Wait 5 seconds
       pause:
         seconds: 5
 
@@ -104,12 +95,6 @@
       loop: "{{ vm_ids_host2 }}"
       ignore_errors: yes
 
-    - name: Display cleanup results
+    - name: Cleanup complete
       debug:
-        msg:
-          - "=========================================="
-          - "Cleanup Complete!"
-          - "=========================================="
-          - "All lab VMs have been destroyed"
-          - "Ready for fresh deployment"
-          - "=========================================="
+        msg: "All lab VMs destroyed"

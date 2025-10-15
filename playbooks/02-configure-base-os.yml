@@ -1,0 +1,97 @@
+---
+- name: Discover DHCP IPs and Configure Static Network
+  hosts: all
+  gather_facts: no
+
+  vars:
+    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+  tasks:
+    - name: Display configuration plan
+      debug:
+        msg: "Configuring network for {{ ansible_play_hosts | length }} VMs"
+      run_once: yes
+
+# Phase 1: Discover DHCP IPs if needed
+- name: Discover DHCP IPs
+  hosts: all
+  gather_facts: no
+  serial: 0
+
+  tasks:
+    - name: Check if we need DHCP discovery
+      set_fact:
+        need_dhcp_discovery: "{{ ansible_host is not defined or ansible_host == '' }}"
+
+    - name: Discover current DHCP IP
+      include_role:
+        name: windows
+        tasks_from: discover_dhcp_ip.yml
+      when: need_dhcp_discovery
+
+    - name: Update connection to use DHCP IP temporarily
+      set_fact:
+        ansible_host: "{{ discovered_dhcp_ip }}"
+      when: need_dhcp_discovery and discovered_dhcp_ip is defined
+
+# Phase 2: Configure static IPs
+- name: Configure Static IP Addresses
+  hosts: all
+  gather_facts: no
+  serial: 0
+
+  vars:
+    windows_operation: set_static_ip
+
+  tasks:
+    - name: Set static IP
+      include_role:
+        name: windows
+        tasks_from: set_static_ip.yml
+
+    - name: Wait for network changes to settle
+      pause:
+        seconds: 20
+      run_once: yes
+
+# Phase 3: Configure DNS and Hostname
+- name: Configure DNS and Hostname
+  hosts: all
+  gather_facts: no
+  serial: 1  # One at a time to handle reboots gracefully
+
+  tasks:
+    - name: Configure DNS servers
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+
+    - name: Set hostname
+      include_role:
+        name: windows
+        tasks_from: set_hostname.yml
+
+    - name: Reboot if hostname changed
+      include_role:
+        name: windows
+        tasks_from: reboot.yml
+      when: reboot_required | default(false)
+
+# Phase 4: Validation
+- name: Validate Configuration
+  hosts: all
+  gather_facts: no
+
+  vars:
+    windows_operation: validate
+
+  tasks:
+    - name: Validate network configuration
+      include_role:
+        name: windows
+        tasks_from: validate.yml
+
+    - name: Configuration summary
+      debug:
+        msg: "All {{ ansible_play_hosts | length }} VMs configured successfully"
+      run_once: yes

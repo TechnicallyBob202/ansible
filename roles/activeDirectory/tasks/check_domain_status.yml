@@ -1,0 +1,71 @@
+---
+# Check if domain exists and get domain information
+
+- name: Check if AD Domain Services is installed
+  ansible.windows.win_feature:
+    name: AD-Domain-Services
+    state: present
+  check_mode: yes
+  register: adds_installed
+
+- name: Check if system is a domain controller
+  ansible.windows.win_shell: |
+    $DC = Get-WmiObject Win32_ComputerSystem
+    if ($DC.DomainRole -ge 4) {
+      Write-Output "IS_DC"
+      exit 0
+    } else {
+      Write-Output "NOT_DC"
+      exit 1
+    }
+  register: is_dc_check
+  failed_when: false
+  changed_when: false
+
+- name: Get domain information if DC
+  ansible.windows.win_shell: |
+    try {
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      $forest = Get-ADForest -Identity $domain.Forest -ErrorAction Stop
+
+      [PSCustomObject]@{
+        DomainName = $domain.DNSRoot
+        NetBIOSName = $domain.NetBIOSName
+        DomainSID = $domain.DomainSID.Value
+        ForestName = $forest.Name
+        ForestMode = $forest.ForestMode
+        DomainMode = $domain.DomainMode
+        PDCEmulator = $domain.PDCEmulator
+      } | ConvertTo-Json
+    } catch {
+      Write-Output "DOMAIN_NOT_FOUND"
+      exit 1
+    }
+  register: domain_info_check
+  failed_when: false
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Parse domain information
+  set_fact:
+    domain_info: "{{ domain_info_check.stdout | from_json }}"
+  when:
+    - is_dc_check.rc == 0
+    - domain_info_check.rc == 0
+
+- name: Set domain status facts
+  set_fact:
+    is_domain_controller: "{{ is_dc_check.rc == 0 }}"
+    domain_exists: "{{ domain_info_check.rc == 0 if is_dc_check.rc == 0 else false }}"
+    domain_sid: "{{ domain_info.DomainSID if domain_info is defined else 'UNKNOWN' }}"
+    domain_netbios: "{{ domain_info.NetBIOSName if domain_info is defined else netbios_name }}"
+
+- name: Display domain status
+  debug:
+    msg:
+      - "Domain Status for {{ inventory_hostname }}:"
+      - "  Domain Controller: {{ is_domain_controller }}"
+      - "  Domain Exists: {{ domain_exists }}"
+      - "  Domain: {{ domain_info.DomainName if domain_info is defined else 'N/A' }}"
+      - "  SID: {{ domain_sid }}"
+      - "  NetBIOS: {{ domain_netbios }}"

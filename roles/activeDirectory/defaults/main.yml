@@ -1,0 +1,37 @@
+---
+# Active Directory defaults
+ad_safe_mode_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+ad_database_path: C:\Windows\NTDS
+ad_sysvol_path: C:\Windows\SYSVOL
+ad_log_path: C:\Windows\NTDS
+
+# Forest/Domain settings
+ad_create_dns_delegation: no
+ad_install_dns: yes
+
+# Timeouts
+ad_promotion_timeout: 1200
+ad_reboot_timeout: 900
+ad_replication_check_retries: 10
+ad_replication_check_delay: 30
+
+# Service accounts (to be created post-deployment)
+ad_service_accounts:
+  - name: svc-adfr
+    description: "ADFR Agent Service Account"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+  - name: svc-dsp
+    description: "DSP Monitoring Service Account"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+
+# Feature names
+ad_features:
+  - AD-Domain-Services
+  - RSAT-AD-Tools
+  - RSAT-AD-PowerShell
+  - RSAT-ADDS
+  - RSAT-AD-AdminCenter

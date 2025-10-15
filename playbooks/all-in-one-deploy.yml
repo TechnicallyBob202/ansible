@@ -1,0 +1,135 @@
+---
+- name: Complete Lab Deployment
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display deployment plan
+      debug:
+        msg:
+          - "========================================="
+          - "  ADFR/DSP Lab - Full Deployment"
+          - "========================================="
+          - ""
+          - "This will deploy the complete lab environment:"
+          - "  • Deploy 15 VMs across 2 Proxmox hosts"
+          - "  • Configure networking and hostnames"
+          - "  • Build 2 AD forests with 3 domains"
+          - "  • Deploy 8 domain controllers"
+          - "  • Create service accounts"
+          - "  • Validate entire environment"
+          - ""
+          - "Estimated time: 60-90 minutes"
+          - ""
+          - "Press Ctrl+C within 15 seconds to abort"
+
+    - name: Wait before starting
+      pause:
+        seconds: 15
+
+# =============================================================================
+# STEP 1: Deploy VMs
+# =============================================================================
+- name: Step 1 - Deploy Virtual Machines
+  import_playbook: 01-deploy-infrastructure.yml
+
+- name: Step 1 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Step 1 complete - VMs deployed"
+
+# =============================================================================
+# STEP 2: Configure Base OS
+# =============================================================================
+- name: Step 2 - Configure Base Operating System
+  import_playbook: 02-configure-base-os.yml
+
+- name: Step 2 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Step 2 complete - Network configured"
+
+# =============================================================================
+# STEP 3: Build AD Forests
+# =============================================================================
+- name: Step 3 - Build Active Directory Forests
+  import_playbook: 03-build-ad-forests.yml
+
+- name: Step 3 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Step 3 complete - AD forests built"
+
+# =============================================================================
+# STEP 4: Verify Lab
+# =============================================================================
+- name: Step 4 - Verify Lab Environment
+  import_playbook: 04-verify-lab.yml
+
+- name: Step 4 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Step 4 complete - Lab verified"
+
+# =============================================================================
+# DEPLOYMENT COMPLETE
+# =============================================================================
+- name: Deployment Complete
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Lab Deployment Complete!"
+          - "========================================="
+          - ""
+          - "Infrastructure:"
+          - "  ✓ ATLAS (ADFR Management)"
+          - "  ✓ SUMMIT (DSP Management)"
+          - "  ✓ PEAK (SQL Server)"
+          - "  ✓ RIDGE (Primary DP)"
+          - "  ✓ CREST (Secondary DP)"
+          - ""
+          - "arbor.lab Forest:"
+          - "  ✓ KOA-DC (PDC)"
+          - "  ✓ OAK-DC (Replica)"
+          - ""
+          - "alpine.lab Forest:"
+          - "  ✓ GRANITE-DC (PDC)"
+          - "  ✓ BASALT-DC (Replica)"
+          - "  ✓ SLATE-DC (mauna.alpine.lab PDC)"
+          - "  ✓ SHALE-DC (mauna.alpine.lab Replica)"
+          - "  ✓ MARBLE-DC (rainier.alpine.lab PDC)"
+          - "  ✓ QUARTZ-DC (rainier.alpine.lab Replica)"
+          - ""
+          - "Recovery VMs:"
+          - "  ✓ MESA"
+          - "  ✓ BLUFF"
+          - ""
+          - "Next Steps:"
+          - "  1. Review files/domain-sids.txt"
+          - "  2. Review files/fsmo-roles.txt"
+          - "  3. Import files/adfr-lab-mremoteng.xml"
+          - "  4. Deploy Semperis ADFR/DSP (playbooks/05-deploy-semperis.yml)"
+          - ""
+
+    - name: Save deployment timestamp
+      copy:
+        content: |
+          Lab Deployment Completed
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          Duration: {{ ansible_play_duration }}
+        dest: "{{ playbook_dir }}/../files/deployment-timestamp.txt"
+        mode: '0644'

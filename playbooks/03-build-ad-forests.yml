@@ -1,0 +1,217 @@
+---
+- name: Build Active Directory Forests and Domains
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Display build plan
+      debug:
+        msg:
+          - "Building Active Directory Infrastructure"
+          - "  Forest 1: arbor.lab (2 DCs)"
+          - "  Forest 2: alpine.lab (6 DCs in 3 domains)"
+          - "Total Duration: 45-60 minutes"
+
+    - name: Create output directory for domain information
+      file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+# =============================================================================
+# PHASE 1: Install AD Features on All Domain Controllers
+# =============================================================================
+- name: Install Active Directory Features
+  hosts: domain_controllers
+  gather_facts: no
+  serial: 0  # All in parallel
+
+  tasks:
+    - name: Install AD-DS features
+      include_role:
+        name: activeDirectory
+        tasks_from: install_ad_features.yml
+
+    - name: Wait for feature installation
+      pause:
+        seconds: 10
+      run_once: yes
+
+# =============================================================================
+# PHASE 2: Check Existing Domain Status
+# =============================================================================
+- name: Check Domain Status
+  hosts: domain_controllers
+  gather_facts: no
+
+  tasks:
+    - name: Check if domains already exist
+      include_role:
+        name: activeDirectory
+        tasks_from: check_domain_status.yml
+
+# =============================================================================
+# PHASE 3: Promote Forest Root PDCs (Parallel - Different Forests)
+# =============================================================================
+- name: Promote Forest Root PDCs
+  hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
+  gather_facts: no
+  serial: 1  # One at a time for safety
+
+  tasks:
+    - name: Promote to forest root PDC
+      include_role:
+        name: activeDirectory
+        tasks_from: promote_forest_root.yml
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: activeDirectory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Check FSMO roles
+      include_role:
+        name: activeDirectory
+        tasks_from: check_fsmo_roles.yml
+
+# =============================================================================
+# PHASE 4: Promote Forest Root Replica DCs
+# =============================================================================
+- name: Promote Forest Root Replica DCs
+  hosts: arbor_forest_root_replica:alpine_forest_root_replica
+  gather_facts: no
+
+  tasks:
+    - name: Promote to replica DC
+      include_role:
+        name: activeDirectory
+        tasks_from: promote_replica_dc.yml
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: activeDirectory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Verify replication
+      include_role:
+        name: activeDirectory
+        tasks_from: verify_replication.yml
+
+# =============================================================================
+# PHASE 5: Promote Child Domain PDCs
+# =============================================================================
+- name: Promote Child Domain PDCs
+  hosts: mauna_child_pdc:rainier_child_pdc
+  gather_facts: no
+  serial: 1  # One at a time
+
+  tasks:
+    - name: Promote to child domain PDC
+      include_role:
+        name: activeDirectory
+        tasks_from: promote_child_domain.yml
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: activeDirectory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Check FSMO roles
+      include_role:
+        name: activeDirectory
+        tasks_from: check_fsmo_roles.yml
+
+# =============================================================================
+# PHASE 6: Promote Child Domain Replica DCs
+# =============================================================================
+- name: Promote Child Domain Replica DCs
+  hosts: mauna_child_replica:rainier_child_replica
+  gather_facts: no
+
+  tasks:
+    - name: Promote to replica DC
+      include_role:
+        name: activeDirectory
+        tasks_from: promote_replica_dc.yml
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: activeDirectory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Verify replication
+      include_role:
+        name: activeDirectory
+        tasks_from: verify_replication.yml
+
+# =============================================================================
+# PHASE 7: Create Service Accounts
+# =============================================================================
+- name: Create Service Accounts in arbor.lab
+  hosts: arbor_forest_root_pdc
+  gather_facts: no
+
+  tasks:
+    - name: Create ADFR and DSP service accounts
+      include_role:
+        name: activeDirectory
+        tasks_from: create_service_accounts.yml
+
+- name: Create Service Accounts in alpine.lab
+  hosts: alpine_forest_root_pdc
+  gather_facts: no
+
+  tasks:
+    - name: Create ADFR and DSP service accounts
+      include_role:
+        name: activeDirectory
+        tasks_from: create_service_accounts.yml
+
+# =============================================================================
+# PHASE 8: Final Validation
+# =============================================================================
+- name: Final Validation
+  hosts: domain_controllers
+  gather_facts: no
+
+  tasks:
+    - name: Verify all DCs are operational
+      include_role:
+        name: activeDirectory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Verify replication health
+      include_role:
+        name: activeDirectory
+        tasks_from: verify_replication.yml
+
+- name: Consolidate Domain Information
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Consolidate domain SIDs
+      shell: |
+        cd {{ playbook_dir }}/../files
+        cat /tmp/domain-sid-*.txt > domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
+      changed_when: false
+
+    - name: Consolidate FSMO roles
+      shell: |
+        cd {{ playbook_dir }}/../files
+        cat /tmp/fsmo-roles-*.txt > fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
+      changed_when: false
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "Active Directory deployment complete!"
+          - "  arbor.lab: 2 DCs"
+          - "  alpine.lab: 2 DCs"
+          - "  mauna.alpine.lab: 2 DCs"
+          - "  rainier.alpine.lab: 2 DCs"
+          - "Total: 8 Domain Controllers"
+          - ""
+          - "Domain information saved to files/"
+          - "  - domain-sids.txt"
+          - "  - fsmo-roles.txt"

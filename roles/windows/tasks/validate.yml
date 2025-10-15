@@ -1,0 +1,68 @@
+---
+# Validate Windows configuration
+
+- name: Test WinRM connectivity
+  ansible.windows.win_ping:
+  register: ping_test
+
+- name: Get network configuration
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $gateway = Get-NetRoute -InterfaceAlias $adapter.Name -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1
+
+    [PSCustomObject]@{
+      Hostname = $env:COMPUTERNAME
+      IPAddress = $ip.IPAddress
+      Gateway = $gateway.NextHop
+      DNS = $dns.ServerAddresses -join ","
+      AdapterName = $adapter.Name
+    } | ConvertTo-Json
+  register: network_info
+  changed_when: false
+
+- name: Parse network information
+  set_fact:
+    network_config: "{{ network_info.stdout | from_json }}"
+
+- name: Validate IP address
+  assert:
+    that:
+      - network_config.IPAddress == ansible_host
+    fail_msg: "IP mismatch: Expected {{ ansible_host }}, got {{ network_config.IPAddress }}"
+    success_msg: "IP address validated: {{ ansible_host }}"
+
+- name: Validate hostname
+  assert:
+    that:
+      - network_config.Hostname == inventory_hostname
+    fail_msg: "Hostname mismatch: Expected {{ inventory_hostname }}, got {{ network_config.Hostname }}"
+    success_msg: "Hostname validated: {{ inventory_hostname }}"
+
+- name: Validate DNS servers
+  assert:
+    that:
+      - windows_dns_servers[0] in network_config.DNS
+    fail_msg: "Primary DNS not configured correctly"
+    success_msg: "DNS servers validated"
+
+- name: Test DNS resolution
+  ansible.windows.win_shell: |
+    Resolve-DnsName -Name arbor.lab -ErrorAction Stop
+    Resolve-DnsName -Name alpine.lab -ErrorAction Stop
+    Write-Output "OK"
+  register: dns_test
+  failed_when: false
+  changed_when: false
+
+- name: Display validation summary
+  debug:
+    msg:
+      - "Validation complete for {{ inventory_hostname }}"
+      - "  WinRM: {{ 'OK' if ping_test is succeeded else 'FAILED' }}"
+      - "  IP: {{ network_config.IPAddress }} {{ '✓' if network_config.IPAddress == ansible_host else '✗' }}"
+      - "  Hostname: {{ network_config.Hostname }} {{ '✓' if network_config.Hostname == inventory_hostname else '✗' }}"
+      - "  Gateway: {{ network_config.Gateway }}"
+      - "  DNS: {{ network_config.DNS }}"
+      - "  DNS Resolution: {{ 'OK' if dns_test.rc == 0 else 'FAILED' }}"

@@ -1,0 +1,30 @@
+---
+# Start a VM
+
+- name: Check current VM state
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_state
+  failed_when: false
+
+- name: Start VM if not running
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: started
+  when: vm_state.status is defined and vm_state.status != 'running'
+  register: start_result
+
+- name: Display start result
+  debug:
+    msg: "VM {{ inventory_hostname }} - {{ 'started' if start_result.changed else 'already running' }}"

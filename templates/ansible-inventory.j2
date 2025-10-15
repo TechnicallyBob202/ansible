@@ -1,0 +1,235 @@
+# ADFR/DSP Lab Inventory
+# Auto-generated: {{ ansible_date_time.iso8601 }}
+
+all:
+  vars:
+    ansible_user: Administrator
+    ansible_password: "{{ '{{' }} lookup('env', 'WINDOWS_PASSWORD') {{ '}}' }}"
+    ansible_connection: winrm
+    ansible_winrm_transport: ntlm
+    ansible_winrm_server_cert_validation: ignore
+    ansible_port: 5985
+
+  children:
+    infrastructure:
+      hosts:
+{% for host in groups['infrastructure'] | default([]) %}
+        {{ host }}:
+          ansible_host: {{ hostvars[host]['ansible_host'] }}
+          vmid: {{ hostvars[host]['vmid'] }}
+          proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+          proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+          template_id: {{ hostvars[host]['template_id'] }}
+          vm_cores: {{ hostvars[host]['vm_cores'] }}
+          vm_memory: {{ hostvars[host]['vm_memory'] }}
+          vm_disk: {{ hostvars[host]['vm_disk'] }}
+          role: "{{ hostvars[host]['role'] | default('Infrastructure') }}"
+{% if hostvars[host]['domain_sid'] is defined %}
+          # Discovered information
+          domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+{% endif %}
+{% endfor %}
+
+    arbor_forest:
+      children:
+        arbor_forest_root_pdc:
+          hosts:
+{% for host in groups['arbor_forest_root_pdc'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              role: "Forest Root PDC"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        arbor_forest_root_replica:
+          hosts:
+{% for host in groups['arbor_forest_root_replica'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              role: "Forest Root Replica"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+    alpine_forest:
+      children:
+        alpine_forest_root_pdc:
+          hosts:
+{% for host in groups['alpine_forest_root_pdc'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              role: "Forest Root PDC"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        alpine_forest_root_replica:
+          hosts:
+{% for host in groups['alpine_forest_root_replica'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              role: "Forest Root Replica"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        mauna_child_pdc:
+          hosts:
+{% for host in groups['mauna_child_pdc'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              parent_domain: {{ hostvars[host]['parent_domain'] }}
+              role: "Child Domain PDC"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        mauna_child_replica:
+          hosts:
+{% for host in groups['mauna_child_replica'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              parent_domain: {{ hostvars[host]['parent_domain'] }}
+              role: "Child Domain Replica"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        rainier_child_pdc:
+          hosts:
+{% for host in groups['rainier_child_pdc'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              parent_domain: {{ hostvars[host]['parent_domain'] }}
+              role: "Child Domain PDC"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+        rainier_child_replica:
+          hosts:
+{% for host in groups['rainier_child_replica'] | default([]) %}
+            {{ host }}:
+              ansible_host: {{ hostvars[host]['ansible_host'] }}
+              vmid: {{ hostvars[host]['vmid'] }}
+              proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+              proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+              template_id: {{ hostvars[host]['template_id'] }}
+              vm_cores: {{ hostvars[host]['vm_cores'] }}
+              vm_memory: {{ hostvars[host]['vm_memory'] }}
+              vm_disk: {{ hostvars[host]['vm_disk'] }}
+              domain_name: {{ hostvars[host]['domain_name'] }}
+              netbios_name: {{ hostvars[host]['netbios_name'] }}
+              parent_domain: {{ hostvars[host]['parent_domain'] }}
+              role: "Child Domain Replica"
+{% if hostvars[host]['domain_sid'] is defined %}
+              # Discovered information
+              domain_sid: "{{ hostvars[host]['domain_sid'] }}"
+              is_domain_controller: {{ hostvars[host]['is_domain_controller'] | default(false) }}
+{% endif %}
+{% endfor %}
+
+    recovery_vms:
+      hosts:
+{% for host in groups['recovery_vms'] | default([]) %}
+        {{ host }}:
+          ansible_host: {{ hostvars[host]['ansible_host'] }}
+          vmid: {{ hostvars[host]['vmid'] }}
+          proxmox_host: {{ hostvars[host]['proxmox_host'] }}
+          proxmox_node: {{ hostvars[host]['proxmox_node'] }}
+          template_id: {{ hostvars[host]['template_id'] }}
+          vm_cores: {{ hostvars[host]['vm_cores'] }}
+          vm_memory: {{ hostvars[host]['vm_memory'] }}
+          vm_disk: {{ hostvars[host]['vm_disk'] }}
+          role: "Recovery VM"
+{% endfor %}
+
+    domain_controllers:
+      children:
+        arbor_forest:
+        alpine_forest:

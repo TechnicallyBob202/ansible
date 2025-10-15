@@ -1,0 +1,21 @@
+---
+- name: Start All Lab VMs
+  hosts: all
+  gather_facts: no
+
+  tasks:
+    - name: Start VMs
+      include_role:
+        name: proxmox
+        tasks_from: start.yml
+      delegate_to: localhost
+
+    - name: Wait for boot
+      include_role:
+        name: windows
+        tasks_from: wait_for_boot.yml
+
+    - name: Start complete
+      debug:
+        msg: "All VMs started and ready"
+      run_once: yes
