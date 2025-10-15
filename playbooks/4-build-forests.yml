@@ -1,159 +1,108 @@
 ---
-- name: Validate and Build Forests
+- name: Build and validate forests/domains
   hosts: localhost
   gather_facts: no
+
   vars:
+    safe_mode_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    ansible_user: Administrator
+    ansible_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
     forests:
       - name: arbor.lab
-        netbios: ARBOR
         dcs:
           - KOA-DC
           - OAK-DC
       - name: alpine.lab
-        netbios: ALPINE
         dcs:
           - GRANITE-DC
           - BASALT-DC
       - name: mauna.alpine.lab
-        netbios: MAUNA
         dcs:
           - SLATE-DC
           - SHALE-DC
       - name: rainier.alpine.lab
-        netbios: RAINIER
         dcs:
           - MARBLE-DC
           - QUARTZ-DC
 
-    ansible_user: Administrator
-    ansible_connection: winrm
-    ansible_winrm_transport: ntlm
-    ansible_winrm_server_cert_validation: ignore
-    ansible_port: 5985
-    safe_mode_password: "{{ windows_safemode_password }}"
-
   tasks:
 
     - name: Process each forest
-      loop: "{{ forests }}"
-      loop_control:
-        loop_var: forest
       block:
 
-        # --- Verify existing domain ---
         - name: Check if domain exists
           ansible.windows.win_powershell:
             script: |
               try {
                 $domain = Get-ADDomain -Identity "{{ forest.name }}" -ErrorAction Stop
-                $controllers = Get-ADDomainController -Filter * | Select-Object -ExpandProperty HostName
-                $result = @{
-                  DomainFound = $true
-                  Controllers = $controllers
-                }
+                $result = @{ DomainFound = $true }
               } catch {
-                $result = @{
-                  DomainFound = $false
-                  Controllers = @()
-                }
+                $result = @{ DomainFound = $false }
               }
               $result | ConvertTo-Json -Compress
           register: domain_check
           ignore_errors: yes
 
-        - name: Parse domain check
-          ansible.builtin.set_fact:
+        - name: Set domain existence fact
+          set_fact:
             domain_found: "{{ (domain_check.stdout | from_json).DomainFound | default(false) }}"
-            known_dcs: "{{ (domain_check.stdout | from_json).Controllers | default([]) | map('lower') | list }}"
 
-        # --- Skip healthy domain ---
-        - name: Skip healthy domain
-          when:
-            - domain_found
-            - (forest.dcs | map('lower') | difference(known_dcs)) | length == 0
-          block:
-            - name: Domain is healthy
-              ansible.builtin.debug:
-                msg: "✅ Domain {{ forest.name }} is healthy — skipping."
-            - ansible.builtin.meta: end_host
-
-        # --- Promote root domain ---
-        - name: Promote root domain controller
-          when: not domain_found
-          ansible.windows.win_domain:
-            dns_domain_name: "{{ forest.name }}"
-            safe_mode_password: "{{ safe_mode_password }}"
-            domain_admin_user: "{{ ansible_user }}"
-            domain_admin_password: "{{ ansible_password }}"
-          register: promote_root
-
-        # --- Wait for root DC to be reachable ---
-        - name: Wait for root DC connectivity
-          vars:
-            primary_dc: "{{ forest.dcs[0] }}"
+        - name: Check reachability of all expected DCs
           ansible.windows.win_powershell:
             script: |
-              $max = 60
-              for ($i = 0; $i -lt $max; $i++) {
-                $ok = Test-NetConnection -ComputerName "{{ primary_dc }}" -Port 5985 -InformationLevel Quiet
-                if ($ok) { exit 0 }
-                Start-Sleep -Seconds 5
+              $dcs = @()
+              {% for dc in forest.dcs %}
+              $dcs += @{
+                Name = "{{ dc }}"
+                Reachable = Test-NetConnection -ComputerName "{{ dc }}" -Port 5985 -InformationLevel Quiet
               }
-              throw "Primary DC {{ primary_dc }} not reachable after 5 minutes."
-          when: promote_root is changed
+              {% endfor %}
+              $dcs | ConvertTo-Json -Compress
+          register: dc_reach_results
 
-        # --- Promote any additional DCs ---
-        - name: Promote additional DCs
-          loop: "{{ forest.dcs[1:] }}"
-          loop_control:
-            loop_var: dc_name
-          when: not domain_found
-          ansible.windows.win_domain_controller:
-            dns_domain_name: "{{ forest.name }}"
-            domain_admin_user: "{{ ansible_user }}"
-            domain_admin_password: "{{ ansible_password }}"
-            safe_mode_password: "{{ safe_mode_password }}"
-            state: domain_controller
-          register: promote_others
-          ignore_errors: yes
+        - name: Set fact - all expected DCs reachable
+          set_fact:
+            all_dcs_reachable: "{{ dc_reach_results.stdout | from_json | map(attribute='Reachable') | list | select('equalto', false) | list | length == 0 }}"
 
-        # --- Test connectivity for all DCs ---
-        - name: Test connectivity for each DC
-          ansible.windows.win_powershell:
-            script: |
-              $ok = Test-NetConnection -ComputerName "{{ item }}" -Port 5985 -InformationLevel Quiet
-              [pscustomobject]@{ dc = "{{ item }}"; ok = $ok } | ConvertTo-Json -Compress
-          loop: "{{ forest.dcs }}"
-          register: reachability
-          ignore_errors: yes
+        - name: Skip promotion if domain exists and all DCs reachable
+          ansible.builtin.meta: end_block
+          when: domain_found and all_dcs_reachable
 
-        - name: Evaluate reachability
-          ansible.builtin.set_fact:
-            all_dcs_reachable: >-
-              {{
-                reachability.results
-                | map(attribute='stdout')
-                | select('defined')
-                | map('from_json')
-                | map(attribute='ok')
-                | list
-                | select('equalto', false)
-                | length == 0
-              }}
+        - name: Promote missing DCs
+          block:
 
-        - name: Log DC reachability
-          ansible.builtin.debug:
-            msg: >-
-              {% if all_dcs_reachable %}
-              ✅ All DCs reachable for {{ forest.name }}.
-              {% else %}
-              ❌ One or more DCs for {{ forest.name }} are unreachable.
-              {% endif %}
+            - name: Promote DC if missing
+              ansible.windows.win_domain:
+                dns_domain_name: "{{ forest.name }}"
+                domain_admin_user: "{{ ansible_user }}"
+                domain_admin_password: "{{ ansible_password }}"
+                safe_mode_admin_password: "{{ safe_mode_password }}"
+                state: domain_controller
+                install_dns: yes
+              when: "'{{ item }}' not in dc_reach_results.stdout | from_json | map(attribute='Reachable') | list | select('equalto', true) | list"
+              loop: "{{ forest.dcs }}"
+              loop_control:
+                loop_var: item
+              register: promote_result
 
-        - name: Abort if any DCs unreachable
-          when: not all_dcs_reachable
-          ansible.builtin.meta: end_play
+            - name: Wait 30s after promotion
+              ansible.builtin.pause:
+                seconds: 30
 
-        - name: Domain setup complete
-          ansible.builtin.debug:
-            msg: "🎉 Completed setup for {{ forest.name }}."
+            - name: Test connectivity to all DCs after promotion
+              ansible.windows.win_powershell:
+                script: |
+                  Test-NetConnection -ComputerName "{{ item }}" -Port 5985 -InformationLevel Quiet
+              loop: "{{ forest.dcs }}"
+              loop_control:
+                loop_var: item
+              register: post_promo_test
+
+            - name: Fail if any DC unreachable after promotion
+              fail:
+                msg: "One or more DCs in {{ forest.name }} are unreachable after promotion."
+              when: post_promo_test.results | map(attribute='stdout') | map('bool') | select('equalto', false) | list | length > 0
+
+      loop: "{{ forests }}"
+      loop_control:
+        loop_var: forest
