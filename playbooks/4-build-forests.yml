@@ -39,16 +39,20 @@
         delay: 30
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
+    - name: Wait until DC is responding
+      ansible.windows.win_powershell:
+        script: |
+          try {
+              Get-ADDomainController -ErrorAction Stop
+              exit 0
+          } catch {
+              exit 1
+          }
+      register: dc_ready
+      retries: 20
+      delay: 15
+      until: dc_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
 - name: Promote arbor.lab Replica DC
   hosts: arbor_forest_root_replica
@@ -91,23 +95,27 @@
         delay: 30
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
+    - name: Wait until DC is responding
+      ansible.windows.win_powershell:
+        script: |
+          try {
+              Get-ADDomainController -ErrorAction Stop
+              exit 0
+          } catch {
+              exit 1
+          }
+      register: dc_ready
+      retries: 20
+      delay: 15
+      until: dc_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
-# ---------------------------------------------------------
 - name: Build alpine.lab Forest Root
   hosts: alpine_forest_root_pdc
   gather_facts: no
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -142,22 +150,27 @@
         delay: 30
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
+    - name: Wait until DC is responding
+      ansible.windows.win_powershell:
+        script: |
+          try {
+              Get-ADDomainController -ErrorAction Stop
+              exit 0
+          } catch {
+              exit 1
+          }
+      register: dc_ready
+      retries: 20
+      delay: 15
+      until: dc_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
 - name: Promote alpine.lab Replica DC
   hosts: alpine_forest_root_replica
   gather_facts: no
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -193,23 +206,27 @@
         delay: 30
       when: dc_check.output[0] | int == 0
 
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
+    - name: Wait until DC is responding
+      ansible.windows.win_powershell:
+        script: |
+          try {
+              Get-ADDomainController -ErrorAction Stop
+              exit 0
+          } catch {
+              exit 1
+          }
+      register: dc_ready
+      retries: 20
+      delay: 15
+      until: dc_ready.rc == 0
+      when: dc_check.output[0] | int == 0
 
-# ---------------------------------------------------------
 - name: Create mauna.alpine.lab Child Domain
   hosts: mauna_child_pdc
   gather_facts: no
   vars:
     windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
   tasks:
     - name: Check if already a DC
       ansible.windows.win_powershell:
@@ -232,7 +249,7 @@
         script: |
           $ErrorActionPreference = "Stop"
           $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
-          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
+          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", $SecurePassword)
           Install-ADDSDomain `
             -NewDomainName "mauna" `
             -ParentDomainName "alpine.lab" `
@@ -245,187 +262,4 @@
             -Force `
             -NoRebootOnCompletion:$false
       async: 1200
-      poll: 30
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for DC to come back online
-      wait_for_connection:
-        timeout: 900
-        delay: 60
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
-
-# ---------------------------------------------------------
-- name: Promote mauna.alpine.lab Replica DC
-  hosts: mauna_child_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $DC = Get-WmiObject Win32_ComputerSystem
-          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
-      register: dc_check
-      failed_when: false
-      changed_when: false
-
-    - name: Install AD-Domain-Services
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: dc_check.output[0] | int == 0
-
-    - name: Promote to replica DC
-      microsoft.ad.domain_controller:
-        dns_domain_name: mauna.alpine.lab
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for DC to come back online
-      wait_for_connection:
-        timeout: 600
-        delay: 30
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
-
-# ---------------------------------------------------------
-- name: Create rainier.alpine.lab Child Domain
-  hosts: rainier_child_pdc
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $DC = Get-WmiObject Win32_ComputerSystem
-          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
-      register: dc_check
-      failed_when: false
-      changed_when: false
-
-    - name: Install AD-Domain-Services
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: dc_check.output[0] | int == 0
-
-    - name: Promote to child domain PDC
-      ansible.windows.win_powershell:
-        script: |
-          $ErrorActionPreference = "Stop"
-          $SecurePassword = ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force
-          $ParentCred = New-Object System.Management.Automation.PSCredential("ALPINE\Administrator", (ConvertTo-SecureString "{{ windows_password }}" -AsPlainText -Force))
-          Install-ADDSDomain `
-            -NewDomainName "rainier" `
-            -ParentDomainName "alpine.lab" `
-            -SafeModeAdministratorPassword $SecurePassword `
-            -Credential $ParentCred `
-            -InstallDNS `
-            -DatabasePath "C:\Windows\NTDS" `
-            -SysvolPath "C:\Windows\SYSVOL" `
-            -LogPath "C:\Windows\NTDS" `
-            -Force `
-            -NoRebootOnCompletion:$false
-      async: 1200
-      poll: 30
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for DC to come back online
-      wait_for_connection:
-        timeout: 900
-        delay: 60
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
-
-# ---------------------------------------------------------
-- name: Promote rainier.alpine.lab Replica DC
-  hosts: rainier_child_replica
-  gather_facts: no
-  vars:
-    windows_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-  tasks:
-    - name: Check if already a DC
-      ansible.windows.win_powershell:
-        script: |
-          $DC = Get-WmiObject Win32_ComputerSystem
-          if ($DC.DomainRole -ge 4) { Write-Output "1" } else { Write-Output "0" }
-      register: dc_check
-      failed_when: false
-      changed_when: false
-
-    - name: Install AD-Domain-Services
-      ansible.windows.win_feature:
-        name: AD-Domain-Services
-        include_management_tools: yes
-        state: present
-      when: dc_check.output[0] | int == 0
-
-    - name: Promote to replica DC
-      microsoft.ad.domain_controller:
-        dns_domain_name: rainier.alpine.lab
-        domain_admin_user: ALPINE\Administrator
-        domain_admin_password: "{{ windows_password }}"
-        safe_mode_password: "{{ windows_password }}"
-        database_path: C:\Windows\NTDS
-        sysvol_path: C:\Windows\SYSVOL
-        state: domain_controller
-        reboot: yes
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for DC to come back online
-      wait_for_connection:
-        timeout: 600
-        delay: 30
-      when: dc_check.output[0] | int == 0
-
-    - name: Wait for ADWS service to be running
-      ansible.windows.win_service_info:
-        name: ADWS
-      register: adws_check
-      retries: 30
-      delay: 10
-      until:
-        - adws_check.services is defined
-        - adws_check.services | selectattr('name','equalto','ADWS') | map(attribute='state') | list | first == "Running"
-      failed_when: false
+      poll:
