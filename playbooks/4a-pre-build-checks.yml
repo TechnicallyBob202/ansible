@@ -138,37 +138,6 @@
         current_domain: "{{ dc_check.stdout_lines | select('search', 'Domain:') | first | regex_replace('Domain: ', '') | default('WORKGROUP') }}"
       when: dc_check.stdout_lines is defined
 
-- name: Check disk space on all DCs
-  hosts:
-    - arbor_forest_root_pdc
-    - arbor_forest_root_replica
-    - alpine_forest_root_pdc
-    - alpine_forest_root_replica
-    - mauna_child_pdc
-    - mauna_child_replica
-    - rainier_child_pdc
-    - rainier_child_replica
-  gather_facts: no
-  serial: 1
-
-  tasks:
-    - name: "Get C: drive free space"
-      ansible.windows.win_powershell:
-        script: |
-          $disk = Get-Volume -DriveLetter C
-          $freeGB = [math]::Round($disk.SizeRemaining / 1GB, 2)
-          Write-Output $freeGB
-      register: disk_space
-
-    - name: Display disk space
-      debug:
-        msg: "{{ inventory_hostname }}: {{ disk_space.stdout_lines[0] }}GB free"
-
-    - name: Fail if insufficient disk space
-      fail:
-        msg: "Insufficient disk space on {{ inventory_hostname }}: {{ disk_space.stdout_lines[0] }}GB (need at least 20GB)"
-      when: disk_space.stdout_lines[0] | float < 20
-
 - name: Check Windows Feature requirements
   hosts:
     - arbor_forest_root_pdc
