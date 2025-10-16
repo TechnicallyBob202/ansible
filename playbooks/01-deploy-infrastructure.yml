@@ -34,8 +34,6 @@
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
-        apply:
-          delegate_to: localhost
 
     - name: Deployment complete
       debug:
