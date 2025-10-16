@@ -97,14 +97,14 @@
       alpine_forest:  "{{ alpine_list | sort(attribute='hostname') }}"
       recovery_vms:   "{{ recovery_list | sort(attribute='hostname') }}"
 
-# Render the XML via template
+# Render the XML via template (UTF-8)
 - name: Generate mRemoteNG config (template)
   template:
     src: "{{ playbook_dir }}/../templates/mremoteng.xml.j2"
     dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
     mode: '0644'
 
-# Optional: Add/commit/push if git repo exists
+# Optional: Git commit/push if repo present
 - name: Check if git repository exists
   stat:
     path: "{{ playbook_dir }}/../.git"
