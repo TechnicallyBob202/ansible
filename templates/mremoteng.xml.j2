@@ -1,104 +1,172 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mRemoteNG>
-  <connection name="{{ lab_name | default('ADFR Lab') }}" type="container">
+<mrng:Connections xmlns:mrng="http://mremoteng.org"
+                  Name="{{ connections_name | default('Connections') }}"
+                  Export="true"
+                  EncryptionEngine="AES"
+                  BlockCipherMode="GCM"
+                  KdfIterations="{{ kdf_iterations | default('1000') }}"
+                  FullFileEncryption="false"
+                  Protected=""
+                  ConfVersion="2.6">
+{% macro guid(s) -%}
+  {%- set h = (s | hash('md5')) -%}
+  {{ h[0:8] ~ '-' ~ h[8:12] ~ '-' ~ h[12:16] ~ '-' ~ h[16:20] ~ '-' ~ h[20:32] }}
+{%- endmacro %}
+
+  <Node Name="{{ lab_name | default('ADFR Lab') }}"
+        Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+        Id="{{ guid(lab_name | default('ADFR Lab')) }}">
 
     {# ---------- Infrastructure ---------- #}
     {% if 'infrastructure' in groups %}
-    <connection name="Infrastructure" type="container">
+    <Node Name="Infrastructure" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="{{ guid('Infrastructure') }}">
       {% for h in (groups['infrastructure'] | default([])) | sort %}
         {% set hv = hostvars[h] %}
-        <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
-                    hostname="{{ hv.ansible_host | default(h) }}"
-                    username="{{ hv.ansible_user | default('Administrator') }}"
-                    domain="{{ hv.netbios_name | default('') }}"
-                    port="{{ hv.rdp_port | default('3389') }}"/>
+        <Node Name="{{ h }}" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="{{ guid('conn/' ~ h) }}"
+              Username="{{ hv.ansible_user | default('Administrator') }}"
+              Domain="{{ hv.netbios_name | default('') }}"
+              Password=""
+              Hostname="{{ hv.ansible_host | default(h) }}"
+              Protocol="{{ hv.rdp_protocol | default('RDP') }}"
+              PuttySession="Default Settings"
+              Port="{{ hv.rdp_port | default('3389') }}"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
       {% endfor %}
-    </connection>
+    </Node>
     {% endif %}
 
     {# ---------- Arbor Forest ---------- #}
     {% if 'arbor_forest' in groups %}
-    <connection name="Arbor Forest" type="container">
-      {# Render Root Domain (arbor_forest_root_pdc + arbor_forest_root_replica) #}
-      <connection name="Root Domain" type="container">
+    <Node Name="Arbor Forest" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="{{ guid('Arbor Forest') }}">
+      <Node Name="Root Domain" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+            Id="{{ guid('Arbor Root') }}">
         {% for g in ['arbor_forest_root_pdc','arbor_forest_root_replica'] if g in groups %}
           {% for h in (groups[g] | default([])) | sort %}
             {% set hv = hostvars[h] %}
-            <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
-                        hostname="{{ hv.ansible_host | default(h) }}"
-                        username="{{ hv.ansible_user | default('Administrator') }}"
-                        domain="{{ hv.netbios_name | default('') }}"
-                        port="{{ hv.rdp_port | default('3389') }}"/>
+            <Node Name="{{ h }}" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="{{ guid('conn/' ~ h) }}"
+                  Username="{{ hv.ansible_user | default('Administrator') }}"
+                  Domain="{{ hv.netbios_name | default('') }}"
+                  Password=""
+                  Hostname="{{ hv.ansible_host | default(h) }}"
+                  Protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                  PuttySession="Default Settings"
+                  Port="{{ hv.rdp_port | default('3389') }}"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
           {% endfor %}
         {% endfor %}
-      </connection>
-    </connection>
+      </Node>
+    </Node>
     {% endif %}
 
     {# ---------- Alpine Forest with nested child domains ---------- #}
     {% if 'alpine_forest' in groups %}
-    <connection name="Alpine Forest" type="container">
-      {# Root Domain (alpine_forest_root_pdc + alpine_forest_root_replica) #}
-      <connection name="Root Domain" type="container">
+    <Node Name="Alpine Forest" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="{{ guid('Alpine Forest') }}">
+
+      {# Root Domain (ALPINE) #}
+      <Node Name="Root Domain" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+            Id="{{ guid('Alpine Root') }}">
         {% for g in ['alpine_forest_root_pdc','alpine_forest_root_replica'] if g in groups %}
           {% for h in (groups[g] | default([])) | sort %}
             {% set hv = hostvars[h] %}
-            <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
-                        hostname="{{ hv.ansible_host | default(h) }}"
-                        username="{{ hv.ansible_user | default('Administrator') }}"
-                        domain="{{ hv.netbios_name | default('') }}"
-                        port="{{ hv.rdp_port | default('3389') }}"/>
+            <Node Name="{{ h }}" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="{{ guid('conn/' ~ h) }}"
+                  Username="{{ hv.ansible_user | default('Administrator') }}"
+                  Domain="{{ hv.netbios_name | default('') }}"
+                  Password=""
+                  Hostname="{{ hv.ansible_host | default(h) }}"
+                  Protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                  PuttySession="Default Settings"
+                  Port="{{ hv.rdp_port | default('3389') }}"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
           {% endfor %}
         {% endfor %}
-      </connection>
+      </Node>
 
-      {# Collect Alpine child-domain hosts (any subgroup under alpine_forest with parent_domain set) #}
-      {% set _child_items = [] %}
+      {# Child domains under alpine_forest: detect by parent_domain #}
+      {% set children = {} %}
       {% for subgroup in (groups['alpine_forest'] | default([])) %}
         {% if subgroup in groups %}
           {% for h in groups[subgroup] | default([]) %}
             {% set hv = hostvars[h] %}
             {% if hv.parent_domain is defined %}
-              {% set domlabel = (hv.netbios_name | default(hv.domain_name.split('.')[0] | default(''))) | upper %}
-              {% if _child_items.append({'domain': domlabel, 'host': h}) %}{% endif %}
+              {% set dom = (hv.netbios_name | default(hv.domain_name.split('.')[0] | default(''))) | upper %}
+              {% if children.update({dom: (children.get(dom, []) + [h])}) %}{% endif %}
             {% endif %}
           {% endfor %}
         {% endif %}
       {% endfor %}
 
-      {# Unique child domain labels (e.g., MAUNA, RAINIER) #}
-      {% set child_domains = (_child_items | map(attribute='domain') | unique | list) %}
-
-      {# Render each child domain as a container and place its hosts inside #}
-      {% for dom in child_domains %}
-      <connection name="{{ dom }}" type="container">
-        {% for item in _child_items if item.domain == dom %}
-          {% set h = item.host %}
+      {% for dom in (children.keys() | list | sort) %}
+      <Node Name="{{ dom }}" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+            Id="{{ guid('Alpine/' ~ dom) }}">
+        {% for h in (children[dom] | sort) %}
           {% set hv = hostvars[h] %}
-          <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
-                      hostname="{{ hv.ansible_host | default(h) }}"
-                      username="{{ hv.ansible_user | default('Administrator') }}"
-                      domain="{{ hv.netbios_name | default('') }}"
-                      port="{{ hv.rdp_port | default('3389') }}"/>
+          <Node Name="{{ h }}" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                Id="{{ guid('conn/' ~ h) }}"
+                Username="{{ hv.ansible_user | default('Administrator') }}"
+                Domain="{{ hv.netbios_name | default('') }}"
+                Password=""
+                Hostname="{{ hv.ansible_host | default(h) }}"
+                Protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                PuttySession="Default Settings"
+                Port="{{ hv.rdp_port | default('3389') }}"
+                ConnectToConsole="false"
+                UseCredSsp="true"
+                RenderingEngine="IE"
+                ICAEncryptionStrength="EncrBasic"
+                RDPAuthenticationLevel="NoAuth"
+                RDPMinutesToIdleTimeout="0" />
         {% endfor %}
-      </connection>
+      </Node>
       {% endfor %}
-    </connection>
+
+    </Node>
     {% endif %}
 
     {# ---------- Recovery VMs ---------- #}
     {% if 'recovery_vms' in groups %}
-    <connection name="Recovery VMs" type="container">
+    <Node Name="Recovery VMs" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="{{ guid('Recovery VMs') }}">
       {% for h in (groups['recovery_vms'] | default([])) | sort %}
         {% set hv = hostvars[h] %}
-        <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
-                    hostname="{{ hv.ansible_host | default(h) }}"
-                    username="{{ hv.ansible_user | default('Administrator') }}"
-                    domain="{{ hv.netbios_name | default('') }}"
-                    port="{{ hv.rdp_port | default('3389') }}"/>
+        <Node Name="{{ h }}" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="{{ guid('conn/' ~ h) }}"
+              Username="{{ hv.ansible_user | default('Administrator') }}"
+              Domain="{{ hv.netbios_name | default('') }}"
+              Password=""
+              Hostname="{{ hv.ansible_host | default(h) }}"
+              Protocol="{{ hv.rdp_protocol | default('RDP') }}"
+              PuttySession="Default Settings"
+              Port="{{ hv.rdp_port | default('3389') }}"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
       {% endfor %}
-    </connection>
+    </Node>
     {% endif %}
 
-  </connection>
-</mRemoteNG>
+  </Node>
+</mrng:Connections>
