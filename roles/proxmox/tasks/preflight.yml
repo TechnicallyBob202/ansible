@@ -38,31 +38,6 @@
   failed_when: false
   changed_when: false
 
-# Normalize tags as a list
-- name: Normalize current tags (string or list -> list)
-  set_fact:
-    tags_current_raw: "{{ vm_record.tags | default('') }}"
-    tags_current: >-
-      {{
-        (
-          tags_current_raw
-          if (tags_current_raw is sequence and (tags_current_raw is not string))
-          else (tags_current_raw | string | split(';'))
-        )
-        | map('regex_replace', '(^\s+|\s+$)', '')
-        | reject('equalto', '')
-        | list
-      }}
-
-- name: Compute desired tag list and update need
-  set_fact:
-    tags_desired: "{{ (proxmox_tags | default([])) | list | unique }}"
-    needs_tags_update: >-
-      {{
-        (tags_current | difference(tags_desired)) | length > 0
-        or
-        (tags_desired | difference(tags_current)) | length > 0
-      }}
 
 # Example: compute CPU/memory delta (align to your variable names)
 - name: Compute CPU/memory deltas

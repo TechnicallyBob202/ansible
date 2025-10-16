@@ -43,8 +43,6 @@
     tags: "{{ proxmox_vm_tags }}"
     update: yes
   register: tag_config
-  when: needs_tags_update
-  delegate_to: localhost
 
 - name: Display hardware configuration result
   debug:
