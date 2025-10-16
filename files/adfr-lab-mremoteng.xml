@@ -1,80 +1,208 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mRemoteNG>
-  <connection name="ADFR Lab" type="container">
+<mrng:Connections xmlns:mrng="http://mremoteng.org"
+                  Name="Connections"
+                  Export="true"
+                  EncryptionEngine="AES"
+                  BlockCipherMode="GCM"
+                  KdfIterations="1000"
+                  FullFileEncryption="false"
+                  Protected=""
+                  ConfVersion="2.6">
 
-            <connection name="Infrastructure" type="container">
-                      <connection name="ATLAS" protocol="RDP"
-                    hostname="192.168.35.10"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-                      <connection name="CREST" protocol="RDP"
-                    hostname="192.168.35.14"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-                      <connection name="PEAK" protocol="RDP"
-                    hostname="192.168.35.12"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-                      <connection name="RIDGE" protocol="RDP"
-                    hostname="192.168.35.13"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-                      <connection name="SUMMIT" protocol="RDP"
-                    hostname="192.168.35.11"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-          </connection>
+  <Node Name="ADFR Lab"
+        Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+        Id="20a4be62-9dd5-4f10-1fb1-09ce5979fa60">
+
+            <Node Name="Infrastructure" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="cba4f4ce-e5c6-a3e6-d8be-8da68fa1234e">
+                      <Node Name="ATLAS" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="d35f55ac-6cea-6d45-74ed-73f2938bd63a"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.10"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+                      <Node Name="CREST" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="ef35e896-4b17-3b2c-38c0-4529ba7084d2"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.14"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+                      <Node Name="PEAK" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="37b5c3dc-a82e-0c00-d31e-e05f65edfc5b"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.12"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+                      <Node Name="RIDGE" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="0aa2de75-b8a1-26c9-444f-9919d6fc1a3c"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.13"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+                      <Node Name="SUMMIT" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="ba966713-7a72-d764-7882-24dd8273ece2"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.11"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+          </Node>
     
-            <connection name="Arbor Forest" type="container">
-            <connection name="Root Domain" type="container">
-                                          <connection name="KOA-DC" protocol="RDP"
-                        hostname="192.168.35.20"
-                        username="Administrator"
-                        domain="ARBOR"
-                        port="3389"/>
-                                                    <connection name="OAK-DC" protocol="RDP"
-                        hostname="192.168.35.21"
-                        username="Administrator"
-                        domain="ARBOR"
-                        port="3389"/>
-                        </connection>
-    </connection>
+            <Node Name="Arbor Forest" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="fe9b1f6f-cf2f-5f15-a52b-bed1baea8281">
+      <Node Name="Root Domain" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+            Id="df9675a1-8fb6-ee50-f26b-e13a24d660d7">
+                                          <Node Name="KOA-DC" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="3a5b4319-d317-8d54-4861-f06818bec248"
+                  Username="Administrator"
+                  Domain="ARBOR"
+                  Password=""
+                  Hostname="192.168.35.20"
+                  Protocol="RDP"
+                  PuttySession="Default Settings"
+                  Port="3389"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
+                                                    <Node Name="OAK-DC" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="558d822f-0e79-a015-ab6f-959fab30c6d3"
+                  Username="Administrator"
+                  Domain="ARBOR"
+                  Password=""
+                  Hostname="192.168.35.21"
+                  Protocol="RDP"
+                  PuttySession="Default Settings"
+                  Port="3389"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
+                        </Node>
+    </Node>
     
-            <connection name="Alpine Forest" type="container">
-            <connection name="Root Domain" type="container">
-                                          <connection name="GRANITE-DC" protocol="RDP"
-                        hostname="192.168.35.30"
-                        username="Administrator"
-                        domain="ALPINE"
-                        port="3389"/>
-                                                    <connection name="BASALT-DC" protocol="RDP"
-                        hostname="192.168.35.31"
-                        username="Administrator"
-                        domain="ALPINE"
-                        port="3389"/>
-                        </connection>
+            <Node Name="Alpine Forest" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="a5ea8e1f-1172-f06a-4432-420c05eab426">
+
+            <Node Name="Root Domain" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+            Id="530fcd15-bf32-5cd1-eef8-c3b54c39eda7">
+                                          <Node Name="GRANITE-DC" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="5f63e047-46b6-b3c6-59bf-58a382e269b1"
+                  Username="Administrator"
+                  Domain="ALPINE"
+                  Password=""
+                  Hostname="192.168.35.30"
+                  Protocol="RDP"
+                  PuttySession="Default Settings"
+                  Port="3389"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
+                                                    <Node Name="BASALT-DC" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+                  Id="8000609e-3cb8-d9b2-b7c6-87835fe262af"
+                  Username="Administrator"
+                  Domain="ALPINE"
+                  Password=""
+                  Hostname="192.168.35.31"
+                  Protocol="RDP"
+                  PuttySession="Default Settings"
+                  Port="3389"
+                  ConnectToConsole="false"
+                  UseCredSsp="true"
+                  RenderingEngine="IE"
+                  ICAEncryptionStrength="EncrBasic"
+                  RDPAuthenticationLevel="NoAuth"
+                  RDPMinutesToIdleTimeout="0" />
+                        </Node>
 
                                                                                                       
-            
-                </connection>
+      
+    </Node>
     
-            <connection name="Recovery VMs" type="container">
-                      <connection name="BLUFF" protocol="RDP"
-                    hostname="192.168.35.51"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-                      <connection name="MESA" protocol="RDP"
-                    hostname="192.168.35.50"
-                    username="Administrator"
-                    domain=""
-                    port="3389"/>
-          </connection>
+            <Node Name="Recovery VMs" Type="Container" Descr="" Icon="mRemoteNG" Panel="General"
+          Id="053c1b6e-2e54-6072-1b5d-bf739968a654">
+                      <Node Name="BLUFF" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="46836757-a03f-5db2-aea9-0ab1ff44e39b"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.51"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+                      <Node Name="MESA" Type="Connection" Descr="" Icon="mRemoteNG" Panel="General"
+              Id="6c4f3713-28cc-8f35-3647-df2bd3c6522f"
+              Username="Administrator"
+              Domain=""
+              Password=""
+              Hostname="192.168.35.50"
+              Protocol="RDP"
+              PuttySession="Default Settings"
+              Port="3389"
+              ConnectToConsole="false"
+              UseCredSsp="true"
+              RenderingEngine="IE"
+              ICAEncryptionStrength="EncrBasic"
+              RDPAuthenticationLevel="NoAuth"
+              RDPMinutesToIdleTimeout="0" />
+          </Node>
     
-  </connection>
-</mRemoteNG>
+  </Node>
+</mrng:Connections>
