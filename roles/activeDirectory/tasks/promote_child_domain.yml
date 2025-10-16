@@ -26,7 +26,7 @@
       -LogPath "{{ ad_log_path }}" `
       -Force `
       -NoRebootOnCompletion:$false
-  when: not domain_exists
+  when: not is_domain_controller and not domain_exists
   register: child_promotion
   async: "{{ ad_promotion_timeout }}"
   poll: 30

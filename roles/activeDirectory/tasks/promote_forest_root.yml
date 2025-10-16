@@ -15,7 +15,7 @@
     sysvol_path: "{{ ad_sysvol_path }}"
     log_path: "{{ ad_log_path }}"
     reboot: yes
-  when: not domain_exists
+  when: not is_domain_controller
   register: forest_promotion
   async: "{{ ad_promotion_timeout }}"
   poll: 30
