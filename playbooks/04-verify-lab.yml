@@ -92,6 +92,9 @@
         state: directory
         mode: '0755'
 
+    - name: Generate and push mRemoteNG configuration
+      include_tasks: ../tasks/generate_mremoteng.yml
+      
     - name: Generate lab summary
       template:
         src: "{{ playbook_dir }}/../templates/lab-summary.md.j2"
