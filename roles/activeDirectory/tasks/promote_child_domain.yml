@@ -28,15 +28,18 @@
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
 
+    Import-Module ADDSDeployment
+
     $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
     # Use UPN to avoid NetBIOS dependency
     $ParentCred = New-Object System.Management.Automation.PSCredential("Administrator@{{ parent_domain }}", $SecurePassword)
 
     $params = @{
-      NewDomainName                 = "{{ (domain_name.split('.')[0]) }}"
-      ParentDomainName              = "{{ parent_domain }}"
-      SafeModeAdministratorPassword = $SecurePassword
+      DomainName                    = "{{ domain_name }}"                 # e.g. "mauna.alpine.lab"
+      DomainType                    = "ChildDomain"
+      ParentDomainName              = "{{ parent_domain }}"               # e.g. "alpine.lab"
       Credential                    = $ParentCred
+      SafeModeAdministratorPassword = $SecurePassword
       InstallDNS                    = ${{ ad_install_dns | ternary('true','false') }}
       DatabasePath                  = "{{ ad_database_path }}"
       SysvolPath                    = "{{ ad_sysvol_path }}"
