@@ -4,54 +4,9 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# Local, authoritative guard: is this machine already a DC?
-- name: Detect if this host is already a DC
-  ansible.windows.win_shell: "(Get-CimInstance -ClassName Win32_ComputerSystem).DomainRole"
-  register: dc_role
-  changed_when: false
-  failed_when: false
-
-- name: Set is_domain_controller fact
-  set_fact:
-    is_domain_controller: "{{ (dc_role.stdout | trim | int) >= 4 }}"
-
-# Pre-DNS for child replicas (parent = their child PDC, static-IP)
-- name: Set DNS for child replicas (pre-promo -> child PDC)
-  set_fact:
-    windows_dns_servers: >-
-      {{
-        [ hostvars[groups['mauna_child_pdc'][0]].ansible_host ]
-        if inventory_hostname in (groups['mauna_child_replica'] | default([]))
-        else [ hostvars[groups['rainier_child_pdc'][0]].ansible_host ]
-      }}
-  when: >
-    inventory_hostname in (groups['mauna_child_replica'] | default([]))
-    or
-    inventory_hostname in (groups['rainier_child_replica'] | default([]))
-
-- name: Apply DNS (pre-promo)
-  include_role:
-    name: windows
-    tasks_from: set_dns.yml
-  when: windows_dns_servers is defined
-
-# Derive matched PDC group for this replica and ensure it exists
-- name: Derive PDC group name from replica group
-  set_fact:
-    pdc_group: "{{ (group_names | select('match', '.*_replica$') | first) | regex_replace('_replica$', '_pdc') }}"
-  when: not is_domain_controller
-
-- name: Validate derived PDC group exists and has hosts
-  assert:
-    that:
-      - pdc_group is defined
-      - (groups[pdc_group] | default([])) | length > 0
-    fail_msg: "Could not derive a non-empty PDC group from replica groups. Check inventory naming and membership."
-  when: not is_domain_controller
-
 - name: Get PDC hostname for domain credentials
   set_fact:
-    pdc_hostname: "{{ groups[pdc_group] | first }}"
+    pdc_hostname: "{{ groups[group_names | select('match', '.*_pdc$') | first] | first }}"
   when: not is_domain_controller
 
 - name: Wait for PDC to be fully operational
@@ -68,20 +23,20 @@
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
-    # Prefer UPN to avoid NetBIOS dependency; module accepts UPN or DOMAIN\User
-    domain_admin_user: "Administrator@{{ domain_name }}"
+    domain_admin_user: "{{ netbios_name }}\\Administrator"
     domain_admin_password: "{{ ad_safe_mode_password }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
     database_path: "{{ ad_database_path }}"
     sysvol_path: "{{ ad_sysvol_path }}"
-    domain_log_path: "{{ ad_log_path }}"
+    log_path: "{{ ad_log_path }}"
     install_dns: "{{ ad_install_dns }}"
     state: domain_controller
     reboot: yes
   when: not is_domain_controller
   register: replica_promotion
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
 
-# NOTE: async/poll removed - not supported with reboot=yes
 - name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
@@ -98,29 +53,9 @@
   until: adws_service.state == 'running'
   when: replica_promotion.changed
 
-# Post-DNS for child replicas: self + child PDC + alpine root
-- name: Set DNS for child replicas (post-promo)
-  set_fact:
-    windows_dns_servers: >-
-      {{
-        [ ansible_host ] +
-        (
-          [ hostvars[groups['mauna_child_pdc'][0]].ansible_host ]
-          if inventory_hostname in (groups['mauna_child_replica'] | default([]))
-          else [ hostvars[groups['rainier_child_pdc'][0]].ansible_host ]
-        ) +
-        [ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host ]
-      }}
-  when: >
-    inventory_hostname in (groups['mauna_child_replica'] | default([]))
-    or
-    inventory_hostname in (groups['rainier_child_replica'] | default([]))
-
-- name: Apply DNS (post-promo)
-  include_role:
-    name: windows
-    tasks_from: set_dns.yml
-  when: windows_dns_servers is defined
+- name: Apply DNS configuration
+  include_tasks: apply_dc_dns.yml
+  when: replica_promotion.changed
 
 - name: Display promotion result
   debug:

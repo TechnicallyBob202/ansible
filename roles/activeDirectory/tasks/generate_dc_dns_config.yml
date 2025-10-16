@@ -1,0 +1,126 @@
+---
+# Generate DNS configuration for all DCs based on inventory
+# Run this during Stage 03 BEFORE promoting DCs
+# Creates group_vars files for each DC group
+
+- name: Create group_vars directory if needed
+  file:
+    path: "{{ playbook_dir }}/../inventory/group_vars"
+    state: directory
+    mode: '0755'
+  delegate_to: localhost
+  run_once: yes
+
+# arbor.lab Forest Root PDC
+- name: Generate DNS for arbor_forest_root_pdc
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for arbor.lab Forest Root PDC
+      windows_dns_servers:
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (other forest)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/arbor_forest_root_pdc.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# arbor.lab Forest Root Replica
+- name: Generate DNS for arbor_forest_root_replica
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for arbor.lab Forest Root Replica
+      windows_dns_servers:
+        - {{ hostvars[groups['arbor_forest_root_pdc'][0]]['ansible_host'] }}  # KOA-DC (PDC)
+        - 127.0.0.1                    # Self (loopback)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/arbor_forest_root_replica.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# alpine.lab Forest Root PDC
+- name: Generate DNS for alpine_forest_root_pdc
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for alpine.lab Forest Root PDC
+      windows_dns_servers:
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['arbor_forest_root_pdc'][0]]['ansible_host'] }}  # KOA-DC (other forest)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/alpine_forest_root_pdc.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# alpine.lab Forest Root Replica
+- name: Generate DNS for alpine_forest_root_replica
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for alpine.lab Forest Root Replica
+      windows_dns_servers:
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (PDC)
+        - 127.0.0.1                    # Self (loopback)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/alpine_forest_root_replica.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# mauna.alpine.lab Child PDC
+- name: Generate DNS for mauna_child_pdc
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for mauna.alpine.lab Child Domain PDC
+      windows_dns_servers:
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['mauna_child_replica'][0]]['ansible_host'] }}    # SHALE-DC (replica)
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (parent)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/mauna_child_pdc.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# mauna.alpine.lab Child Replica
+- name: Generate DNS for mauna_child_replica
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for mauna.alpine.lab Child Domain Replica
+      windows_dns_servers:
+        - {{ hostvars[groups['mauna_child_pdc'][0]]['ansible_host'] }}        # SLATE-DC (PDC)
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (parent)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/mauna_child_replica.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# rainier.alpine.lab Child PDC
+- name: Generate DNS for rainier_child_pdc
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for rainier.alpine.lab Child Domain PDC
+      windows_dns_servers:
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['rainier_child_replica'][0]]['ansible_host'] }}  # QUARTZ-DC (replica)
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (parent)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/rainier_child_pdc.yml"
+  delegate_to: localhost
+  run_once: yes
+
+# rainier.alpine.lab Child Replica
+- name: Generate DNS for rainier_child_replica
+  copy:
+    content: |
+      ---
+      # Generated DNS configuration for rainier.alpine.lab Child Domain Replica
+      windows_dns_servers:
+        - {{ hostvars[groups['rainier_child_pdc'][0]]['ansible_host'] }}      # MARBLE-DC (PDC)
+        - 127.0.0.1                    # Self (loopback)
+        - {{ hostvars[groups['alpine_forest_root_pdc'][0]]['ansible_host'] }}  # GRANITE-DC (parent)
+    dest: "{{ playbook_dir }}/../inventory/group_vars/rainier_child_replica.yml"
+  delegate_to: localhost
+  run_once: yes
+
+- name: Display DNS generation complete
+  debug:
+    msg: "DNS configuration files generated in inventory/group_vars/"
+  delegate_to: localhost
+  run_once: yes

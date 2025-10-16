@@ -36,6 +36,19 @@
       run_once: yes
 
 # =============================================================================
+# PHASE 1.5: Generate DC DNS Configuration
+# =============================================================================
+- name: Generate DNS Configuration for DCs
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Generate DC DNS group_vars files
+      include_role:
+        name: activeDirectory
+        tasks_from: generate_dc_dns_config.yml
+
+# =============================================================================
 # PHASE 2: Check Existing Domain Status
 # =============================================================================
 - name: Check Domain Status
