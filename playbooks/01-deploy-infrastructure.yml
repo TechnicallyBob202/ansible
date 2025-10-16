@@ -18,12 +18,25 @@
     - name: Deploy VM (clone + configure + start)
       include_role:
         name: proxmox
-        apply:
-          delegate_to: localhost
+      register: deploy_result
+      # If you need delegation here, keep your existing apply config as you already have in this file.
+
+    - name: Mark whether this host was newly deployed
+      set_fact:
+        proxmox_deploy_changed: "{{ deploy_result.changed | default(false) }}"
+
+    - name: Determine if any VMs were newly deployed
+      set_fact:
+        any_new_vms: "{{ ansible_play_hosts
+          | map('extract', hostvars, 'proxmox_deploy_changed')
+          | select('equalto', true)
+          | list | length > 0 }}"
+      run_once: yes
 
     - name: Wait for VMs to boot (DHCP)
       pause:
         seconds: 60
+      when: any_new_vms | default(true)
       run_once: yes
 
     - name: Take snapshots of all VMs (post-deploy)
