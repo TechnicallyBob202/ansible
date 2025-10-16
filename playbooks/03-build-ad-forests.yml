@@ -71,6 +71,18 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
+# PHASE 3b: Post-DNS healing for forest root PDCs
+# =============================================================================
+- name: Post-DNS healing for forest root PDCs
+  hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
+  gather_facts: no
+  tasks:
+    - name: Enforce DNS policy on root PDCs (self + replica [+ child PDCs optional])
+      include_role:
+        name: activeDirectory
+        tasks_from: post_root_pdc.yml
+        
+# =============================================================================
 # PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
