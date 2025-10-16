@@ -3,23 +3,26 @@
 
 - name: Resolve forest root PDC IPs (once)
   set_fact:
-    arbor_root_pdc_ip: "{{ hostvars[groups['arbor_forest_root_pdc'][0]].ansible_host }}"
-    alpine_root_pdc_ip: "{{ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host }}"
+    arbor_root_pdc_ip: "{{ hostvars[groups['arbor_forest_root_pdc'][0]].ansible_host if (groups['arbor_forest_root_pdc'] | default([]) | length) > 0 else omit }}"
+    alpine_root_pdc_ip: "{{ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host if (groups['alpine_forest_root_pdc'] | default([]) | length) > 0 else omit }}"
   run_once: yes
 
-- name: Set DNS for forest root replicas (post)
+- name: Choose current forest PDC IP
   set_fact:
-    windows_dns_servers: >-
+    current_forest_pdc_ip: >-
       {{
-        [ ansible_host ] +
-        (
-          [ arbor_root_pdc_ip ]
-          if inventory_hostname in (groups['arbor_forest_root_replica'] | default([]))
-          else [ alpine_root_pdc_ip ]
-        )
+        arbor_root_pdc_ip
+        if (inventory_hostname in (groups['arbor_forest_root_replica'] | default([])))
+        else alpine_root_pdc_ip
       }}
+
+- name: Build DNS list for forest root replicas (post)
+  set_fact:
+    windows_dns_servers: "{{ [ ansible_host, current_forest_pdc_ip ] }}"
+  when: current_forest_pdc_ip is defined
 
 - name: Apply DNS (post)
   include_role:
     name: windows
     tasks_from: set_dns.yml
+  when: windows_dns_servers is defined

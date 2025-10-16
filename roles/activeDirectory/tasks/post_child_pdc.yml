@@ -3,16 +3,19 @@
 
 - name: Resolve alpine root PDC IP (once)
   set_fact:
-    alpine_root_pdc_ip: "{{ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host }}"
+    alpine_root_pdc_ip: "{{ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host if (groups['alpine_forest_root_pdc'] | default([]) | length) > 0 else omit }}"
   run_once: yes
 
 - name: Set DNS for child PDCs (post)
   set_fact:
     windows_dns_servers: "{{ [ ansible_host, alpine_root_pdc_ip ] }}"
   when: >
-    inventory_hostname in (groups['mauna_child_pdc'] | default([]))
-    or
-    inventory_hostname in (groups['rainier_child_pdc'] | default([]))
+    (alpine_root_pdc_ip is defined)
+    and (
+      inventory_hostname in (groups['mauna_child_pdc'] | default([]))
+      or
+      inventory_hostname in (groups['rainier_child_pdc'] | default([]))
+    )
 
 - name: Apply DNS (post)
   include_role:
