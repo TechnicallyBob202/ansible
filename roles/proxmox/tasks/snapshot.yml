@@ -1,6 +1,6 @@
 ---
 # roles/proxmox/tasks/snapshot.yml
-# Remove all snapshots containing "post-deploy" in the name, then create a fresh one.
+# Delete-then-create a stage-specific snapshot using proxmox_snap only.
 
 - block:
     - name: Ensure default snapshot vars
@@ -22,29 +22,7 @@
       failed_when: false
       changed_when: false
 
-    - name: Get PVE API ticket
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/access/ticket"
-        method: POST
-        body_format: form-urlencoded
-        body:
-          username: "{{ proxmox_user }}"
-          password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-      register: pve_auth
-      when: vm_exists.status is defined
-
-    - name: List existing snapshots
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/snapshot"
-        method: GET
-        headers:
-          Cookie: "PVEAuthCookie={{ pve_auth.json.data.ticket }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-      register: snapshot_list
-      when: vm_exists.status is defined
-
-    - name: Remove existing 'post-deploy' snapshots
+    - name: Remove existing stage snapshot (if present)
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -52,22 +30,11 @@
         validate_certs: "{{ proxmox_validate_certs }}"
         hostname: "{{ proxmox_node }}"
         vmid: "{{ vmid }}"
-        snapname: "{{ item }}"
+        snapname: "{{ snapshot_name }}"
         state: absent
-      loop: >-
-        {{
-          (snapshot_list.json.data | default([]))
-          | map(attribute='name')
-          | select('search', 'post-deploy')
-          | list
-        }}
-      loop_control:
-        label: "{{ item }}"
-      when:
-        - vm_exists.status is defined
-        - snapshot_list.json is defined
+      when: vm_exists.status is defined
 
-    - name: Create post-deploy snapshot
+    - name: Create stage snapshot
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -77,7 +44,7 @@
         vmid: "{{ vmid }}"
         snapname: "{{ snapshot_name }}"
         state: present
-        description: "Post-deploy snapshot {{ snapshot_name }}"
+        description: "Stage snapshot: {{ snapshot_name }}"
         vmstate: "{{ proxmox_snapshot_vmstate }}"
       when: vm_exists.status is defined
       register: snapshot_result

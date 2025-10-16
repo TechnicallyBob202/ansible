@@ -95,3 +95,19 @@
           - "Lab verification complete!"
           - "All systems validated and operational"
           - "Documentation generated in files/"
+
+# =============================================================================
+# PHASE 5: Post-Stage Snapshot (only runs if prior plays succeeded)
+# =============================================================================
+- name: Snapshot after successful verification
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Take snapshot (success)
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+      apply:
+        delegate_to: localhost
+      vars:
+        snapshot_name: success

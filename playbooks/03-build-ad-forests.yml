@@ -215,3 +215,19 @@
           - "Domain information saved to files/"
           - "  - domain-sids.txt"
           - "  - fsmo-roles.txt"
+
+# =============================================================================
+# PHASE 9: Post-Stage Snapshot (only runs if prior plays succeeded)
+# =============================================================================
+- name: Snapshot after AD promotion
+  hosts: all
+  gather_facts: no
+  tasks:
+    - name: Take snapshot (post-dcpromo)
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+      apply:
+        delegate_to: localhost
+      vars:
+        snapshot_name: post-dcpromo
