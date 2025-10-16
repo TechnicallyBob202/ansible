@@ -15,6 +15,8 @@
     pool: "{{ proxmox_pool }}"
     update: yes
   register: cpu_mem_config
+  when: needs_cpu_mem_update
+  delegate_to: localhost
 
 - name: Resize VM disk
   community.general.proxmox_disk:
@@ -27,6 +29,8 @@
     size: "{{ vm_disk }}"
     state: resized
   register: disk_resize
+  when: needs_disk_resize
+  delegate_to: localhost
 
 - name: Apply VM tags
   community.general.proxmox_kvm:
@@ -39,6 +43,8 @@
     tags: "{{ proxmox_vm_tags }}"
     update: yes
   register: tag_config
+  when: needs_tags_update
+  delegate_to: localhost
 
 - name: Display hardware configuration result
   debug:

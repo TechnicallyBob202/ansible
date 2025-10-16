@@ -9,6 +9,10 @@
     seconds: 10
   when: clone_result.changed
 
+- name: Preflight: compute VM facts
+  include_tasks: preflight.yml
+  delegate_to: localhost
+  
 - name: Configure VM network
   include_tasks: configure_network.yml
 

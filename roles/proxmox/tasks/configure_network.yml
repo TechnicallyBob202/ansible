@@ -12,6 +12,8 @@
     bridge: "{{ proxmox_network_bridge }}"
     tag: "{{ proxmox_network_vlan }}"
   register: network_config
+  when: not vm_preexisted
+  delegate_to: localhost
 
 - name: Display network configuration result
   debug:

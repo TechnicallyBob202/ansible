@@ -1,0 +1,74 @@
+---
+# roles/proxmox/tasks/preflight.yml
+# Compute per-VM facts for skip logic
+
+- name: Get cluster-wide VM inventory
+  community.general.proxmox_vm_info:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+  register: pve_vms
+
+- name: Locate current VM record
+  set_fact:
+    vm_record: >-
+      {{
+        (pve_vms.proxmox_vms | default([]))
+        | selectattr('vmid', 'equalto', (vmid | int))
+        | list | first | default({})
+      }}
+
+- name: Mark existence and current power state
+  set_fact:
+    vm_preexisted: "{{ (vm_record | length) > 0 }}"
+    vm_current_state: "{{ vm_record.status | default('stopped') }}"
+
+# Optionally capture detailed config (tags, net) via current-state query
+- name: Get detailed VM config (node-scoped)
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_cfg
+  failed_when: false
+  changed_when: false
+
+# Normalize tags as a list
+- name: Compute tag lists (current vs desired)
+  set_fact:
+    tags_current: >-
+      {{
+        (
+          vm_record.tags | default(vm_cfg.status.tags | default(''))
+        ) | string | regex_replace('\\s+', '') | split(';')
+        | select('length') | list
+      }}
+    tags_desired: "{{ (proxmox_tags | default([])) | unique | list }}"
+    needs_tags_update: >-
+      {{
+        (tags_current | difference(tags_desired)) | length > 0
+        or (tags_desired | difference(tags_current)) | length > 0
+      }}
+
+# Example: compute CPU/memory delta (align to your variable names)
+- name: Compute CPU/memory deltas
+  set_fact:
+    current_cores: "{{ vm_record.cpus | default(omit) }}"
+    current_memory_mb: "{{ (vm_record.maxmem | default(0) | int // (1024*1024)) }}"
+    needs_cpu_mem_update: >-
+      {{
+        (proxmox_cores is defined and current_cores is defined and proxmox_cores|int != current_cores|int)
+        or
+        (proxmox_memory_mb is defined and current_memory_mb is defined and proxmox_memory_mb|int != current_memory_mb|int)
+      }}
+
+# Disk: only resize when desired > current
+- name: Compute disk resize need
+  set_fact:
+    current_disk_gb: "{{ (proxmox_current_disk_gb | default(0)) | int }}"
+    needs_disk_resize: "{{ (proxmox_disk_gb | default(0) | int) > current_disk_gb }}"
