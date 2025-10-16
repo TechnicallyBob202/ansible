@@ -2,6 +2,7 @@
 - name: Deploy Lab VMs from Inventory
   hosts: all
   gather_facts: no
+  connection: local
   serial: 0  # Deploy all in parallel
 
   vars:
@@ -19,16 +20,17 @@
     - name: Deploy VM (clone + configure + start)
       include_role:
         name: proxmox
-      # leave your existing delegation for role tasks as-is
+      # keep as-is; your role handles Proxmox API calls
 
+    # Aggregate the vm_preexisted flags produced by clone.yml
     - name: Determine if any VMs were newly deployed
       set_fact:
         any_new_vms: >-
           {{
             ansible_play_hosts
             | map('extract', hostvars, 'vm_preexisted')
-            | map('default', true)         # treat undefined as preexisting
-            | select('equalto', false)     # any false => at least one newly created
+            | map('default', true)       # treat undefined as preexisting
+            | select('equalto', false)   # any false => at least one newly created
             | list | length > 0
           }}
       run_once: yes
