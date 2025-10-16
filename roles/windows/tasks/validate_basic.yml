@@ -1,0 +1,66 @@
+---
+# Stage 02 validation - FORCES all VMs to use Cloudflare DNS
+# Self-healing: Sets DNS to Cloudflare if incorrect
+
+- name: Test WinRM connectivity
+  ansible.windows.win_ping:
+  register: ping_test
+
+- name: Get network configuration
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $gateway = Get-NetRoute -InterfaceAlias $adapter.Name -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1
+
+    [PSCustomObject]@{
+      Hostname = $env:COMPUTERNAME
+      IPAddress = $ip.IPAddress
+      Gateway = $gateway.NextHop
+      DNS = $dns.ServerAddresses -join ","
+      AdapterName = $adapter.Name
+    } | ConvertTo-Json
+  register: network_info
+  changed_when: false
+
+- name: Parse network information
+  set_fact:
+    network_config: "{{ network_info.stdout | from_json }}"
+
+- name: Validate IP address
+  assert:
+    that:
+      - network_config.IPAddress == ansible_host
+    fail_msg: "IP mismatch: Expected {{ ansible_host }}, got {{ network_config.IPAddress }}"
+    success_msg: "IP address validated: {{ ansible_host }}"
+
+- name: Validate hostname
+  assert:
+    that:
+      - network_config.Hostname == inventory_hostname
+    fail_msg: "Hostname mismatch: Expected {{ inventory_hostname }}, got {{ network_config.Hostname }}"
+    success_msg: "Hostname validated: {{ inventory_hostname }}"
+
+- name: Check if DNS needs to be set to Cloudflare
+  set_fact:
+    dns_needs_fix: "{{ '1.1.1.1' not in network_config.DNS }}"
+
+- name: Force DNS to Cloudflare (self-healing)
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "1.1.1.1","1.0.0.1"
+    Clear-DnsClientCache
+    $dns = (Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses
+    Write-Output "DNS set to: $($dns -join ', ')"
+  when: dns_needs_fix
+  register: dns_fix
+
+- name: Display validation summary
+  debug:
+    msg:
+      - "Stage 02 validation complete for {{ inventory_hostname }}"
+      - "  WinRM: ✓"
+      - "  IP: {{ network_config.IPAddress }} ✓"
+      - "  Hostname: {{ network_config.Hostname }} ✓"
+      - "  Gateway: {{ network_config.Gateway }}"
+      - "  DNS: {{ 'FIXED to Cloudflare' if dns_needs_fix else 'Already Cloudflare (1.1.1.1, 1.0.0.1)' }}"
