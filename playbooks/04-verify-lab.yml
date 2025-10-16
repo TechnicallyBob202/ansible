@@ -102,6 +102,7 @@
 - name: Snapshot after successful verification
   hosts: all
   gather_facts: no
+  serial: 2
   tasks:
     - name: Take snapshot (success)
       include_role:
@@ -111,4 +112,3 @@
           delegate_to: localhost
       vars:
         snapshot_name: success
-      throttle: 2

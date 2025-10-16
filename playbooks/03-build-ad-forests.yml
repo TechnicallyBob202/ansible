@@ -222,6 +222,7 @@
 - name: Snapshot after AD promotion
   hosts: all
   gather_facts: no
+  serial: 2
   tasks:
     - name: Take snapshot (post-dcpromo)
       include_role:
@@ -231,4 +232,3 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-dcpromo
-      throttle: 2

@@ -110,10 +110,13 @@
         msg: "All {{ ansible_play_hosts | length }} VMs configured successfully"
       run_once: yes
 
+# =============================================================================
 # PHASE 6: Post-Stage Snapshot (only runs if prior plays succeeded)
+# =============================================================================
 - name: Snapshot after base OS configuration
   hosts: all
   gather_facts: no
+  serial: 2
   tasks:
     - name: Take snapshot (post-config)
       include_role:
@@ -123,4 +126,3 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-config
-      throttle: 2
