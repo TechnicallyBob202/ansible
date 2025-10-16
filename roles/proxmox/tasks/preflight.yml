@@ -52,7 +52,10 @@
       }}
 
 # Disk: only resize when desired > current
+- name: Compute current disk size (GB)
+  set_fact:
+    current_disk_gb: "{{ ((vm_record.maxdisk | default(0) | int) / (1024*1024*1024)) | int }}"
+
 - name: Compute disk resize need
   set_fact:
-    current_disk_gb: "{{ (proxmox_current_disk_gb | default(0)) | int }}"
-    needs_disk_resize: "{{ (proxmox_disk_gb | default(0) | int) > current_disk_gb }}"
+    needs_disk_resize: "{{ (proxmox_disk_gb | default(0) | int) > (current_disk_gb | default(0) | int) }}"

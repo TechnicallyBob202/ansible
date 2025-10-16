@@ -29,7 +29,7 @@
     size: "{{ vm_disk }}"
     state: resized
   register: disk_resize
-  when: needs_disk_resize
+  when: needs_disk_resize | default(false)
   delegate_to: localhost
 
 - name: Apply VM tags
