@@ -1,63 +1,104 @@
 <?xml version="1.0" encoding="utf-8"?>
-<mrng:Connections xmlns:mrng="http://mremoteng.org" Name="Connections" Export="false" EncryptionEngine="AES" BlockCipherMode="GCM" KdfIterations="1000" FullFileEncryption="false" Protected="QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B" ConfVersion="2.6">
-    <Node Name="ADFR-DSP Lab" Type="Container" Expanded="true" Descr="Semperis Lab - Generated {{ ansible_date_time.iso8601 }}" Icon="mRemoteNG" Panel="General" Id="adfr-lab-root" Username="" Domain="" Password="" Hostname="" Protocol="RDP" PuttySession="Default Settings" Port="3389" ConnectToConsole="false" UseCredSsp="true" RenderingEngine="IE" ICAEncryptionStrength="EncrBasic" RDPAuthenticationLevel="NoAuth" RDPMinutesToIdleTimeout="0" RDPAlertIdleTimeout="false" LoadBalanceInfo="" Colors="Colors16Bit" Resolution="FitToWindow" AutomaticResize="true" DisplayWallpaper="false" DisplayThemes="false" EnableFontSmoothing="false" EnableDesktopComposition="false" CacheBitmaps="false" RedirectDiskDrives="false" RedirectPorts="false" RedirectPrinters="false" RedirectSmartCards="false" RedirectSound="DoNotPlay" SoundQuality="Dynamic" RedirectKeys="false" Connected="false" PreExtApp="" PostExtApp="" MacAddress="" UserField="" ExtApp="" VNCCompression="CompNone" VNCEncoding="EncHextile" VNCAuthMode="AuthVNC" VNCProxyType="ProxyNone" VNCProxyIP="" VNCProxyPort="0" VNCProxyUsername="" VNCProxyPassword="" VNCColors="ColNormal" VNCSmartSizeMode="SmartSAspect" VNCViewOnly="false" RDGatewayUsageMethod="Never" RDGatewayHostname="" RDGatewayUseConnectionCredentials="Yes" RDGatewayUsername="" RDGatewayPassword="" RDGatewayDomain="" InheritCacheBitmaps="false" InheritColors="false" InheritDescription="false" InheritDisplayThemes="false" InheritDisplayWallpaper="false" InheritEnableFontSmoothing="false" InheritEnableDesktopComposition="false" InheritDomain="false" InheritIcon="false" InheritPanel="false" InheritPassword="false" InheritPort="false" InheritProtocol="false" InheritPuttySession="false" InheritRedirectDiskDrives="false" InheritRedirectKeys="false" InheritRedirectPorts="false" InheritRedirectPrinters="false" InheritRedirectSmartCards="false" InheritRedirectSound="false" InheritSoundQuality="false" InheritResolution="false" InheritAutomaticResize="false" InheritUseConsoleSession="false" InheritUseCredSsp="false" InheritRenderingEngine="false" InheritUsername="false" InheritICAEncryptionStrength="false" InheritRDPAuthenticationLevel="false" InheritRDPMinutesToIdleTimeout="false" InheritRDPAlertIdleTimeout="false" InheritLoadBalanceInfo="false" InheritPreExtApp="false" InheritPostExtApp="false" InheritMacAddress="false" InheritUserField="false" InheritExtApp="false" InheritVNCCompression="false" InheritVNCEncoding="false" InheritVNCAuthMode="false" InheritVNCProxyType="false" InheritVNCProxyIP="false" InheritVNCProxyPort="false" InheritVNCProxyUsername="false" InheritVNCProxyPassword="false" InheritVNCColors="false" InheritVNCSmartSizeMode="false" InheritVNCViewOnly="false" InheritRDGatewayUsageMethod="false" InheritRDGatewayHostname="false" InheritRDGatewayUseConnectionCredentials="false" InheritRDGatewayUsername="false" InheritRDGatewayPassword="false" InheritRDGatewayDomain="false">
-        
-        <!-- Infrastructure Servers -->
-        <Node Name="Infrastructure" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="infra-container">
-{% for host in groups['infrastructure'] | default([]) | sort %}
-            <Node Name="{{ host }}" Type="Connection" Descr="{{ hostvars[host]['role'] | default('Infrastructure') }}" Icon="mRemoteNG" Panel="General" Id="infra-{{ host | lower }}" Username="Administrator" Domain="" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-        </Node>
+<mRemoteNG>
+  <connection name="{{ lab_name | default('ADFR Lab') }}" type="container">
 
-        <!-- arbor.lab Forest -->
-        <Node Name="arbor.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="arbor-container">
-{% for host in groups['arbor_forest_root_pdc'] | default([]) | sort %}
-            <Node Name="{{ host }}" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="arbor-{{ host | lower }}" Username="ARBOR\Administrator" Domain="ARBOR" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-{% for host in groups['arbor_forest_root_replica'] | default([]) | sort %}
-            <Node Name="{{ host }}" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="arbor-{{ host | lower }}" Username="ARBOR\Administrator" Domain="ARBOR" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-        </Node>
+    {# ---------- Infrastructure ---------- #}
+    {% if 'infrastructure' in groups %}
+    <connection name="Infrastructure" type="container">
+      {% for h in (groups['infrastructure'] | default([])) | sort %}
+        {% set hv = hostvars[h] %}
+        <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                    hostname="{{ hv.ansible_host | default(h) }}"
+                    username="{{ hv.ansible_user | default('Administrator') }}"
+                    domain="{{ hv.netbios_name | default('') }}"
+                    port="{{ hv.rdp_port | default('3389') }}"/>
+      {% endfor %}
+    </connection>
+    {% endif %}
 
-        <!-- alpine.lab Forest -->
-        <Node Name="alpine.lab Forest" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="alpine-container">
-            
-            <!-- Forest Root Domain -->
-            <Node Name="Forest Root" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="alpine-root-container">
-{% for host in groups['alpine_forest_root_pdc'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Forest Root PDC" Icon="mRemoteNG" Panel="General" Id="alpine-{{ host | lower }}" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-{% for host in groups['alpine_forest_root_replica'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Forest Root Replica" Icon="mRemoteNG" Panel="General" Id="alpine-{{ host | lower }}" Username="ALPINE\Administrator" Domain="ALPINE" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-            </Node>
+    {# ---------- Arbor Forest ---------- #}
+    {% if 'arbor_forest' in groups %}
+    <connection name="Arbor Forest" type="container">
+      {# Render Root Domain (arbor_forest_root_pdc + arbor_forest_root_replica) #}
+      <connection name="Root Domain" type="container">
+        {% for g in ['arbor_forest_root_pdc','arbor_forest_root_replica'] if g in groups %}
+          {% for h in (groups[g] | default([])) | sort %}
+            {% set hv = hostvars[h] %}
+            <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                        hostname="{{ hv.ansible_host | default(h) }}"
+                        username="{{ hv.ansible_user | default('Administrator') }}"
+                        domain="{{ hv.netbios_name | default('') }}"
+                        port="{{ hv.rdp_port | default('3389') }}"/>
+          {% endfor %}
+        {% endfor %}
+      </connection>
+    </connection>
+    {% endif %}
 
-            <!-- mauna.alpine.lab Child Domain -->
-            <Node Name="mauna.alpine.lab Child Domain" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="mauna-container">
-{% for host in groups['mauna_child_pdc'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="mauna-{{ host | lower }}" Username="MAUNA\Administrator" Domain="MAUNA" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-{% for host in groups['mauna_child_replica'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="mauna-{{ host | lower }}" Username="MAUNA\Administrator" Domain="MAUNA" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-            </Node>
+    {# ---------- Alpine Forest with nested child domains ---------- #}
+    {% if 'alpine_forest' in groups %}
+    <connection name="Alpine Forest" type="container">
+      {# Root Domain (alpine_forest_root_pdc + alpine_forest_root_replica) #}
+      <connection name="Root Domain" type="container">
+        {% for g in ['alpine_forest_root_pdc','alpine_forest_root_replica'] if g in groups %}
+          {% for h in (groups[g] | default([])) | sort %}
+            {% set hv = hostvars[h] %}
+            <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                        hostname="{{ hv.ansible_host | default(h) }}"
+                        username="{{ hv.ansible_user | default('Administrator') }}"
+                        domain="{{ hv.netbios_name | default('') }}"
+                        port="{{ hv.rdp_port | default('3389') }}"/>
+          {% endfor %}
+        {% endfor %}
+      </connection>
 
-            <!-- rainier.alpine.lab Child Domain -->
-            <Node Name="rainier.alpine.lab Child Domain" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="rainier-container">
-{% for host in groups['rainier_child_pdc'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Child Domain PDC" Icon="mRemoteNG" Panel="General" Id="rainier-{{ host | lower }}" Username="RAINIER\Administrator" Domain="RAINIER" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-{% for host in groups['rainier_child_replica'] | default([]) | sort %}
-                <Node Name="{{ host }}" Type="Connection" Descr="Child Domain Replica" Icon="mRemoteNG" Panel="General" Id="rainier-{{ host | lower }}" Username="RAINIER\Administrator" Domain="RAINIER" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-            </Node>
-        </Node>
+      {# Collect Alpine child-domain hosts (any subgroup under alpine_forest with parent_domain set) #}
+      {% set _child_items = [] %}
+      {% for subgroup in (groups['alpine_forest'] | default([])) %}
+        {% if subgroup in groups %}
+          {% for h in groups[subgroup] | default([]) %}
+            {% set hv = hostvars[h] %}
+            {% if hv.parent_domain is defined %}
+              {% set domlabel = (hv.netbios_name | default(hv.domain_name.split('.')[0] | default(''))) | upper %}
+              {% if _child_items.append({'domain': domlabel, 'host': h}) %}{% endif %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+      {% endfor %}
 
-        <!-- Recovery VMs -->
-        <Node Name="Recovery VMs" Type="Container" Expanded="true" Icon="mRemoteNG" Panel="General" Id="recovery-container">
-{% for host in groups['recovery_vms'] | default([]) | sort %}
-            <Node Name="{{ host }}" Type="Connection" Descr="Recovery VM" Icon="mRemoteNG" Panel="General" Id="recovery-{{ host | lower }}" Username="Administrator" Domain="" Password="" Hostname="{{ hostvars[host]['ansible_host'] }}" Protocol="RDP" Port="3389" UseCredSsp="true" />
-{% endfor %}
-        </Node>
-    </Node>
-</mrng:Connections>
+      {# Unique child domain labels (e.g., MAUNA, RAINIER) #}
+      {% set child_domains = (_child_items | map(attribute='domain') | unique | list) %}
+
+      {# Render each child domain as a container and place its hosts inside #}
+      {% for dom in child_domains %}
+      <connection name="{{ dom }}" type="container">
+        {% for item in _child_items if item.domain == dom %}
+          {% set h = item.host %}
+          {% set hv = hostvars[h] %}
+          <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                      hostname="{{ hv.ansible_host | default(h) }}"
+                      username="{{ hv.ansible_user | default('Administrator') }}"
+                      domain="{{ hv.netbios_name | default('') }}"
+                      port="{{ hv.rdp_port | default('3389') }}"/>
+        {% endfor %}
+      </connection>
+      {% endfor %}
+    </connection>
+    {% endif %}
+
+    {# ---------- Recovery VMs ---------- #}
+    {% if 'recovery_vms' in groups %}
+    <connection name="Recovery VMs" type="container">
+      {% for h in (groups['recovery_vms'] | default([])) | sort %}
+        {% set hv = hostvars[h] %}
+        <connection name="{{ h }}" protocol="{{ hv.rdp_protocol | default('RDP') }}"
+                    hostname="{{ hv.ansible_host | default(h) }}"
+                    username="{{ hv.ansible_user | default('Administrator') }}"
+                    domain="{{ hv.netbios_name | default('') }}"
+                    port="{{ hv.rdp_port | default('3389') }}"/>
+      {% endfor %}
+    </connection>
+    {% endif %}
+
+  </connection>
+</mRemoteNG>
