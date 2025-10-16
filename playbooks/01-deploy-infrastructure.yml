@@ -21,6 +21,15 @@
         apply:
           delegate_to: localhost
 
+    # NEW: compute if any VM was newly created (did not preexist)
+    - name: Determine if any VMs were newly deployed
+      set_fact:
+        any_new_vms: "{{ ansible_play_hosts
+          | map('extract', hostvars, 'vm_preexisted')
+          | select('equalto', false)
+          | list | length > 0 }}"
+      run_once: yes
+      
     - name: Wait for VMs to boot (DHCP)
       pause:
         seconds: 60
