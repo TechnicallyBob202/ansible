@@ -3,6 +3,8 @@
 proxmox_user: root@pam
 proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
 proxmox_validate_certs: no
+snapshot_name: "post-deploy-{{ lookup('pipe','date -u +%Y%m%dT%H%M%SZ') }}"
+proxmox_snapshot_vmstate: false  # set true to include RAM state
 
 # VM defaults
 proxmox_pool: "ADFR-DSP"

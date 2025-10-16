@@ -21,9 +21,9 @@
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
+        hostname: "{{ proxmox_node }}"
         vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        name: "{{ snapshot_name }}"
+        snapname: "{{ snapshot_name }}"
         state: present
         description: "Post-deploy snapshot {{ snapshot_name }}"
         vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
