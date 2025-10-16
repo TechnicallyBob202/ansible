@@ -14,6 +14,11 @@
   failed_when: false
   changed_when: false
 
+# NEW: expose whether the VM already existed when we checked
+- name: Mark whether VM preexisted
+  set_fact:
+    vm_preexisted: "{{ vm_exists.status is defined }}"
+    
 - name: Clone VM from template
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
