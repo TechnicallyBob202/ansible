@@ -1,22 +1,22 @@
 ---
-# Clone a VM from template
+# Clone a VM from template (cluster-aware existence check)
 
-- name: Check if VM exists
-  community.general.proxmox_kvm:
+- name: List VMs cluster-wide
+  community.general.proxmox_vm_info:
     api_host: "{{ proxmox_host }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    state: current
-  register: vm_exists
-  failed_when: false
-  changed_when: false
+  register: pve_vms
 
-- name: Mark whether VM preexisted
+- name: Mark whether VM preexisted (by VMID, cluster-wide)
   set_fact:
-    vm_preexisted: "{{ vm_exists.status is defined }}"
+    vm_preexisted: >-
+      {{
+        (pve_vms.proxmox_vms | default([]))
+        | selectattr('vmid', 'equalto', (vmid | int))
+        | list | length > 0
+      }}
   delegate_facts: false
 
 - name: Clone VM from template
@@ -33,9 +33,13 @@
     pool: "{{ proxmox_pool }}"
     full: yes
     timeout: "{{ proxmox_clone_timeout }}"
-  when: vm_exists.failed or vm_exists.status is not defined
+  when: not vm_preexisted
   register: clone_result
 
 - name: Display clone result
   debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'cloned from template' if clone_result.changed else 'already exists' }}"
+    msg: >-
+      VM {{ inventory_hostname }} ({{ vmid }}) - {{
+        'cloned from template' if (clone_result is defined and (clone_result.changed | default(false)))
+        else 'already exists'
+      }}
