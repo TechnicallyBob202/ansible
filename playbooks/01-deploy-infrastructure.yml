@@ -22,17 +22,13 @@
         apply:
           delegate_to: localhost
 
-    # NEW: compute if any VM was newly created (not preexisting)
     - name: Determine if any VMs were newly deployed
       set_fact:
-        any_new_vms: >-
-          {{
-            ansible_play_hosts
-            | map('extract', hostvars, 'vm_preexisted')
-            | map('default', true)         # undefined -> treat as preexisting
-            | select('equalto', false)     # any false => at least one newly created
-            | list | length > 0
-          }}
+        any_new_vms: "{{ (ansible_play_hosts
+                          | map('extract', hostvars, 'vm_preexisted')
+                          | map('default', true)
+                          | select('equalto', false)
+                          | list | length) > 0 }}"
       run_once: yes
       delegate_to: localhost
       delegate_facts: true
