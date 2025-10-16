@@ -4,6 +4,17 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
+# Local, authoritative guard: is this machine already a DC?
+- name: Detect if this host is already a DC
+  ansible.windows.win_shell: "(Get-CimInstance -ClassName Win32_ComputerSystem).DomainRole"
+  register: dc_role
+  changed_when: false
+  failed_when: false
+
+- name: Set is_domain_controller fact
+  set_fact:
+    is_domain_controller: "{{ (dc_role.stdout | trim | int) >= 4 }}"
+
 # Pre-DNS for child replicas (parent = their child PDC, static-IP)
 - name: Set DNS for child replicas (pre-promo -> child PDC)
   set_fact:
@@ -57,7 +68,8 @@
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
-    domain_admin_user: "{{ netbios_name }}\\Administrator"
+    # Prefer UPN to avoid NetBIOS dependency; module accepts UPN or DOMAIN\User
+    domain_admin_user: "Administrator@{{ domain_name }}"
     domain_admin_password: "{{ ad_safe_mode_password }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
     database_path: "{{ ad_database_path }}"

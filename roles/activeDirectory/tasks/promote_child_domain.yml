@@ -4,6 +4,32 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
+# Strong idempotency guards (local and AD)
+- name: Detect if this host is already a DC
+  ansible.windows.win_shell: "(Get-CimInstance -ClassName Win32_ComputerSystem).DomainRole"
+  register: dc_role
+  changed_when: false
+  failed_when: false
+
+- name: Set is_domain_controller fact
+  set_fact:
+    is_domain_controller: "{{ (dc_role.stdout | trim | int) >= 4 }}"
+
+- name: Detect if child domain already exists
+  ansible.windows.win_shell: |
+    try {
+      Import-Module ActiveDirectory -ErrorAction SilentlyContinue
+      Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop | Out-Null
+      'FOUND'
+    } catch { 'MISSING' }
+  register: child_domain_probe
+  changed_when: false
+  failed_when: false
+
+- name: Set child_domain_exists fact
+  set_fact:
+    child_domain_exists: "{{ (child_domain_probe.stdout | trim) == 'FOUND' }}"
+
 # Pre-DNS for child PDCs (parent = alpine, static-IP)
 - name: Set DNS for child PDCs (pre-promo -> parent alpine root)
   set_fact:
@@ -19,40 +45,26 @@
     tasks_from: set_dns.yml
   when: windows_dns_servers is defined
 
-- name: Get parent domain credentials
-  set_fact:
-    parent_netbios: "{{ parent_domain.split('.')[0] | upper }}"
-  when: not domain_exists
-
+# Promote child domain with Microsoft AD module (parent creds via UPN)
 - name: Promote to child domain PDC
-  ansible.windows.win_shell: |
-    $ErrorActionPreference = "Stop"
-
-    Import-Module ADDSDeployment
-
-    $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    # Use UPN to avoid NetBIOS dependency
-    $ParentCred = New-Object System.Management.Automation.PSCredential("Administrator@{{ parent_domain }}", $SecurePassword)
-
-    $params = @{
-      DomainName                    = "{{ domain_name }}"                 # e.g. "mauna.alpine.lab"
-      DomainType                    = "ChildDomain"
-      ParentDomainName              = "{{ parent_domain }}"               # e.g. "alpine.lab"
-      Credential                    = $ParentCred
-      SafeModeAdministratorPassword = $SecurePassword
-      InstallDNS                    = ${{ ad_install_dns | ternary('true','false') }}
-      DatabasePath                  = "{{ ad_database_path }}"
-      SysvolPath                    = "{{ ad_sysvol_path }}"
-      LogPath                       = "{{ ad_log_path }}"
-      Force                         = $true
-      NoRebootOnCompletion          = $false
-    }
-
-    Install-ADDSDomain @params
-  when: not domain_exists
+  microsoft.ad.domain:
+    dns_domain_name: "{{ domain_name }}"            # e.g., "mauna.alpine.lab"
+    parent_domain_name: "{{ parent_domain }}"       # e.g., "alpine.lab"
+    domain_netbios_name: "{{ netbios_name }}"
+    domain_admin_user: "Administrator@{{ parent_domain }}"
+    domain_admin_password: "{{ ad_safe_mode_password }}"
+    safe_mode_password: "{{ ad_safe_mode_password }}"
+    install_dns: "{{ ad_install_dns }}"
+    database_path: "{{ ad_database_path }}"
+    sysvol_path: "{{ ad_sysvol_path }}"
+    log_path: "{{ ad_log_path }}"
+    reboot: yes
+  when:
+    - not is_domain_controller | default(false)
+    - not child_domain_exists | default(false)
   register: child_promotion
 
-# NOTE: Cannot use async with PowerShell commands that trigger reboots
+# NOTE: Cannot use async with reboots
 - name: Wait for child domain DC to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"

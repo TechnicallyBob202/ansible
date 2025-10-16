@@ -71,7 +71,7 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 3b: Post-DNS healing for forest root PDCs
+# PHASE 3b: Post-DNS healing for forest root PDCs (always-run)
 # =============================================================================
 - name: Post-DNS healing for forest root PDCs
   hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
@@ -81,7 +81,7 @@
       include_role:
         name: activeDirectory
         tasks_from: post_root_pdc.yml
-        
+
 # =============================================================================
 # PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
@@ -104,12 +104,14 @@
         name: activeDirectory
         tasks_from: verify_replication.yml
 
-# PHASE 4b: Always-run post action to heal DNS on root replicas
+# =============================================================================
+# PHASE 4b: Post-DNS healing for forest root replicas (always-run)
+# =============================================================================
 - name: Post-DNS healing for forest root replicas
   hosts: arbor_forest_root_replica:alpine_forest_root_replica
   gather_facts: no
   tasks:
-    - name: Enforce DNS policy (self + root PDC)
+    - name: Enforce DNS policy (self + forest root PDC)
       include_role:
         name: activeDirectory
         tasks_from: post_root_replica.yml
@@ -137,7 +139,9 @@
         name: activeDirectory
         tasks_from: check_fsmo_roles.yml
 
-# PHASE 5b: Always-run post action to heal DNS on child PDCs
+# =============================================================================
+# PHASE 5b: Post-DNS healing for child PDCs (always-run)
+# =============================================================================
 - name: Post-DNS healing for child PDCs
   hosts: mauna_child_pdc:rainier_child_pdc
   gather_facts: no
@@ -169,7 +173,9 @@
         name: activeDirectory
         tasks_from: verify_replication.yml
 
-# PHASE 6b: Always-run post action to heal DNS on child replicas
+# =============================================================================
+# PHASE 6b: Post-DNS healing for child replicas (always-run)
+# =============================================================================
 - name: Post-DNS healing for child replicas
   hosts: mauna_child_replica:rainier_child_replica
   gather_facts: no
