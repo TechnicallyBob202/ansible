@@ -22,7 +22,7 @@
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
-    state: snapshot
+    state: present
     snapshot: "{{ snapshot_name }}"
     vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
   when: vm_exists.status is defined
