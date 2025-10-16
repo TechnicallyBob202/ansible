@@ -8,6 +8,8 @@
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     proxmox_operation: deploy
+    snapshot_name: "post-deploy-{{ lookup('pipe','date -u +%Y%m%dT%H%M%SZ') }}"
+    proxmox_snapshot_vmstate: false  # set true to include RAM state
 
   tasks:
     - name: Display deployment plan
@@ -25,13 +27,21 @@
 
     - name: Wait for VMs to boot (DHCP)
       pause:
-        seconds: 90
+        seconds: 60
       run_once: yes
+
+    - name: Take snapshots of all VMs (post-deploy)
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+      apply:
+        delegate_to: localhost
 
     - name: Deployment complete
       debug:
         msg:
           - "All {{ ansible_play_hosts | length }} VMs deployed"
           - "VMs are booting with DHCP addresses"
+          - "Created snapshot: {{ snapshot_name }}"
           - "Next: Run playbook 02-configure-base-os.yml to set static IPs"
       run_once: yes

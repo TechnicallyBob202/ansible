@@ -1,0 +1,34 @@
+---
+# Snapshot a VM after deployment
+
+- name: Check if VM exists
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_exists
+  failed_when: false
+  changed_when: false
+
+- name: Create snapshot
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: snapshot
+    snapshot: "{{ snapshot_name }}"
+    vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
+  when: vm_exists.status is defined
+  register: snapshot_result
+
+- name: Display snapshot result
+  debug:
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already exists or skipped' }}"
+  when: vm_exists.status is defined
