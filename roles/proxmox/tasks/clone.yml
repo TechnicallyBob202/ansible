@@ -33,7 +33,7 @@
     pool: "{{ proxmox_pool }}"
     full: yes
     timeout: "{{ proxmox_clone_timeout }}"
-  when: vm_check.failed or vm_check.status is not defined
+  when: vm_exists.failed or vm_exists.status is not defined
   register: clone_result
 
 - name: Display clone result
