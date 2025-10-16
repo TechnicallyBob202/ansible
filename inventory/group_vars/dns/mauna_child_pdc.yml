@@ -1,0 +1,11 @@
+---
+# POST-PROMOTION DNS for mauna.alpine.lab Child Domain PDC (SLATE-DC)
+# Points to itself, parent domain DCs (alpine.lab), then root of the other forest
+
+windows_dns_servers:
+  - 127.0.0.1           # Loopback (self)
+  - 192.168.35.30       # GRANITE-DC (alpine.lab parent PDC)
+  - 192.168.35.31       # BASALT-DC (alpine.lab parent replica)
+  - 192.168.35.20       # KOA-DC (arbor.lab forest root - for forest trust)
+
+windows_dns_suffix: mauna.alpine.lab

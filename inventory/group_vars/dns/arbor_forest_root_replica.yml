@@ -1,0 +1,9 @@
+---
+# POST-PROMOTION DNS for arbor.lab Forest Root Replica (OAK-DC)
+# Points to the PDC first, then itself
+
+windows_dns_servers:
+  - 192.168.35.20       # KOA-DC (arbor.lab forest root PDC)
+  - 127.0.0.1           # Loopback (self)
+
+windows_dns_suffix: arbor.lab

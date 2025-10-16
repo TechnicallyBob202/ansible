@@ -1,0 +1,11 @@
+---
+# POST-PROMOTION DNS for mauna.alpine.lab Child Domain Replica (SHALE-DC)
+# Points to domain PDC first, then itself, then parent domain DCs
+
+windows_dns_servers:
+  - 192.168.35.32       # SLATE-DC (mauna.alpine.lab child PDC)
+  - 127.0.0.1           # Loopback (self)
+  - 192.168.35.30       # GRANITE-DC (alpine.lab parent PDC)
+  - 192.168.35.31       # BASALT-DC (alpine.lab parent replica)
+
+windows_dns_suffix: mauna.alpine.lab

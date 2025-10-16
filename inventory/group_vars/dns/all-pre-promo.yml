@@ -1,0 +1,19 @@
+---
+# ============================================================================
+# PRE-PROMOTION DNS CONFIGURATION FOR ALL VMs
+# ============================================================================
+# This file is used during Stage 02 (configure-base-os) to provide internet 
+# connectivity before any domain controllers are promoted.
+#
+# USAGE:
+#   - Rename this file to "all.yml" during Stage 02
+#   - After 02-configure completes, rename it back to "all-pre-promo.yml"
+#   - This allows the post-promotion DNS files to take effect in Stage 03-04
+# ============================================================================
+
+# Cloudflare DNS for internet connectivity before AD is built
+windows_dns_servers:
+  - 1.1.1.1  # Cloudflare DNS (primary)
+  - 1.0.0.1  # Cloudflare DNS (secondary)
+
+windows_dns_suffix: lab
