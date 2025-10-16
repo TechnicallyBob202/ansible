@@ -15,6 +15,47 @@
       failed_when: false
       changed_when: false
 
+    - name: Get PVE API ticket
+      uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/access/ticket"
+        method: POST
+        body_format: form-urlencoded
+        body:
+          username: "{{ proxmox_user }}"
+          password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+      register: pve_auth
+      when: vm_exists.status is defined
+
+    - name: List existing snapshots
+      uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/snapshot"
+        method: GET
+        headers:
+          CSRFPreventionToken: "{{ pve_auth.json.data.CSRFPreventionToken }}"
+        cookies:
+          PVEAuthCookie: "{{ pve_auth.json.data.ticket }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+      register: snapshot_list
+      when: vm_exists.status is defined
+
+    - name: Remove existing 'post-deploy' snapshots
+      community.general.proxmox_snap:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        hostname: "{{ proxmox_node }}"
+        vmid: "{{ vmid }}"
+        snapname: "{{ item.name }}"
+        state: absent
+      loop: "{{ snapshot_list.json.data | default([]) | selectattr('name', 'match', '^post-deploy-') | list }}"
+      loop_control:
+        label: "{{ item.name }}"
+      when:
+        - vm_exists.status is defined
+        - snapshot_list.json is defined
+
     - name: Create snapshot
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
@@ -26,12 +67,13 @@
         snapname: "{{ snapshot_name }}"
         state: present
         description: "Post-deploy snapshot {{ snapshot_name }}"
-        vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
+        vmstate: "{{ proxmox_snapshot_vmstate }}"
       when: vm_exists.status is defined
       register: snapshot_result
 
     - name: Display snapshot result
       debug:
-        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already exists or skipped' }}"
+        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already existed or skipped' }}"
       when: vm_exists.status is defined
+
   delegate_to: localhost
