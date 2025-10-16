@@ -24,8 +24,8 @@
       include_role:
         name: proxmox
         tasks_from: destroy.yml
-      apply:
-        delegate_to: localhost
+        apply:
+          delegate_to: localhost
 
     - name: Cleanup summary
       debug:
