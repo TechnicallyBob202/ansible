@@ -1,8 +1,9 @@
 ---
 # roles/proxmox/tasks/snapshot.yml
+# Idempotent: remove a fixed-named snapshot if it exists, then create it again.
 
 - block:
-    - name: Check if VM exists
+    - name: Check if VM exists (on this node)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -15,31 +16,7 @@
       failed_when: false
       changed_when: false
 
-    - name: Get PVE API ticket
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/access/ticket"
-        method: POST
-        body_format: form-urlencoded
-        body:
-          username: "{{ proxmox_user }}"
-          password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-      register: pve_auth
-      when: vm_exists.status is defined
-
-    - name: List existing snapshots
-      uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/snapshot"
-        method: GET
-        headers:
-          CSRFPreventionToken: "{{ pve_auth.json.data.CSRFPreventionToken }}"
-        cookies:
-          PVEAuthCookie: "{{ pve_auth.json.data.ticket }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-      register: snapshot_list
-      when: vm_exists.status is defined
-
-    - name: Remove existing 'post-deploy' snapshots
+    - name: Remove existing post-deploy snapshot (if present)
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -47,16 +24,11 @@
         validate_certs: "{{ proxmox_validate_certs }}"
         hostname: "{{ proxmox_node }}"
         vmid: "{{ vmid }}"
-        snapname: "{{ item.name }}"
+        snapname: "{{ snapshot_name }}"
         state: absent
-      loop: "{{ snapshot_list.json.data | default([]) | selectattr('name', 'match', '^post-deploy-') | list }}"
-      loop_control:
-        label: "{{ item.name }}"
-      when:
-        - vm_exists.status is defined
-        - snapshot_list.json is defined
+      when: vm_exists.status is defined
 
-    - name: Create snapshot
+    - name: Create post-deploy snapshot
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -73,7 +45,11 @@
 
     - name: Display snapshot result
       debug:
-        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already existed or skipped' }}"
+        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already existed' }}"
       when: vm_exists.status is defined
 
+  vars:
+    # Use a fixed name so delete-then-create works without listing
+    snapshot_name: "{{ snapshot_name | default('post-deploy') }}"
+    proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
   delegate_to: localhost
