@@ -121,5 +121,5 @@
         tasks_from: snapshot.yml
         apply:
           delegate_to: localhost
-        vars:
-          snapshot_name: post-config
+      vars:
+        snapshot_name: post-config

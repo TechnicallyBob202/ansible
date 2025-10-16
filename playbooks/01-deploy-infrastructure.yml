@@ -46,8 +46,8 @@
         tasks_from: snapshot.yml
         apply:
           delegate_to: localhost
-        vars:
-          snapshot_name: post-deploy
+      vars:
+        snapshot_name: post-deploy
 
     - name: Deployment complete
       debug:
