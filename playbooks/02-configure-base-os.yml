@@ -119,7 +119,7 @@
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
-      apply:
-        delegate_to: localhost
-      vars:
-        snapshot_name: post-config
+        apply:
+          delegate_to: localhost
+        vars:
+          snapshot_name: post-config
