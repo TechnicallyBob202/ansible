@@ -14,26 +14,33 @@
           - "Deploying {{ ansible_play_hosts | length }} VMs"
           - "VMs will boot with DHCP - run playbook 02 next to configure static IPs"
       run_once: yes
+      delegate_to: localhost
 
     - name: Deploy VM (clone + configure + start)
       include_role:
         name: proxmox
-        apply:
-          delegate_to: localhost
+      # leave your existing delegation for role tasks as-is
 
-    # NEW: compute if any VM was newly created (did not preexist)
     - name: Determine if any VMs were newly deployed
       set_fact:
-        any_new_vms: "{{ ansible_play_hosts
-          | map('extract', hostvars, 'vm_preexisted')
-          | select('equalto', false)
-          | list | length > 0 }}"
+        any_new_vms: >-
+          {{
+            ansible_play_hosts
+            | map('extract', hostvars, 'vm_preexisted')
+            | map('default', true)         # treat undefined as preexisting
+            | select('equalto', false)     # any false => at least one newly created
+            | list | length > 0
+          }}
       run_once: yes
-      
+      delegate_to: localhost
+      delegate_facts: true
+
     - name: Wait for VMs to boot (DHCP)
       pause:
         seconds: 60
+      when: hostvars['localhost']['any_new_vms'] | default(true)
       run_once: yes
+      delegate_to: localhost
 
     - name: Take snapshots of all VMs (post-deploy)
       include_role:
@@ -48,3 +55,4 @@
           - "Created snapshot: {{ snapshot_name }}"
           - "Next: Run playbook 02-configure-base-os.yml to set static IPs"
       run_once: yes
+      delegate_to: localhost
