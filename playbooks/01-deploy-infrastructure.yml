@@ -48,6 +48,7 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-deploy
+      throttle: 2
 
     - name: Deployment complete
       debug:

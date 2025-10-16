@@ -231,3 +231,4 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-dcpromo
+      throttle: 2

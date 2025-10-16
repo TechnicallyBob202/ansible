@@ -111,3 +111,4 @@
           delegate_to: localhost
       vars:
         snapshot_name: success
+      throttle: 2

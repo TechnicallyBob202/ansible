@@ -32,7 +32,11 @@
         vmid: "{{ vmid }}"
         snapname: "{{ snapshot_name }}"
         state: absent
+        force: true
+        unbind: true
+        timeout: 300
       when: vm_exists.status is defined
+      failed_when: false
 
     - name: Create stage snapshot
       community.general.proxmox_snap:

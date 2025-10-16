@@ -123,3 +123,4 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-config
+      throttle: 2
