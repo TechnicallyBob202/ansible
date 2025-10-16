@@ -4,6 +4,26 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
+# Pre-DNS for child replicas (parent = their child PDC)
+- name: Set DNS for child replicas (pre-promo -> child PDC)
+  set_fact:
+    windows_dns_servers: >-
+      {{
+        [ hostvars[groups['mauna_child_pdc'][0]].ansible_host ]
+        if inventory_hostname in (groups['mauna_child_replica'] | default([]))
+        else [ hostvars[groups['rainier_child_pdc'][0]].ansible_host ]
+      }}
+  when: >
+    inventory_hostname in (groups['mauna_child_replica'] | default([]))
+    or
+    inventory_hostname in (groups['rainier_child_replica'] | default([]))
+
+- name: Apply DNS (pre-promo)
+  include_role:
+    name: windows
+    tasks_from: set_dns.yml
+  when: windows_dns_servers is defined
+
 - name: Derive PDC group name from replica group
   set_fact:
     pdc_group: "{{ (group_names | select('match', '.*_replica$') | first) | regex_replace('_replica$', '_pdc') }}"
@@ -64,6 +84,30 @@
   until: adws_service.state == 'running'
   when: replica_promotion.changed
 
+# Post-DNS for child replicas: self + child PDC + alpine root
+- name: Set DNS for child replicas (post-promo)
+  set_fact:
+    windows_dns_servers: >-
+      {{
+        [ ansible_host ] +
+        (
+          [ hostvars[groups['mauna_child_pdc'][0]].ansible_host ]
+          if inventory_hostname in (groups['mauna_child_replica'] | default([]))
+          else [ hostvars[groups['rainier_child_pdc'][0]].ansible_host ]
+        ) +
+        [ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host ]
+      }}
+  when: >
+    inventory_hostname in (groups['mauna_child_replica'] | default([]))
+    or
+    inventory_hostname in (groups['rainier_child_replica'] | default([]))
+
+- name: Apply DNS (post-promo)
+  include_role:
+    name: windows
+    tasks_from: set_dns.yml
+  when: windows_dns_servers is defined
+  
 - name: Display promotion result
   debug:
     msg:

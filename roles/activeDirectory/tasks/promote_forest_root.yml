@@ -4,6 +4,26 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
+# Pre-DNS for forest root replicas
+- name: Set DNS for forest root replicas (pre-promo)
+  set_fact:
+    windows_dns_servers: >-
+      {{
+        [ hostvars[groups['arbor_forest_root_pdc'][0]].ansible_host ]
+        if inventory_hostname in (groups['arbor_forest_root_replica'] | default([]))
+        else [ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host ]
+      }}
+  when: >
+    inventory_hostname in (groups['arbor_forest_root_replica'] | default([]))
+    or
+    inventory_hostname in (groups['alpine_forest_root_replica'] | default([]))
+
+- name: Apply DNS (pre-promo)
+  include_role:
+    name: windows
+    tasks_from: set_dns.yml
+  when: windows_dns_servers is defined
+
 - name: Promote to forest root PDC
   microsoft.ad.domain:
     dns_domain_name: "{{ domain_name }}"
@@ -35,6 +55,29 @@
   until: adws_service.state == 'running'
   when: forest_promotion.changed
 
+# Post-DNS for forest root replicas: self + root PDC
+- name: Set DNS for forest root replicas (post-promo)
+  set_fact:
+    windows_dns_servers: >-
+      {{
+        [ ansible_host ] +
+        (
+          [ hostvars[groups['arbor_forest_root_pdc'][0]].ansible_host ]
+          if inventory_hostname in (groups['arbor_forest_root_replica'] | default([]))
+          else [ hostvars[groups['alpine_forest_root_pdc'][0]].ansible_host ]
+        )
+      }}
+  when: >
+    inventory_hostname in (groups['arbor_forest_root_replica'] | default([]))
+    or
+    inventory_hostname in (groups['alpine_forest_root_replica'] | default([]))
+
+- name: Apply DNS (post-promo)
+  include_role:
+    name: windows
+    tasks_from: set_dns.yml
+  when: windows_dns_servers is defined
+  
 - name: Get new domain SID
   ansible.windows.win_shell: |
     $domain = Get-ADDomain -Identity "{{ domain_name }}"
