@@ -4,7 +4,7 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# Pre-DNS for child replicas (parent = their child PDC)
+# Pre-DNS for child replicas (parent = their child PDC, static-IP)
 - name: Set DNS for child replicas (pre-promo -> child PDC)
   set_fact:
     windows_dns_servers: >-
@@ -24,6 +24,7 @@
     tasks_from: set_dns.yml
   when: windows_dns_servers is defined
 
+# Derive matched PDC group for this replica and ensure it exists
 - name: Derive PDC group name from replica group
   set_fact:
     pdc_group: "{{ (group_names | select('match', '.*_replica$') | first) | regex_replace('_replica$', '_pdc') }}"
@@ -35,6 +36,7 @@
       - pdc_group is defined
       - (groups[pdc_group] | default([])) | length > 0
     fail_msg: "Could not derive a non-empty PDC group from replica groups. Check inventory naming and membership."
+  when: not is_domain_controller
 
 - name: Get PDC hostname for domain credentials
   set_fact:
@@ -66,8 +68,8 @@
     reboot: yes
   when: not is_domain_controller
   register: replica_promotion
-  # NOTE: async/poll removed - not supported with reboot=yes
 
+# NOTE: async/poll removed - not supported with reboot=yes
 - name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
@@ -107,7 +109,7 @@
     name: windows
     tasks_from: set_dns.yml
   when: windows_dns_servers is defined
-  
+
 - name: Display promotion result
   debug:
     msg:

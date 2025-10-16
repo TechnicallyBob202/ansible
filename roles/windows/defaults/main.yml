@@ -6,8 +6,8 @@ windows_admin_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
 # Network defaults
 windows_gateway: 192.168.35.1
 windows_dns_servers:
-  - 192.168.35.20  # KOA-DC (arbor.lab)
-  - 192.168.35.30  # GRANITE-DC (alpine.lab)
+  - 1.1.1.1  # Cloudflare DNS (primary)
+  - 1.0.0.1  # Cloudflare DNS (secondary)
 windows_dns_suffix: lab
 
 # Reboot defaults

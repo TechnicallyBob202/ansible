@@ -2,7 +2,6 @@
 - name: Build Active Directory Forests and Domains
   hosts: localhost
   gather_facts: yes
-
   tasks:
     - name: Display build plan
       debug:
@@ -25,7 +24,6 @@
   hosts: domain_controllers
   gather_facts: no
   serial: 0  # All in parallel
-
   tasks:
     - name: Install AD-DS features
       include_role:
@@ -43,7 +41,6 @@
 - name: Check Domain Status
   hosts: domain_controllers
   gather_facts: no
-
   tasks:
     - name: Check if domains already exist
       include_role:
@@ -57,7 +54,6 @@
   hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
   gather_facts: no
   serial: 1  # One at a time for safety
-
   tasks:
     - name: Promote to forest root PDC
       include_role:
@@ -80,7 +76,6 @@
 - name: Promote Forest Root Replica DCs
   hosts: arbor_forest_root_replica:alpine_forest_root_replica
   gather_facts: no
-
   tasks:
     - name: Promote to replica DC
       include_role:
@@ -97,6 +92,16 @@
         name: activeDirectory
         tasks_from: verify_replication.yml
 
+# PHASE 4b: Always-run post action to heal DNS on root replicas
+- name: Post-DNS healing for forest root replicas
+  hosts: arbor_forest_root_replica:alpine_forest_root_replica
+  gather_facts: no
+  tasks:
+    - name: Enforce DNS policy (self + root PDC)
+      include_role:
+        name: activeDirectory
+        tasks_from: post_root_replica.yml
+
 # =============================================================================
 # PHASE 5: Promote Child Domain PDCs
 # =============================================================================
@@ -104,7 +109,6 @@
   hosts: mauna_child_pdc:rainier_child_pdc
   gather_facts: no
   serial: 1  # One at a time
-
   tasks:
     - name: Promote to child domain PDC
       include_role:
@@ -121,13 +125,22 @@
         name: activeDirectory
         tasks_from: check_fsmo_roles.yml
 
+# PHASE 5b: Always-run post action to heal DNS on child PDCs
+- name: Post-DNS healing for child PDCs
+  hosts: mauna_child_pdc:rainier_child_pdc
+  gather_facts: no
+  tasks:
+    - name: Enforce DNS policy (self + alpine root)
+      include_role:
+        name: activeDirectory
+        tasks_from: post_child_pdc.yml
+
 # =============================================================================
 # PHASE 6: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: mauna_child_replica:rainier_child_replica
   gather_facts: no
-
   tasks:
     - name: Promote to replica DC
       include_role:
@@ -144,13 +157,22 @@
         name: activeDirectory
         tasks_from: verify_replication.yml
 
+# PHASE 6b: Always-run post action to heal DNS on child replicas
+- name: Post-DNS healing for child replicas
+  hosts: mauna_child_replica:rainier_child_replica
+  gather_facts: no
+  tasks:
+    - name: Enforce DNS policy (self + child PDC + alpine root)
+      include_role:
+        name: activeDirectory
+        tasks_from: post_child_replica.yml
+
 # =============================================================================
 # PHASE 7: Create Service Accounts
 # =============================================================================
 - name: Create Service Accounts in arbor.lab
   hosts: arbor_forest_root_pdc
   gather_facts: no
-
   tasks:
     - name: Create ADFR and DSP service accounts
       include_role:
@@ -160,7 +182,6 @@
 - name: Create Service Accounts in alpine.lab
   hosts: alpine_forest_root_pdc
   gather_facts: no
-
   tasks:
     - name: Create ADFR and DSP service accounts
       include_role:
@@ -173,7 +194,6 @@
 - name: Final Validation
   hosts: domain_controllers
   gather_facts: no
-
   tasks:
     - name: Verify all DCs are operational
       include_role:
@@ -188,7 +208,6 @@
 - name: Consolidate Domain Information
   hosts: localhost
   gather_facts: no
-
   tasks:
     - name: Consolidate domain SIDs
       shell: |

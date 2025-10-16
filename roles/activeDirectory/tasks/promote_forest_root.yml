@@ -4,7 +4,7 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-# Pre-DNS for forest root replicas
+# Pre-DNS for forest root replicas (static-IP driven)
 - name: Set DNS for forest root replicas (pre-promo)
   set_fact:
     windows_dns_servers: >-
@@ -37,8 +37,8 @@
     reboot: yes
   when: not domain_exists
   register: forest_promotion
-  # NOTE: async/poll removed - not supported with reboot=yes
 
+# NOTE: async/poll removed - not supported with reboot=yes
 - name: Wait for forest root to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
@@ -77,7 +77,7 @@
     name: windows
     tasks_from: set_dns.yml
   when: windows_dns_servers is defined
-  
+
 - name: Get new domain SID
   ansible.windows.win_shell: |
     $domain = Get-ADDomain -Identity "{{ domain_name }}"
