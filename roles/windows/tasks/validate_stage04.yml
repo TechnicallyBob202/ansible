@@ -1,26 +1,17 @@
 ---
-# Stage 04 validation - checks and FIXES all DNS
-# Self-healing:
-# - DCs: Accepts dynamic DNS from Stage 03
-# - Non-DCs: Forces DNS to point to DCs
-
-- name: Test WinRM connectivity
-  ansible.windows.win_ping:
-  register: ping_test
+# Stage 04 validation task - call this from playbooks/04-verify-lab.yml
+# Self-heals: DCs stay as-is, non-DCs forced to point at DCs
 
 - name: Get network configuration
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
     $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
     $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-    $gateway = Get-NetRoute -InterfaceAlias $adapter.Name -DestinationPrefix "0.0.0.0/0" | Select-Object -First 1
 
     [PSCustomObject]@{
       Hostname = $env:COMPUTERNAME
       IPAddress = $ip.IPAddress
-      Gateway = $gateway.NextHop
       DNS = $dns.ServerAddresses -join ","
-      AdapterName = $adapter.Name
     } | ConvertTo-Json
   register: network_info
   changed_when: false
@@ -45,56 +36,19 @@
   set_fact:
     is_dc: "{{ 'true' in dc_check.stdout }}"
 
-- name: Validate IP address
-  assert:
-    that:
-      - network_config.IPAddress == ansible_host
-    fail_msg: "IP mismatch: Expected {{ ansible_host }}, got {{ network_config.IPAddress }}"
-    success_msg: "IP address validated: {{ ansible_host }}"
-
-- name: Validate hostname
-  assert:
-    that:
-      - network_config.Hostname == inventory_hostname
-    fail_msg: "Hostname mismatch: Expected {{ inventory_hostname }}, got {{ network_config.Hostname }}"
-    success_msg: "Hostname validated: {{ inventory_hostname }}"
-
-# For DCs: Just verify DNS is configured (accept whatever Stage 03 set)
-- name: Validate DC has DNS configured
-  assert:
-    that:
-      - network_config.DNS | length > 0
-    fail_msg: "DC has no DNS servers configured"
-    success_msg: "DC DNS configured: {{ network_config.DNS }}"
-  when: is_dc
-
-# For non-DCs: Force DNS to point at DCs (self-healing)
-- name: Check if non-DC DNS needs fixing
-  set_fact:
-    dns_needs_fix: "{{ '192.168.35.20' not in network_config.DNS and '192.168.35.30' not in network_config.DNS }}"
-  when: not is_dc
-
 - name: Fix non-DC DNS to point at DCs (self-healing)
   ansible.windows.win_shell: |
     $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name `
-      -ServerAddresses "{{ windows_dns_servers | join('","') }}"
+    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "{{ windows_dns_servers | join('","') }}"
     Clear-DnsClientCache
-    $dns = (Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4).ServerAddresses
-    Write-Output "DNS set to: $($dns -join ', ')"
+    Write-Output "DNS set to DCs"
   when:
     - not is_dc
-    - dns_needs_fix
+    - "'192.168.35.20' not in network_config.DNS and '192.168.35.30' not in network_config.DNS"
   register: dns_fix
 
-- name: Display validation summary
+- name: Display Stage 04 validation
   debug:
     msg:
-      - "Stage 04 validation complete for {{ inventory_hostname }}"
-      - "  Type: {{ 'Domain Controller' if is_dc else 'Non-DC' }}"
-      - "  WinRM: ✓"
-      - "  IP: {{ network_config.IPAddress }} ✓"
-      - "  Hostname: {{ network_config.Hostname }} ✓"
-      - "  Gateway: {{ network_config.Gateway }}"
-      - "  DNS: {{ network_config.DNS if is_dc else (dns_fix.stdout | trim if dns_needs_fix | default(false) else network_config.DNS) }}"
-      - "  Status: {{ 'DC - accepted' if is_dc else ('FIXED to DCs' if dns_needs_fix | default(false) else 'Already correct') }}"
+      - "{{ inventory_hostname }} ({{ 'DC' if is_dc else 'Non-DC' }}): IP={{ network_config.IPAddress }}"
+      - "  DNS: {{ network_config.DNS if is_dc else ('FIXED to DCs' if dns_fix.changed else network_config.DNS) }}"

@@ -103,7 +103,7 @@
     - name: Validate network configuration
       include_role:
         name: windows
-        tasks_from: validate.yml
+        tasks_from: validate_stage02.yml
 
     - name: Summary
       debug:

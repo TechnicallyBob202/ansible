@@ -1,0 +1,36 @@
+---
+# Stage 02 validation task - call this from playbooks/02-configure-base-os.yml
+# Forces all VMs to use Cloudflare DNS (self-healing)
+
+- name: Get network configuration
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+
+    [PSCustomObject]@{
+      Hostname = $env:COMPUTERNAME
+      IPAddress = $ip.IPAddress
+      DNS = $dns.ServerAddresses -join ","
+    } | ConvertTo-Json
+  register: network_info
+  changed_when: false
+
+- name: Parse network information
+  set_fact:
+    network_config: "{{ network_info.stdout | from_json }}"
+
+- name: Force DNS to Cloudflare (self-healing)
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    Set-DnsClientServerAddress -InterfaceAlias $adapter.Name -ServerAddresses "1.1.1.1","1.0.0.1"
+    Clear-DnsClientCache
+    Write-Output "DNS set to Cloudflare"
+  when: "'1.1.1.1' not in network_config.DNS"
+  register: dns_fix
+
+- name: Display Stage 02 validation
+  debug:
+    msg:
+      - "{{ inventory_hostname }}: IP={{ network_config.IPAddress }}, Hostname={{ network_config.Hostname }}"
+      - "  DNS: {{ 'FIXED to Cloudflare' if dns_fix.changed else 'Already Cloudflare' }}"
