@@ -10,6 +10,23 @@
       run_once: yes
 
 # =============================================================================
+# PHASE 0: Update DNS on Non-DC Hosts
+# =============================================================================
+- name: Update DNS on Infrastructure and Recovery VMs
+  hosts: infrastructure:recovery_vms
+  gather_facts: no
+
+  tasks:
+    - name: Update DNS servers to point to DCs
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+
+    - name: Display DNS update result
+      debug:
+        msg: "{{ inventory_hostname }} - DNS updated to point to domain controllers"
+
+# =============================================================================
 # PHASE 1: Connectivity Tests
 # =============================================================================
 - name: Test Basic Connectivity
@@ -95,20 +112,3 @@
           - "Lab verification complete!"
           - "All systems validated and operational"
           - "Documentation generated in files/"
-
-# =============================================================================
-# PHASE 5: Post-Stage Snapshot (only runs if prior plays succeeded)
-# =============================================================================
-- name: Snapshot after successful verification
-  hosts: all
-  gather_facts: no
-  serial: 2
-  tasks:
-    - name: Take snapshot (success)
-      include_role:
-        name: proxmox
-        tasks_from: snapshot.yml
-        apply:
-          delegate_to: localhost
-      vars:
-        snapshot_name: success

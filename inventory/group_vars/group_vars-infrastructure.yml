@@ -1,0 +1,15 @@
+---
+# DNS configuration for infrastructure servers (non-domain members)
+# These servers need DNS pointing to DCs from all domains for proper name resolution
+
+windows_dns_servers:
+  - 192.168.35.20  # KOA-DC (arbor.lab forest root PDC)
+  - 192.168.35.30  # GRANITE-DC (alpine.lab forest root PDC)
+  - 192.168.35.32  # SLATE-DC (mauna.alpine.lab child domain PDC)
+  - 192.168.35.34  # MARBLE-DC (rainier.alpine.lab child domain PDC)
+
+# These servers are NOT domain joined
+# They need to resolve ALL forest/domain names for ADFR/DSP management
+# Windows supports up to 4 DNS servers, so we include:
+#   - 1 DC from arbor.lab
+#   - 3 DCs from alpine.lab (root + 2 child domains)
