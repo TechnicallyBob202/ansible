@@ -1,9 +1,7 @@
 ---
-# DNS for Infrastructure VMs (ADFR1, ADFR2, DSP1, DSP2, APM1)
-# Points to both forest root PDCs for name resolution across forests
+# Infrastructure VMs point to DCs for ADFR/DSP name resolution
+# Overrides all.yml for infrastructure group
 
 windows_dns_servers:
-  - 192.168.35.20       # KOA-DC (arbor.lab forest root PDC)
-  - 192.168.35.30       # GRANITE-DC (alpine.lab forest root PDC)
-
-windows_dns_suffix: lab
+  - 192.168.35.20  # KOA-DC (arbor.lab PDC)
+  - 192.168.35.30  # GRANITE-DC (alpine.lab PDC)
