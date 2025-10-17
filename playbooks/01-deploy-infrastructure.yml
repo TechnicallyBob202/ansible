@@ -43,7 +43,6 @@
     # Final snapshot play (limits to 2 hosts at a time)
     - name: Snapshot after deploy
       hosts: all
-      gather_facts: no
       serial: 2
       tasks:
         - name: Take snapshot (post-deploy)
