@@ -15,7 +15,7 @@ all:
           vmid: 3510
           proxmox_host: 192.168.33.21
           proxmox_node: semperis-nuc-1
-          template_id: 9001
+          template_id: 9011
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 100G
