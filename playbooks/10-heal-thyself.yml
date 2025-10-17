@@ -1,0 +1,105 @@
+---
+- name: Self-Heal Lab Environment
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Display self-heal plan
+      debug:
+        msg:
+          - "========================================="
+          - "  ADFR/DSP Lab - Self-Heal"
+          - "========================================="
+          - ""
+          - "This will repair/validate the lab environment:"
+          - "  • Ensure all VMs are deployed (Stage 01)"
+          - "  • Configure networking and hostnames (Stage 02)"
+          - "  • Build/verify AD forests (Stage 03)"
+          - "  • Validate and snapshot (Stage 04)"
+          - ""
+          - "Existing VMs will be checked and repaired as needed."
+          - "Only changed VMs will receive new snapshots."
+          - ""
+          - "Estimated time: 20-90 minutes (depending on current state)"
+          - ""
+          - "Press Ctrl+C within 15 seconds to abort"
+
+    - name: Wait before starting
+      pause:
+        seconds: 15
+
+# =============================================================================
+# STAGE 1: Deploy Infrastructure
+# =============================================================================
+- name: Stage 1 - Deploy Virtual Machines
+  import_playbook: 01-deploy-infrastructure.yml
+
+- name: Stage 1 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 1 complete - VMs deployed/verified"
+
+# =============================================================================
+# STAGE 2: Configure Base OS
+# =============================================================================
+- name: Stage 2 - Configure Base Operating System
+  import_playbook: 02-configure-base-os.yml
+
+- name: Stage 2 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 2 complete - Network configured"
+
+# =============================================================================
+# STAGE 3: Build AD Forests
+# =============================================================================
+- name: Stage 3 - Build Active Directory Forests
+  import_playbook: 03-build-ad-forests.yml
+
+- name: Stage 3 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 3 complete - AD forests built/verified"
+
+# =============================================================================
+# STAGE 4: Verify Lab
+# =============================================================================
+- name: Stage 4 - Verify Lab Environment
+  import_playbook: 04-verify-lab.yml
+
+- name: Stage 4 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 4 complete - Lab verified and snapshotted"
+
+# =============================================================================
+# SELF-HEAL COMPLETE
+# =============================================================================
+- name: Self-Heal Complete
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Self-Heal Complete!"
+          - "========================================="
+          - ""
+          - "Lab environment has been repaired/validated:"
+          - "  ✓ All VMs deployed and configured"
+          - "  ✓ Networking verified"
+          - "  ✓ AD forests operational"
+          - "  ✓ Ready-to-rock snapshots created"
+          - ""
+          - "The lab is now in a known-good state."

@@ -1,0 +1,168 @@
+---
+- name: Burn It All Down and Rebuild
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Display destruction and rebuild plan
+      debug:
+        msg:
+          - "========================================="
+          - "  🔥 BURN IT ALL DOWN 🔥"
+          - "========================================="
+          - ""
+          - "⚠️  WARNING: This will DESTROY everything! ⚠️"
+          - ""
+          - "This will:"
+          - "  1. DESTROY all {{ groups['all'] | length }} VMs (Stage 00)"
+          - "  2. Deploy fresh VMs (Stage 01)"
+          - "  3. Configure networking (Stage 02)"
+          - "  4. Build AD forests from scratch (Stage 03)"
+          - "  5. Validate and snapshot (Stage 04)"
+          - ""
+          - "ALL EXISTING DATA WILL BE LOST!"
+          - "ALL SNAPSHOTS WILL BE DELETED!"
+          - ""
+          - "Estimated time: 60-90 minutes"
+          - ""
+          - "⚠️  Press Ctrl+C NOW to abort! ⚠️"
+          - "Waiting 30 seconds..."
+
+    - name: Final warning - wait 30 seconds
+      pause:
+        seconds: 30
+
+    - name: Confirm destruction
+      debug:
+        msg:
+          - "🔥 Starting destruction sequence..."
+          - "There is no undo for this operation."
+
+# =============================================================================
+# STAGE 0: Cleanup Lab
+# =============================================================================
+- name: Stage 0 - Destroy All VMs
+  import_playbook: 00-cleanup-lab.yml
+
+- name: Stage 0 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 0 complete - All VMs destroyed"
+
+    - name: Wait for Proxmox to settle
+      pause:
+        seconds: 10
+
+# =============================================================================
+# STAGE 1: Deploy Infrastructure
+# =============================================================================
+- name: Stage 1 - Deploy Virtual Machines
+  import_playbook: 01-deploy-infrastructure.yml
+
+- name: Stage 1 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 1 complete - VMs deployed"
+
+# =============================================================================
+# STAGE 2: Configure Base OS
+# =============================================================================
+- name: Stage 2 - Configure Base Operating System
+  import_playbook: 02-configure-base-os.yml
+
+- name: Stage 2 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 2 complete - Network configured"
+
+# =============================================================================
+# STAGE 3: Build AD Forests
+# =============================================================================
+- name: Stage 3 - Build Active Directory Forests
+  import_playbook: 03-build-ad-forests.yml
+
+- name: Stage 3 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 3 complete - AD forests built"
+
+# =============================================================================
+# STAGE 4: Verify Lab
+# =============================================================================
+- name: Stage 4 - Verify Lab Environment
+  import_playbook: 04-verify-lab.yml
+
+- name: Stage 4 Complete
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - debug:
+        msg: "✓ Stage 4 complete - Lab verified"
+
+# =============================================================================
+# REBUILD COMPLETE
+# =============================================================================
+- name: Rebuild Complete
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  🎉 Rebuild Complete! 🎉"
+          - "========================================="
+          - ""
+          - "Lab has been completely rebuilt from scratch:"
+          - "  ✓ All VMs destroyed and recreated"
+          - "  ✓ Fresh AD forests deployed"
+          - "  ✓ All networking configured"
+          - "  ✓ Ready-to-rock snapshots created"
+          - ""
+          - "Infrastructure:"
+          - "  ✓ ATLAS (ADFR Management)"
+          - "  ✓ SUMMIT (DSP Management)"
+          - "  ✓ RIDGE (Primary DP)"
+          - "  ✓ CREST (Secondary DP)"
+          - ""
+          - "arbor.lab Forest:"
+          - "  ✓ KOA-DC (PDC)"
+          - "  ✓ OAK-DC (Replica)"
+          - ""
+          - "alpine.lab Forest:"
+          - "  ✓ GRANITE-DC (PDC)"
+          - "  ✓ BASALT-DC (Replica)"
+          - "  ✓ SLATE-DC (mauna.alpine.lab PDC)"
+          - "  ✓ SHALE-DC (mauna.alpine.lab Replica)"
+          - "  ✓ MARBLE-DC (rainier.alpine.lab PDC)"
+          - "  ✓ QUARTZ-DC (rainier.alpine.lab Replica)"
+          - ""
+          - "Recovery VMs:"
+          - "  ✓ MESA"
+          - "  ✓ BLUFF"
+          - ""
+          - "The lab is brand new and ready to use!"
+          - ""
+          - "Documentation files:"
+          - "  - files/forest-domain-sids.txt"
+          - "  - files/fsmo-roles.txt"
+          - "  - files/adfr-lab-mremoteng.xml"
+
+    - name: Save rebuild timestamp
+      copy:
+        content: |
+          Lab Completely Rebuilt
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          Previous environment was destroyed and rebuilt from scratch.
+        dest: "{{ playbook_dir }}/../files/last-rebuild.txt"
+        mode: '0644'
