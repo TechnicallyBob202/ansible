@@ -1,7 +1,7 @@
 ---
-# Infrastructure VMs point to DCs for ADFR/DSP name resolution
-# Overrides all.yml for infrastructure group
-
+# Infrastructure VMs DNS configuration
 windows_dns_servers:
-  - 192.168.35.20  # KOA-DC (arbor.lab PDC)
-  - 192.168.35.30  # GRANITE-DC (alpine.lab PDC)
+  - 192.168.35.20       # KOA-DC (arbor.lab PDC)
+  - 192.168.35.30       # GRANITE-DC (alpine.lab PDC)
+
+windows_dns_suffix: lab

@@ -1,0 +1,8 @@
+---
+# SHALE-DC DNS configuration
+windows_dns_servers:
+  - 192.168.35.32       # SLATE-DC (its pair - PRIMARY)
+  - 192.168.35.33       # SHALE-DC (itself - SECONDARY)
+  - 192.168.35.31       # BASALT-DC (alpine root replica - TERTIARY)
+
+windows_dns_suffix: mauna.alpine.lab

@@ -11,63 +11,49 @@
           - "  Forest 2: alpine.lab (6 DCs in 3 domains)"
           - "Total Duration: 45-60 minutes"
 
-    - name: Create output directory for domain information
-      file:
-        path: "{{ playbook_dir }}/../files"
-        state: directory
-        mode: '0755'
-
 # =============================================================================
 # PHASE 1: Install AD Features on All Domain Controllers
 # =============================================================================
 - name: Install Active Directory Features
   hosts: domain_controllers
   gather_facts: no
-  serial: 0  # All in parallel
+  serial: 0
   tasks:
     - name: Install AD-DS features
       include_role:
         name: activeDirectory
         tasks_from: install_ad_features.yml
 
-    - name: Wait for feature installation
-      pause:
-        seconds: 20
-      run_once: yes
-
 # =============================================================================
-# PHASE 1.5: Generate DC DNS Configuration
+# PHASE 2: Configure DNS on All DCs (BEFORE any promotions)
 # =============================================================================
-- name: Generate DNS Configuration for DCs
-  hosts: localhost
-  gather_facts: no
-
-  tasks:
-    - name: Generate DC DNS group_vars files
-      include_role:
-        name: activeDirectory
-        tasks_from: generate_dc_dns_config.yml
-
-# =============================================================================
-# PHASE 2: Check Existing Domain Status
-# =============================================================================
-- name: Check Domain Status
+- name: Configure DNS on All Domain Controllers
   hosts: domain_controllers
   gather_facts: no
+  serial: 0
   tasks:
-    - name: Check if domains already exist
+    - name: Set DNS to point to DC IPs (uses group_vars)
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+
+    - name: Display DNS configuration
+      debug:
+        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }}"
+
+# =============================================================================
+# PHASE 3: Promote Forest Root PDCs
+# =============================================================================
+- name: Promote Forest Root PDCs
+  hosts: arbor_pdc:alpine_pdc
+  gather_facts: no
+  serial: 1
+  tasks:
+    - name: Check domain status
       include_role:
         name: activeDirectory
         tasks_from: check_domain_status.yml
 
-# =============================================================================
-# PHASE 3: Promote Forest Root PDCs (Parallel - Different Forests)
-# =============================================================================
-- name: Promote Forest Root PDCs
-  hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
-  gather_facts: no
-  serial: 1  # One at a time for safety
-  tasks:
     - name: Promote to forest root PDC
       include_role:
         name: activeDirectory
@@ -84,22 +70,10 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 3b: Post-DNS healing for forest root PDCs (always-run)
-# =============================================================================
-- name: Post-DNS healing for forest root PDCs
-  hosts: arbor_forest_root_pdc:alpine_forest_root_pdc
-  gather_facts: no
-  tasks:
-    - name: Enforce DNS policy on root PDCs (self + replica [+ child PDCs optional])
-      include_role:
-        name: activeDirectory
-        tasks_from: post_root_pdc.yml
-
-# =============================================================================
 # PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
-  hosts: arbor_forest_root_replica:alpine_forest_root_replica
+  hosts: arbor_replica:alpine_replica
   gather_facts: no
   tasks:
     - name: Promote to replica DC
@@ -118,24 +92,12 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 4b: Post-DNS healing for forest root replicas (always-run)
-# =============================================================================
-- name: Post-DNS healing for forest root replicas
-  hosts: arbor_forest_root_replica:alpine_forest_root_replica
-  gather_facts: no
-  tasks:
-    - name: Enforce DNS policy (self + forest root PDC)
-      include_role:
-        name: activeDirectory
-        tasks_from: post_root_replica.yml
-
-# =============================================================================
 # PHASE 5: Promote Child Domain PDCs
 # =============================================================================
 - name: Promote Child Domain PDCs
-  hosts: mauna_child_pdc:rainier_child_pdc
+  hosts: alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1  # One at a time
+  serial: 1
   tasks:
     - name: Promote to child domain PDC
       include_role:
@@ -153,22 +115,10 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 5b: Post-DNS healing for child PDCs (always-run)
-# =============================================================================
-- name: Post-DNS healing for child PDCs
-  hosts: mauna_child_pdc:rainier_child_pdc
-  gather_facts: no
-  tasks:
-    - name: Enforce DNS policy (self + alpine root)
-      include_role:
-        name: activeDirectory
-        tasks_from: post_child_pdc.yml
-
-# =============================================================================
 # PHASE 6: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
-  hosts: mauna_child_replica:rainier_child_replica
+  hosts: alpine_mauna_replica:alpine_rainier_replica
   gather_facts: no
   tasks:
     - name: Promote to replica DC
@@ -187,31 +137,10 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 6b: Post-DNS healing for child replicas (always-run)
-# =============================================================================
-- name: Post-DNS healing for child replicas
-  hosts: mauna_child_replica:rainier_child_replica
-  gather_facts: no
-  tasks:
-    - name: Enforce DNS policy (self + child PDC + alpine root)
-      include_role:
-        name: activeDirectory
-        tasks_from: post_child_replica.yml
-
-# =============================================================================
 # PHASE 7: Create Service Accounts
 # =============================================================================
-- name: Create Service Accounts in arbor.lab
-  hosts: arbor_forest_root_pdc
-  gather_facts: no
-  tasks:
-    - name: Create ADFR and DSP service accounts
-      include_role:
-        name: activeDirectory
-        tasks_from: create_service_accounts.yml
-
-- name: Create Service Accounts in alpine.lab
-  hosts: alpine_forest_root_pdc
+- name: Create Service Accounts
+  hosts: arbor_pdc:alpine_pdc
   gather_facts: no
   tasks:
     - name: Create ADFR and DSP service accounts
@@ -240,16 +169,20 @@
   hosts: localhost
   gather_facts: no
   tasks:
+    - name: Create files directory
+      file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
     - name: Consolidate domain SIDs
       shell: |
-        cd {{ playbook_dir }}/../files
-        cat /tmp/domain-sid-*.txt > domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
+        cat /tmp/domain-sid-*.txt > {{ playbook_dir }}/../files/domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
       changed_when: false
 
     - name: Consolidate FSMO roles
       shell: |
-        cd {{ playbook_dir }}/../files
-        cat /tmp/fsmo-roles-*.txt > fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
+        cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
       changed_when: false
 
     - name: Display completion message
@@ -267,14 +200,14 @@
           - "  - fsmo-roles.txt"
 
 # =============================================================================
-# PHASE 9: Post-Stage Snapshot (only runs if prior plays succeeded)
+# PHASE 9: Snapshot
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: all
   gather_facts: no
   serial: 2
   tasks:
-    - name: Take snapshot (post-dcpromo)
+    - name: Take snapshot
       include_role:
         name: proxmox
         tasks_from: snapshot.yml

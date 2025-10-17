@@ -1,8 +1,7 @@
 ---
-# Recovery VMs point to both forests' DCs
-# Overrides all.yml for recovery_vms group
-
+# Recovery VMs DNS configuration
 windows_dns_servers:
-  - 192.168.35.20  # KOA-DC (arbor.lab PDC)
-  - 192.168.35.30  # GRANITE-DC (alpine.lab PDC)
-  - 192.168.35.21  # OAK-DC (arbor.lab Replica)
+  - 192.168.35.21       # OAK-DC (arbor.lab replica)
+  - 192.168.35.31       # BASALT-DC (alpine.lab replica)
+
+windows_dns_suffix: lab

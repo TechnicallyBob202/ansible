@@ -1,9 +1,0 @@
----
-# POST-PROMOTION DNS for alpine.lab Forest Root Replica (BASALT-DC)
-# Points to the PDC first, then itself
-
-windows_dns_servers:
-  - 192.168.35.30       # GRANITE-DC (alpine.lab forest root PDC)
-  - 127.0.0.1           # Loopback (self)
-
-windows_dns_suffix: alpine.lab

@@ -1,0 +1,9 @@
+---
+# GRANITE-DC DNS configuration
+windows_dns_servers:
+  - 192.168.35.31       # BASALT-DC (its pair - PRIMARY)
+  - 192.168.35.30       # GRANITE-DC (itself - SECONDARY)
+  - 192.168.35.32       # SLATE-DC (mauna PDC - TERTIARY)
+  - 192.168.35.34       # MARBLE-DC (rainier PDC - QUATERNARY)
+
+windows_dns_suffix: alpine.lab

@@ -9,7 +9,9 @@
         msg: "Configuring network for {{ ansible_play_hosts | length }} VMs"
       run_once: yes
 
-# Phase 1: Discover current IPs and check if static config needed
+# =============================================================================
+# PHASE 1: Discover Current IPs
+# =============================================================================
 - name: Discover Current IPs
   hosts: all
   gather_facts: no
@@ -37,7 +39,9 @@
       debug:
         msg: "{{ inventory_hostname }}: Current={{ discovered_ip }}, Target={{ target_ip }}, NeedsConfig={{ needs_ip_config }}"
 
-# Phase 2: Configure static IPs (only if needed)
+# =============================================================================
+# PHASE 2: Configure Static IPs
+# =============================================================================
 - name: Configure Static IP Addresses
   hosts: all
   gather_facts: no
@@ -61,14 +65,16 @@
       run_once: yes
       when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
 
-# Phase 3: Configure DNS and Hostname (parallel)
+# =============================================================================
+# PHASE 3: Configure DNS (Cloudflare) and Hostname
+# =============================================================================
 - name: Configure DNS and Hostname
   hosts: all
   gather_facts: no
   serial: 0
 
   tasks:
-    - name: Configure DNS servers
+    - name: Configure DNS servers (Cloudflare from all.yml)
       include_role:
         name: windows
         tasks_from: set_dns.yml
@@ -78,7 +84,9 @@
         name: windows
         tasks_from: set_hostname.yml
 
-# Phase 4: Reboot only hosts that need it
+# =============================================================================
+# PHASE 4: Reboot hosts that need it
+# =============================================================================
 - name: Reboot hosts that changed hostname
   hosts: all
   gather_facts: no
@@ -91,19 +99,39 @@
         tasks_from: reboot.yml
       when: reboot_required | default(false)
 
-# Phase 5: Validation
+# =============================================================================
+# PHASE 5: Validation
+# =============================================================================
 - name: Validate Configuration
   hosts: all
   gather_facts: no
 
-  vars:
-    windows_operation: validate
-
   tasks:
-    - name: Validate network configuration
-      include_role:
-        name: windows
-        tasks_from: validate_stage02.yml
+    - name: Get network configuration
+      ansible.windows.win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+        $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+
+        [PSCustomObject]@{
+          Hostname = $env:COMPUTERNAME
+          IPAddress = $ip.IPAddress
+          DNS = $dns.ServerAddresses -join ","
+        } | ConvertTo-Json
+      register: network_info
+      changed_when: false
+
+    - name: Parse network information
+      set_fact:
+        network_config: "{{ network_info.stdout | from_json }}"
+
+    - name: Validate configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ network_config.IPAddress }} (expected: {{ ansible_host }})"
+          - "  Hostname: {{ network_config.Hostname }} (expected: {{ inventory_hostname }})"
+          - "  DNS: {{ network_config.DNS }} (Cloudflare)"
 
     - name: Summary
       debug:
@@ -111,14 +139,14 @@
       run_once: yes
 
 # =============================================================================
-# PHASE 6: Post-Stage Snapshot (only runs if prior plays succeeded)
+# PHASE 6: Snapshot
 # =============================================================================
 - name: Snapshot after base OS configuration
   hosts: all
   gather_facts: no
   serial: 2
   tasks:
-    - name: Take snapshot (post-config)
+    - name: Take snapshot
       include_role:
         name: proxmox
         tasks_from: snapshot.yml

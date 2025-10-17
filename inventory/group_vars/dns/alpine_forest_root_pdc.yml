@@ -1,9 +1,0 @@
----
-# POST-PROMOTION DNS for alpine.lab Forest Root PDC (GRANITE-DC)
-# Points to itself (127.0.0.1) and the other forest root (KOA-DC)
-
-windows_dns_servers:
-  - 127.0.0.1           # Loopback (self)
-  - 192.168.35.20       # KOA-DC (arbor.lab forest root PDC)
-
-windows_dns_suffix: alpine.lab

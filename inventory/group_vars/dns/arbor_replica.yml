@@ -1,0 +1,7 @@
+---
+# OAK-DC DNS configuration
+windows_dns_servers:
+  - 192.168.35.20       # KOA-DC (its pair - PRIMARY)
+  - 192.168.35.21       # OAK-DC (itself - SECONDARY)
+
+windows_dns_suffix: arbor.lab

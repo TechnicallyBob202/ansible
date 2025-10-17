@@ -1,0 +1,8 @@
+---
+# MARBLE-DC DNS configuration
+windows_dns_servers:
+  - 192.168.35.35       # QUARTZ-DC (its pair - PRIMARY)
+  - 192.168.35.34       # MARBLE-DC (itself - SECONDARY)
+  - 192.168.35.31       # BASALT-DC (alpine root replica - TERTIARY)
+
+windows_dns_suffix: rainier.alpine.lab

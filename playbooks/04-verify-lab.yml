@@ -10,23 +10,6 @@
       run_once: yes
 
 # =============================================================================
-# PHASE 0: Update DNS on Non-DC Hosts
-# =============================================================================
-- name: Update DNS on Infrastructure and Recovery VMs
-  hosts: infrastructure:recovery_vms
-  gather_facts: no
-
-  tasks:
-    - name: Update DNS servers to point to DCs
-      include_role:
-        name: windows
-        tasks_from: set_dns.yml
-
-    - name: Display DNS update result
-      debug:
-        msg: "{{ inventory_hostname }} - DNS updated to point to domain controllers"
-
-# =============================================================================
 # PHASE 1: Connectivity Tests
 # =============================================================================
 - name: Test Basic Connectivity
@@ -50,10 +33,31 @@
   gather_facts: no
 
   tasks:
-    - name: Validate network settings
-      include_role:
-        name: windows
-        tasks_from: validate_stage04.yml
+    - name: Get network configuration
+      ansible.windows.win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+        $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+
+        [PSCustomObject]@{
+          Hostname = $env:COMPUTERNAME
+          IPAddress = $ip.IPAddress
+          DNS = $dns.ServerAddresses -join ","
+        } | ConvertTo-Json
+      register: network_info
+      changed_when: false
+
+    - name: Parse network information
+      set_fact:
+        network_config: "{{ network_info.stdout | from_json }}"
+
+    - name: Display configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ network_config.IPAddress }}"
+          - "  Hostname: {{ network_config.Hostname }}"
+          - "  DNS: {{ network_config.DNS }}"
 
 # =============================================================================
 # PHASE 3: Validate Active Directory
@@ -84,8 +88,6 @@
 - name: Generate Lab Documentation
   hosts: localhost
   gather_facts: yes
-  vars:
-    protected_value: "QB3UYipBWC6o3m4MioAD9TdMQr0XHZNjj8QaWfw3sM1TxTV+cQADdBYUI4nLdRqwYpEIV4Ts42vlWoyw441J3/3B"
 
   tasks:
     - name: Create documentation directory
@@ -95,21 +97,7 @@
         mode: '0755'
 
     - name: Generate and push mRemoteNG configuration
-      include_tasks: "{{ playbook_dir }}/../tasks/generate_mremoteng.yml"
-
-    - name: Generate lab summary
-      template:
-        src: "{{ playbook_dir }}/../templates/lab-summary.md.j2"
-        dest: "{{ playbook_dir }}/../files/lab-summary.md"
-        mode: '0644'
-      when: false  # We'll create this template next
-
-    - name: Update inventory with discovered information
-      template:
-        src: "{{ playbook_dir }}/../templates/ansible-inventory.j2"
-        dest: "{{ playbook_dir }}/../inventory/adfr-lab-updated.yml"
-        mode: '0644'
-      when: false  # We'll create this template next
+      include_tasks: ../tasks/generate_mremoteng.yml
 
     - name: Display verification summary
       debug:

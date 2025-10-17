@@ -67,7 +67,7 @@ all:
 
     arbor_forest:
       children:
-        arbor_forest_root_pdc:
+        arbor_pdc:
           hosts:
             KOA-DC:
               ansible_host: 192.168.35.20
@@ -82,7 +82,7 @@ all:
               netbios_name: ARBOR
               role: "Forest Root PDC"
 
-        arbor_forest_root_replica:
+        arbor_replica:
           hosts:
             OAK-DC:
               ansible_host: 192.168.35.21
@@ -99,7 +99,7 @@ all:
 
     alpine_forest:
       children:
-        alpine_forest_root_pdc:
+        alpine_pdc:
           hosts:
             GRANITE-DC:
               ansible_host: 192.168.35.30
@@ -114,7 +114,7 @@ all:
               netbios_name: ALPINE
               role: "Forest Root PDC"
 
-        alpine_forest_root_replica:
+        alpine_replica:
           hosts:
             BASALT-DC:
               ansible_host: 192.168.35.31
@@ -129,7 +129,7 @@ all:
               netbios_name: ALPINE
               role: "Forest Root Replica"
 
-        mauna_child_pdc:
+        alpine_mauna_pdc:
           hosts:
             SLATE-DC:
               ansible_host: 192.168.35.32
@@ -145,7 +145,7 @@ all:
               parent_domain: alpine.lab
               role: "Child Domain PDC"
 
-        mauna_child_replica:
+        alpine_mauna_replica:
           hosts:
             SHALE-DC:
               ansible_host: 192.168.35.33
@@ -161,7 +161,7 @@ all:
               parent_domain: alpine.lab
               role: "Child Domain Replica"
 
-        rainier_child_pdc:
+        alpine_rainier_pdc:
           hosts:
             MARBLE-DC:
               ansible_host: 192.168.35.34
@@ -177,7 +177,7 @@ all:
               parent_domain: alpine.lab
               role: "Child Domain PDC"
 
-        rainier_child_replica:
+        alpine_rainier_replica:
           hosts:
             QUARTZ-DC:
               ansible_host: 192.168.35.35

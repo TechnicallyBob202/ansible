@@ -1,0 +1,9 @@
+---
+# BASALT-DC DNS configuration
+windows_dns_servers:
+  - 192.168.35.30       # GRANITE-DC (its pair - PRIMARY)
+  - 192.168.35.31       # BASALT-DC (itself - SECONDARY)
+  - 192.168.35.33       # SHALE-DC (mauna replica - TERTIARY)
+  - 192.168.35.35       # QUARTZ-DC (rainier replica - QUATERNARY)
+
+windows_dns_suffix: alpine.lab
