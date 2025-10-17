@@ -2,7 +2,7 @@
 - name: Deploy Lab VMs from Inventory
   hosts: all
   gather_facts: no
-  serial: 0  # Deploy all in parallel
+  serial: 0
 
   vars:
     proxmox_operation: deploy
@@ -21,6 +21,10 @@
         name: proxmox
         apply:
           delegate_to: localhost
+
+    - name: Mark VM as changed if it was newly created
+      set_fact:
+        vm_changed: "{{ not (vm_preexisted | default(false)) }}"
 
     - name: Determine if any VMs were newly deployed
       set_fact:
@@ -41,7 +45,7 @@
       delegate_to: localhost
 
 # =============================================================================
-# PHASE 2: Snapshot after deployment
+# PHASE 2: Snapshot after deployment (only VMs that were deployed)
 # =============================================================================
 - name: Snapshot after deploy
   hosts: all
@@ -49,7 +53,7 @@
   serial: 2
 
   tasks:
-    - name: Take snapshot (post-deploy)
+    - name: Take snapshot (post-deploy) - only for newly deployed VMs
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
@@ -57,6 +61,7 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-deploy
+      when: vm_changed | default(false)
 
 # =============================================================================
 # PHASE 3: Completion message
@@ -66,10 +71,13 @@
   gather_facts: no
 
   tasks:
+    - name: Count changed VMs
+      set_fact:
+        changed_count: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+
     - name: Deployment complete
       debug:
         msg:
-          - "All VMs deployed"
-          - "VMs are booting with DHCP addresses"
-          - "Snapshot created: post-deploy"
+          - "Deployment complete: {{ changed_count }}/{{ groups['all'] | length }} VMs were newly deployed"
+          - "Snapshots created for {{ changed_count }} VMs"
           - "Next: Run playbook 02-configure-base-os.yml to set static IPs"

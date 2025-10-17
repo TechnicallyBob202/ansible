@@ -9,6 +9,11 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
+    - name: Skip snapshot if VM didn't change
+      debug:
+        msg: "Skipping snapshot for {{ inventory_hostname }} - no changes made"
+      when: not (vm_changed | default(false))
+
     - name: Check if VM exists (on this node)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
@@ -21,6 +26,7 @@
       register: vm_exists
       failed_when: false
       changed_when: false
+      when: vm_changed | default(false)
 
     - name: Remove existing stage snapshot (if present)
       community.general.proxmox_snap:
@@ -35,7 +41,9 @@
         force: true
         unbind: true
         timeout: 300
-      when: vm_exists.status is defined
+      when:
+        - vm_changed | default(false)
+        - vm_exists.status is defined
       failed_when: false
 
     - name: Create stage snapshot
@@ -50,12 +58,14 @@
         state: present
         description: "Stage snapshot: {{ snapshot_name }}"
         vmstate: "{{ proxmox_snapshot_vmstate }}"
-      when: vm_exists.status is defined
+      when:
+        - vm_changed | default(false)
+        - vm_exists.status is defined
       register: snapshot_result
 
     - name: Display snapshot result
       debug:
-        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'already existed' }}"
+        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'skipped - no changes' }}"
       when: vm_exists.status is defined
 
   delegate_to: localhost

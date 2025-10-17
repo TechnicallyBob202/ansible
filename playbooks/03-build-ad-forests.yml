@@ -12,6 +12,18 @@
           - "Total Duration: 45-60 minutes"
 
 # =============================================================================
+# PHASE 0: Initialize Change Tracking
+# =============================================================================
+- name: Initialize Change Tracking for All VMs
+  hosts: all
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Initialize vm_changed flag
+      set_fact:
+        vm_changed: false
+
+# =============================================================================
 # PHASE 1: Install AD Features on All Domain Controllers
 # =============================================================================
 - name: Install Active Directory Features
@@ -23,6 +35,11 @@
       include_role:
         name: activeDirectory
         tasks_from: install_ad_features.yml
+      register: features_result
+
+    - name: Mark VM as changed if features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 2: Configure DNS on All DCs (BEFORE any promotions)
@@ -36,10 +53,15 @@
       include_role:
         name: windows
         tasks_from: set_dns.yml
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
     - name: Display DNS configuration
       debug:
-        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }}"
+        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }} (changed={{ dns_result.changed | default(false) }})"
 
 # =============================================================================
 # PHASE 2.5: Configure DNS on Infrastructure and Recovery VMs
@@ -53,10 +75,15 @@
       include_role:
         name: windows
         tasks_from: set_dns.yml
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
     - name: Display DNS configuration
       debug:
-        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }}"
+        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }} (changed={{ dns_result.changed | default(false) }})"
 
 # =============================================================================
 # PHASE 3: Promote Forest Root PDCs
@@ -75,6 +102,11 @@
       include_role:
         name: activeDirectory
         tasks_from: promote_forest_root.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
     - name: Wait for DC to be ready
       include_role:
@@ -97,6 +129,11 @@
       include_role:
         name: activeDirectory
         tasks_from: promote_replica_dc.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
     - name: Wait for DC to be ready
       include_role:
@@ -120,6 +157,11 @@
       include_role:
         name: activeDirectory
         tasks_from: promote_child_domain.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
     - name: Wait for DC to be ready
       include_role:
@@ -142,6 +184,11 @@
       include_role:
         name: activeDirectory
         tasks_from: promote_replica_dc.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
     - name: Wait for DC to be ready
       include_role:
@@ -164,6 +211,11 @@
       include_role:
         name: activeDirectory
         tasks_from: create_service_accounts.yml
+      register: accounts_result
+
+    - name: Mark VM as changed if accounts were created
+      set_fact:
+        vm_changed: "{{ vm_changed or (accounts_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 8: Final Validation
@@ -217,14 +269,18 @@
           - "  - fsmo-roles.txt"
 
 # =============================================================================
-# PHASE 9: Snapshot
+# PHASE 9: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: all
   gather_facts: no
   serial: 2
   tasks:
-    - name: Take snapshot
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot (changed={{ vm_changed | default(false) }})"
+
+    - name: Take snapshot - only for changed VMs
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
@@ -232,3 +288,41 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-dcpromo
+      when: vm_changed | default(false)
+
+# =============================================================================
+# PHASE 10: Final Summary
+# =============================================================================
+- name: Deployment Summary
+  hosts: localhost
+  gather_facts: no
+  tasks:
+    - name: Count changed VMs by type
+      set_fact:
+        changed_dcs: "{{ groups['domain_controllers'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_dcs: "{{ groups['domain_controllers'] | length }}"
+        changed_infra: "{{ groups['infrastructure'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_infra: "{{ groups['infrastructure'] | default([]) | length }}"
+        changed_recovery: "{{ groups['recovery_vms'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_recovery: "{{ groups['recovery_vms'] | default([]) | length }}"
+
+    - name: Calculate totals
+      set_fact:
+        total_changed: "{{ (changed_dcs | int) + (changed_infra | int) + (changed_recovery | int) }}"
+        total_vms: "{{ (total_dcs | int) + (total_infra | int) + (total_recovery | int) }}"
+
+    - name: Display snapshot summary
+      debug:
+        msg:
+          - "========================================="
+          - "AD Build Complete!"
+          - "========================================="
+          - ""
+          - "Snapshots Created:"
+          - "  Domain Controllers: {{ changed_dcs }}/{{ total_dcs }}"
+          - "  Infrastructure VMs: {{ changed_infra }}/{{ total_infra }}"
+          - "  Recovery VMs: {{ changed_recovery }}/{{ total_recovery }}"
+          - "  ─────────────────────────────────"
+          - "  Total: {{ total_changed }}/{{ total_vms }} VMs snapshotted"
+          - ""
+          - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured and skipped"

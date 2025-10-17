@@ -9,6 +9,10 @@
         msg: "Configuring network for {{ ansible_play_hosts | length }} VMs"
       run_once: yes
 
+    - name: Initialize change tracking
+      set_fact:
+        vm_changed: false
+
 # =============================================================================
 # PHASE 1: Discover Current IPs
 # =============================================================================
@@ -53,6 +57,11 @@
         name: windows
         tasks_from: set_static_ip.yml
       when: needs_ip_config
+      register: ip_result
+
+    - name: Mark VM as changed if IP was configured
+      set_fact:
+        vm_changed: "{{ vm_changed | default(false) or (ip_result.changed | default(false)) }}"
 
     - name: Update ansible_host to static IP
       set_fact:
@@ -66,7 +75,7 @@
       when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
 
 # =============================================================================
-# PHASE 3: Configure DNS (Cloudflare) and Hostname
+# PHASE 3: Configure DNS and Hostname
 # =============================================================================
 - name: Configure DNS and Hostname
   hosts: all
@@ -74,15 +83,25 @@
   serial: 0
 
   tasks:
-    - name: Configure DNS servers (Cloudflare from all.yml)
+    - name: Configure DNS servers
       include_role:
         name: windows
         tasks_from: set_dns.yml
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed | default(false) or (dns_result.changed | default(false)) }}"
 
     - name: Set hostname
       include_role:
         name: windows
         tasks_from: set_hostname.yml
+      register: hostname_result
+
+    - name: Mark VM as changed if hostname was set
+      set_fact:
+        vm_changed: "{{ vm_changed | default(false) or (hostname_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 4: Reboot hosts that need it
@@ -98,6 +117,11 @@
         name: windows
         tasks_from: reboot.yml
       when: reboot_required | default(false)
+      register: reboot_result
+
+    - name: Mark VM as changed if rebooted
+      set_fact:
+        vm_changed: "{{ vm_changed | default(false) or (reboot_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 5: Validation
@@ -131,7 +155,8 @@
           - "{{ inventory_hostname }}:"
           - "  IP: {{ network_config.IPAddress }} (expected: {{ ansible_host }})"
           - "  Hostname: {{ network_config.Hostname }} (expected: {{ inventory_hostname }})"
-          - "  DNS: {{ network_config.DNS }} (Cloudflare)"
+          - "  DNS: {{ network_config.DNS }}"
+          - "  Changed: {{ vm_changed | default(false) }}"
 
     - name: Summary
       debug:
@@ -139,14 +164,15 @@
       run_once: yes
 
 # =============================================================================
-# PHASE 6: Snapshot
+# PHASE 6: Snapshot (only changed VMs)
 # =============================================================================
 - name: Snapshot after base OS configuration
   hosts: all
   gather_facts: no
   serial: 2
+
   tasks:
-    - name: Take snapshot
+    - name: Take snapshot - only for changed VMs
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
@@ -154,3 +180,22 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-config
+      when: vm_changed | default(false)
+
+# =============================================================================
+# PHASE 7: Final Summary
+# =============================================================================
+- name: Configuration Summary
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Count changed VMs
+      set_fact:
+        changed_count: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+
+    - name: Display summary
+      debug:
+        msg:
+          - "Configuration complete: {{ changed_count }}/{{ groups['all'] | length }} VMs were modified"
+          - "Snapshots created for {{ changed_count }} VMs"

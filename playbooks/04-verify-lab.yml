@@ -116,6 +116,39 @@
           - "  Forest: {{ domain_sid_data.ForestName }}"
 
 # =============================================================================
+# PHASE 4.5: Collect Child Domain SIDs
+# =============================================================================
+- name: Collect Child Domain SIDs
+  hosts: alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+
+  tasks:
+    - name: Get child domain SID
+      ansible.windows.win_shell: |
+        $domain = Get-ADDomain
+        [PSCustomObject]@{
+          DomainName = $domain.DNSRoot
+          NetBIOSName = $domain.NetBIOSName
+          DomainSID = $domain.DomainSID.Value
+          ParentDomain = $domain.ParentDomain
+        } | ConvertTo-Json
+      register: child_sid_info
+      changed_when: false
+
+    - name: Parse child domain SID information
+      set_fact:
+        domain_sid_data: "{{ child_sid_info.stdout | from_json }}"
+
+    - name: Display child domain SID
+      debug:
+        msg:
+          - "{{ inventory_hostname }} Child Domain Information:"
+          - "  Domain: {{ domain_sid_data.DomainName }}"
+          - "  NetBIOS: {{ domain_sid_data.NetBIOSName }}"
+          - "  SID: {{ domain_sid_data.DomainSID }}"
+          - "  Parent: {{ domain_sid_data.ParentDomain }}"
+
+# =============================================================================
 # PHASE 5: Generate Documentation
 # =============================================================================
 - name: Generate Lab Documentation
@@ -135,11 +168,15 @@
           # ADFR Lab - Forest Domain SIDs
           # Generated: {{ ansible_date_time.iso8601 }}
 
-    - name: Add arbor.lab SID to content
+          This file contains the Domain SIDs for all domains in the lab environment.
+          These SIDs are used for trust relationships, security principals, and AD operations.
+
+
+    - name: Add arbor.lab forest SID to content
       set_fact:
         forest_sid_content: |
           {{ forest_sid_content }}
-          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest
+          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest (Root Domain)
           Domain: {{ hostvars[item].domain_sid_data.DomainName }}
           NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
           SID: {{ hostvars[item].domain_sid_data.DomainSID }}
@@ -148,17 +185,45 @@
       loop: "{{ groups['arbor_pdc'] | default([]) }}"
       when: hostvars[item].domain_sid_data is defined
 
-    - name: Add alpine.lab SID to content
+    - name: Add alpine.lab forest SID to content
       set_fact:
         forest_sid_content: |
           {{ forest_sid_content }}
-          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest
+          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest (Root Domain)
           Domain: {{ hostvars[item].domain_sid_data.DomainName }}
           NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
           SID: {{ hostvars[item].domain_sid_data.DomainSID }}
           DC: {{ item }} ({{ hostvars[item].ansible_host }})
 
       loop: "{{ groups['alpine_pdc'] | default([]) }}"
+      when: hostvars[item].domain_sid_data is defined
+
+    - name: Add mauna.alpine.lab child domain SID to content
+      set_fact:
+        forest_sid_content: |
+          {{ forest_sid_content }}
+          ### {{ hostvars[item].domain_sid_data.DomainName }} (Child Domain)
+          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
+          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
+          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
+          Parent: {{ hostvars[item].domain_sid_data.ParentDomain }}
+          DC: {{ item }} ({{ hostvars[item].ansible_host }})
+
+      loop: "{{ groups['alpine_mauna_pdc'] | default([]) }}"
+      when: hostvars[item].domain_sid_data is defined
+
+    - name: Add rainier.alpine.lab child domain SID to content
+      set_fact:
+        forest_sid_content: |
+          {{ forest_sid_content }}
+          ### {{ hostvars[item].domain_sid_data.DomainName }} (Child Domain)
+          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
+          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
+          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
+          Parent: {{ hostvars[item].domain_sid_data.ParentDomain }}
+          DC: {{ item }} ({{ hostvars[item].ansible_host }})
+
+      loop: "{{ groups['alpine_rainier_pdc'] | default([]) }}"
       when: hostvars[item].domain_sid_data is defined
 
     - name: Write forest domain SIDs to file
@@ -170,6 +235,44 @@
     - name: Generate and push mRemoteNG configuration
       include_tasks: ../tasks/generate_mremoteng.yml
 
+    - name: Check if git repository exists
+      stat:
+        path: "{{ playbook_dir }}/../.git"
+      register: git_repo
+
+    - name: Add forest-domain-sids.txt to git
+      shell: |
+        cd {{ playbook_dir }}/..
+        git add files/forest-domain-sids.txt
+      when: git_repo.stat.exists
+
+    - name: Commit forest-domain-sids.txt
+      shell: |
+        cd {{ playbook_dir }}/..
+        git config user.email "ansible@semperis.lab" || true
+        git config user.name "Ansible Automation" || true
+        git commit -m "Update forest domain SIDs - {{ ansible_date_time.iso8601 }}" files/forest-domain-sids.txt || echo "No changes to commit"
+      when: git_repo.stat.exists
+      register: git_commit_sids
+      changed_when: "'No changes to commit' not in git_commit_sids.stdout"
+
+    - name: Push SIDs to git
+      shell: |
+        cd {{ playbook_dir }}/..
+        git push origin main || git push origin master || echo "Push failed - check remote configuration"
+      when:
+        - git_repo.stat.exists
+        - git_commit_sids.changed
+      register: git_push_sids
+      ignore_errors: yes
+
+    - name: Display git status for SIDs
+      debug:
+        msg:
+          - "Forest domain SIDs file: files/forest-domain-sids.txt"
+          - "Git commit: {{ 'Updated' if git_commit_sids.changed else 'No changes' }}"
+          - "Git push: {{ 'Success' if git_push_sids is succeeded else 'Failed or skipped' }}"
+
     - name: Display verification summary
       debug:
         msg:
@@ -178,3 +281,66 @@
           - "Documentation generated in files/"
           - "  - forest-domain-sids.txt"
           - "  - adfr-lab-mremoteng.xml"
+
+# =============================================================================
+# PHASE 6: Create "Ready to Rock" Snapshots for ALL VMs
+# =============================================================================
+- name: Create Ready-to-Rock Snapshots
+  hosts: all
+  gather_facts: no
+  serial: 2
+
+  tasks:
+    - name: Set all VMs as changed for final snapshot
+      set_fact:
+        vm_changed: true
+
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Creating 'ready-to-rock' snapshot"
+
+    - name: Take ready-to-rock snapshot
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        snapshot_name: ready-to-rock
+
+# =============================================================================
+# PHASE 7: Final Summary
+# =============================================================================
+- name: Final Summary
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Calculate VM counts
+      set_fact:
+        total_dcs: "{{ groups['domain_controllers'] | length }}"
+        total_infra: "{{ groups['infrastructure'] | default([]) | length }}"
+        total_recovery: "{{ groups['recovery_vms'] | default([]) | length }}"
+        total_vms: "{{ groups['all'] | length }}"
+
+    - name: Display final summary
+      debug:
+        msg:
+          - "========================================="
+          - "Lab Verification & Snapshot Complete!"
+          - "========================================="
+          - ""
+          - "Ready-to-Rock Snapshots Created:"
+          - "  Domain Controllers: {{ total_dcs }}"
+          - "  Infrastructure VMs: {{ total_infra }}"
+          - "  Recovery VMs: {{ total_recovery }}"
+          - "  ─────────────────────────────────"
+          - "  Total: {{ total_vms }} VMs"
+          - ""
+          - "All VMs are now in a validated, ready-to-rock state!"
+          - "You can revert to these snapshots at any time."
+          - ""
+          - "Documentation files (committed to git):"
+          - "  - files/forest-domain-sids.txt"
+          - "  - files/fsmo-roles.txt"
+          - "  - files/adfr-lab-mremoteng.xml"
