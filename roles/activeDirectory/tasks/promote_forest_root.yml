@@ -36,10 +36,6 @@
   until: adws_service.state == 'running'
   when: forest_promotion.changed
 
-- name: Apply DNS configuration
-  include_tasks: apply_dc_dns.yml
-  when: forest_promotion.changed
-
 - name: Get new domain SID
   ansible.windows.win_shell: |
     $domain = Get-ADDomain -Identity "{{ domain_name }}"

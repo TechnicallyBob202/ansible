@@ -53,10 +53,6 @@
   until: adws_service.state == 'running'
   when: replica_promotion.changed
 
-- name: Apply DNS configuration
-  include_tasks: apply_dc_dns.yml
-  when: replica_promotion.changed
-
 - name: Display promotion result
   debug:
     msg:
