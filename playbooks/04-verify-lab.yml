@@ -129,22 +129,41 @@
         state: directory
         mode: '0755'
 
-    - name: Write forest domain SIDs to file
-      copy:
-        content: |
+    - name: Build forest SID content
+      set_fact:
+        forest_sid_content: |
           # ADFR Lab - Forest Domain SIDs
           # Generated: {{ ansible_date_time.iso8601 }}
 
-          {% for host in groups['arbor_pdc'] + groups['alpine_pdc'] %}
-          {% if hostvars[host].domain_sid_data is defined %}
-          ## {{ hostvars[host].domain_sid_data.ForestName }} Forest
-          Domain: {{ hostvars[host].domain_sid_data.DomainName }}
-          NetBIOS: {{ hostvars[host].domain_sid_data.NetBIOSName }}
-          SID: {{ hostvars[host].domain_sid_data.DomainSID }}
-          DC: {{ host }} ({{ hostvars[host].ansible_host }})
+    - name: Add arbor.lab SID to content
+      set_fact:
+        forest_sid_content: |
+          {{ forest_sid_content }}
+          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest
+          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
+          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
+          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
+          DC: {{ item }} ({{ hostvars[item].ansible_host }})
 
-          {% endif %}
-          {% endfor %}
+      loop: "{{ groups['arbor_pdc'] | default([]) }}"
+      when: hostvars[item].domain_sid_data is defined
+
+    - name: Add alpine.lab SID to content
+      set_fact:
+        forest_sid_content: |
+          {{ forest_sid_content }}
+          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest
+          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
+          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
+          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
+          DC: {{ item }} ({{ hostvars[item].ansible_host }})
+
+      loop: "{{ groups['alpine_pdc'] | default([]) }}"
+      when: hostvars[item].domain_sid_data is defined
+
+    - name: Write forest domain SIDs to file
+      copy:
+        content: "{{ forest_sid_content }}"
         dest: "{{ playbook_dir }}/../files/forest-domain-sids.txt"
         mode: '0644'
 
