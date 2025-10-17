@@ -83,7 +83,40 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 4: Generate Documentation
+# PHASE 4: Collect Forest Domain SIDs
+# =============================================================================
+- name: Collect Forest Root Domain SIDs
+  hosts: arbor_pdc:alpine_pdc
+  gather_facts: no
+
+  tasks:
+    - name: Get forest domain SID
+      ansible.windows.win_shell: |
+        $domain = Get-ADDomain
+        [PSCustomObject]@{
+          DomainName = $domain.DNSRoot
+          NetBIOSName = $domain.NetBIOSName
+          DomainSID = $domain.DomainSID.Value
+          ForestName = $domain.Forest
+        } | ConvertTo-Json
+      register: forest_sid_info
+      changed_when: false
+
+    - name: Parse domain SID information
+      set_fact:
+        domain_sid_data: "{{ forest_sid_info.stdout | from_json }}"
+
+    - name: Display forest SID
+      debug:
+        msg:
+          - "{{ inventory_hostname }} Forest Information:"
+          - "  Domain: {{ domain_sid_data.DomainName }}"
+          - "  NetBIOS: {{ domain_sid_data.NetBIOSName }}"
+          - "  SID: {{ domain_sid_data.DomainSID }}"
+          - "  Forest: {{ domain_sid_data.ForestName }}"
+
+# =============================================================================
+# PHASE 5: Generate Documentation
 # =============================================================================
 - name: Generate Lab Documentation
   hosts: localhost
@@ -96,6 +129,25 @@
         state: directory
         mode: '0755'
 
+    - name: Write forest domain SIDs to file
+      copy:
+        content: |
+          # ADFR Lab - Forest Domain SIDs
+          # Generated: {{ ansible_date_time.iso8601 }}
+
+          {% for host in groups['arbor_pdc'] + groups['alpine_pdc'] %}
+          {% if hostvars[host].domain_sid_data is defined %}
+          ## {{ hostvars[host].domain_sid_data.ForestName }} Forest
+          Domain: {{ hostvars[host].domain_sid_data.DomainName }}
+          NetBIOS: {{ hostvars[host].domain_sid_data.NetBIOSName }}
+          SID: {{ hostvars[host].domain_sid_data.DomainSID }}
+          DC: {{ host }} ({{ hostvars[host].ansible_host }})
+
+          {% endif %}
+          {% endfor %}
+        dest: "{{ playbook_dir }}/../files/forest-domain-sids.txt"
+        mode: '0644'
+
     - name: Generate and push mRemoteNG configuration
       include_tasks: ../tasks/generate_mremoteng.yml
 
@@ -105,3 +157,5 @@
           - "Lab verification complete!"
           - "All systems validated and operational"
           - "Documentation generated in files/"
+          - "  - forest-domain-sids.txt"
+          - "  - adfr-lab-mremoteng.xml"

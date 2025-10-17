@@ -17,6 +17,7 @@ __pycache__/
 # Generated files (these get created during playbook runs)
 files/domain-sids.txt
 files/fsmo-roles.txt
+files/forest-domain-sids.txt
 files/deployment-timestamp.txt
 files/lab-summary.md
 inventory/adfr-lab-updated.yml
