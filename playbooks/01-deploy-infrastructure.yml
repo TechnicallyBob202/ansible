@@ -22,16 +22,15 @@
         apply:
           delegate_to: localhost
 
-    - name: Mark VM as changed if it was newly created
-      set_fact:
-        vm_changed: "{{ not (vm_preexisted | default(false)) }}"
+    - name: Display deployment status
+      debug:
+        msg: "{{ inventory_hostname }} - {{ 'NEWLY DEPLOYED' if (vm_changed | default(false)) else 'ALREADY EXISTS' }}"
 
     - name: Determine if any VMs were newly deployed
       set_fact:
         any_new_vms: "{{ (ansible_play_hosts
-                          | map('extract', hostvars, 'vm_preexisted')
-                          | map('default', true)
-                          | select('equalto', false)
+                          | map('extract', hostvars, 'vm_changed')
+                          | select('equalto', true)
                           | list | length) > 0 }}"
       run_once: yes
       delegate_to: localhost
@@ -40,7 +39,7 @@
     - name: Wait for VMs to boot (DHCP)
       pause:
         seconds: 60
-      when: hostvars['localhost']['any_new_vms'] | default(true)
+      when: hostvars['localhost']['any_new_vms'] | default(false)
       run_once: yes
       delegate_to: localhost
 
@@ -53,6 +52,10 @@
   serial: 2
 
   tasks:
+    - name: Display snapshot decision
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot"
+
     - name: Take snapshot (post-deploy) - only for newly deployed VMs
       include_role:
         name: proxmox
@@ -74,6 +77,11 @@
     - name: Count changed VMs
       set_fact:
         changed_count: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+
+    - name: Display detailed breakdown
+      debug:
+        msg: "{{ item }} - {{ 'NEWLY DEPLOYED' if hostvars[item].vm_changed | default(false) else 'ALREADY EXISTED' }}"
+      loop: "{{ groups['all'] }}"
 
     - name: Deployment complete
       debug:

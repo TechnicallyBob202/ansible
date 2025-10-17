@@ -4,10 +4,17 @@
 - name: Clone VM from template
   include_tasks: clone.yml
 
+- name: Set vm_changed based on clone result
+  set_fact:
+    vm_changed: "{{ not (vm_preexisted | default(false)) }}"
+
 - name: Wait for clone to complete
   pause:
     seconds: 10
-  when: clone_result.changed
+  when:
+    - not vm_preexisted
+    - clone_result is defined
+    - clone_result.changed
 
 - name: Preflight check; compute VM facts
   include_tasks: preflight.yml
@@ -31,3 +38,4 @@
       - "  Memory: {{ vm_memory }} MB"
       - "  Disk: {{ vm_disk }}"
       - "  IP: {{ ansible_host }}"
+      - "  Newly deployed: {{ vm_changed | default(false) }}"
