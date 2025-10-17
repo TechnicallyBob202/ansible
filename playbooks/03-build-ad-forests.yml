@@ -42,6 +42,23 @@
         msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }}"
 
 # =============================================================================
+# PHASE 2.5: Configure DNS on Infrastructure and Recovery VMs
+# =============================================================================
+- name: Configure DNS on Infrastructure and Recovery VMs
+  hosts: infrastructure:recovery_vms
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Set DNS to point to DCs (uses group_vars)
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+
+    - name: Display DNS configuration
+      debug:
+        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }}"
+
+# =============================================================================
 # PHASE 3: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
