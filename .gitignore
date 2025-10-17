@@ -14,13 +14,19 @@ __pycache__/
 *secret*
 .env
 
-# Generated files (these get created during playbook runs)
-files/domain-sids.txt
-files/fsmo-roles.txt
-files/forest-domain-sids.txt
+# Generated files that should NOT be tracked
 files/deployment-timestamp.txt
 files/lab-summary.md
+files/last-rebuild.txt
 inventory/adfr-lab-updated.yml
+
+# Temporary domain info files (we consolidate these)
+files/fsmo-roles.txt
+files/domain-sids.txt
+
+# BUT we DO want to track these consolidated files:
+!files/forest-domain-sids.txt
+!files/adfr-lab-mremoteng.xml
 
 # Temporary files
 /tmp/
