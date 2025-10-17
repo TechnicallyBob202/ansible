@@ -40,26 +40,36 @@
       run_once: yes
       delegate_to: localhost
 
-    # Final snapshot play (limits to 2 hosts at a time)
-    - name: Snapshot after deploy
-      hosts: all
-      serial: 2
-      tasks:
-        - name: Take snapshot (post-deploy)
-          include_role:
-            name: proxmox
-            tasks_from: snapshot.yml
-            apply:
-              delegate_to: localhost
-          vars:
-            snapshot_name: post-deploy
+# =============================================================================
+# PHASE 2: Snapshot after deployment
+# =============================================================================
+- name: Snapshot after deploy
+  hosts: all
+  gather_facts: no
+  serial: 2
 
+  tasks:
+    - name: Take snapshot (post-deploy)
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        snapshot_name: post-deploy
+
+# =============================================================================
+# PHASE 3: Completion message
+# =============================================================================
+- name: Deployment Summary
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
     - name: Deployment complete
       debug:
         msg:
-          - "All {{ ansible_play_hosts | length }} VMs deployed"
+          - "All VMs deployed"
           - "VMs are booting with DHCP addresses"
-          - "Created snapshot: {{ snapshot_name }}"
+          - "Snapshot created: post-deploy"
           - "Next: Run playbook 02-configure-base-os.yml to set static IPs"
-      run_once: yes
-      delegate_to: localhost
