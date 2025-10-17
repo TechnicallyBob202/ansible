@@ -17,7 +17,7 @@ all:
           proxmox_node: semperis-nuc-1
           template_id: 9001
           vm_cores: 2
-          vm_memory: 6144
+          vm_memory: 4096
           vm_disk: 100G
           role: "ADFR Management"
 
@@ -28,20 +28,9 @@ all:
           proxmox_node: semperis-nuc-2
           template_id: 9002
           vm_cores: 2
-          vm_memory: 6144
+          vm_memory: 4096
           vm_disk: 100G
           role: "DSP Management"
-
-        PEAK:
-          ansible_host: 192.168.35.12
-          vmid: 3512
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9001
-          vm_cores: 4
-          vm_memory: 8192
-          vm_disk: 200G
-          role: "SQL Server"
 
         RIDGE:
           ansible_host: 192.168.35.13
@@ -50,8 +39,8 @@ all:
           proxmox_node: semperis-nuc-1
           template_id: 9001
           vm_cores: 2
-          vm_memory: 4096
-          vm_disk: 500G
+          vm_memory: 2048
+          vm_disk: 100G
           role: "Primary DP"
 
         CREST:
@@ -61,8 +50,8 @@ all:
           proxmox_node: semperis-nuc-2
           template_id: 9002
           vm_cores: 2
-          vm_memory: 4096
-          vm_disk: 500G
+          vm_memory: 2048
+          vm_disk: 100G
           role: "Secondary DP"
 
     arbor_forest:
@@ -76,7 +65,7 @@ all:
               proxmox_node: semperis-nuc-1
               template_id: 9001
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: arbor.lab
               netbios_name: ARBOR
@@ -91,7 +80,7 @@ all:
               proxmox_node: semperis-nuc-2
               template_id: 9002
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: arbor.lab
               netbios_name: ARBOR
@@ -108,7 +97,7 @@ all:
               proxmox_node: semperis-nuc-1
               template_id: 9001
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: alpine.lab
               netbios_name: ALPINE
@@ -123,7 +112,7 @@ all:
               proxmox_node: semperis-nuc-2
               template_id: 9002
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: alpine.lab
               netbios_name: ALPINE
@@ -138,7 +127,7 @@ all:
               proxmox_node: semperis-nuc-1
               template_id: 9001
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
@@ -154,7 +143,7 @@ all:
               proxmox_node: semperis-nuc-2
               template_id: 9002
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
@@ -170,7 +159,7 @@ all:
               proxmox_node: semperis-nuc-1
               template_id: 9001
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
@@ -186,7 +175,7 @@ all:
               proxmox_node: semperis-nuc-2
               template_id: 9002
               vm_cores: 2
-              vm_memory: 3072
+              vm_memory: 2048
               vm_disk: 80G
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
@@ -202,7 +191,7 @@ all:
           proxmox_node: semperis-nuc-1
           template_id: 9001
           vm_cores: 2
-          vm_memory: 3072
+          vm_memory: 2048
           vm_disk: 80G
           role: "Recovery VM"
 
@@ -213,7 +202,7 @@ all:
           proxmox_node: semperis-nuc-2
           template_id: 9002
           vm_cores: 2
-          vm_memory: 3072
+          vm_memory: 2048
           vm_disk: 80G
           role: "Recovery VM"
 

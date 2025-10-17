@@ -1,9 +1,0 @@
----
-# Default DNS for all VMs during Stage 02 (configure-base-os)
-# Provides internet connectivity before DCs exist
-
-windows_dns_servers:
-  - 1.1.1.1  # Cloudflare DNS (primary)
-  - 1.0.0.1  # Cloudflare DNS (secondary)
-
-windows_dns_suffix: lab
