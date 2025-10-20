@@ -7,7 +7,6 @@
 
 - name: Copy ADFR files from authenticated SMB share
   ansible.windows.win_shell: |
-    # Configuration
     $shareRoot = "\\192.168.33.13\Semperis"
     $username = "{{ adfr_smb_username }}"
     $password = "{{ adfr_smb_password }}"
@@ -21,11 +20,11 @@
     Write-Output "Destination: $dest"
     Write-Output ""
 
-    # Clear any existing connections to this share
+    # Clear any existing connections
     Write-Output "Clearing any existing connections..."
     net use $shareRoot /delete /yes 2>$null | Out-Null
 
-    # Map the share with explicit credentials
+    # Map the share
     Write-Output "Mapping share with credentials..."
     $netUseOutput = net use $shareRoot /user:$username $password /persistent:no 2>&1
     $netUseExitCode = $LASTEXITCODE
@@ -37,19 +36,19 @@
       throw "Failed to authenticate to network share. Check username/password."
     }
 
-    Write-Output "✓ Share mapped successfully"
+    Write-Output "SUCCESS: Share mapped"
     Write-Output ""
 
-    # Verify share is accessible
+    # Verify share accessible
     Write-Output "Verifying share access..."
     if (Test-Path $shareRoot) {
-      Write-Output "✓ Share is accessible"
+      Write-Output "SUCCESS: Share is accessible"
     } else {
       throw "Share mapped but not accessible via Test-Path"
     }
     Write-Output ""
 
-    # Find the ADFR source directory
+    # Find ADFR source
     Write-Output "Locating ADFR installation files..."
     $possiblePaths = @(
       "$shareRoot\ADFR\InstallationMedia\{{ adfr_version }}\ADFR-{{ adfr_version }}",
@@ -63,10 +62,10 @@
       Write-Output "  Checking: $path"
       if (Test-Path $path) {
         $source = $path
-        Write-Output "  ✓ Found!"
+        Write-Output "  FOUND!"
         break
       } else {
-        Write-Output "  ✗ Not found"
+        Write-Output "  Not found"
       }
     }
 
@@ -74,40 +73,31 @@
       Write-Output ""
       Write-Output "ERROR: Could not find ADFR installation files"
       Write-Output ""
-      Write-Output "Contents of $shareRoot:"
+      Write-Output "Share contents:"
       Get-ChildItem $shareRoot -ErrorAction SilentlyContinue | Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String
 
       if (Test-Path "$shareRoot\ADFR") {
         Write-Output ""
-        Write-Output "Contents of $shareRoot\ADFR:"
+        Write-Output "ADFR directory contents:"
         Get-ChildItem "$shareRoot\ADFR" -ErrorAction SilentlyContinue | Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String
       }
 
-      throw "ADFR installation files not found in any expected location"
+      throw "ADFR installation files not found"
     }
 
     Write-Output ""
-    Write-Output "Source path: $source"
+    Write-Output "Source: $source"
     Write-Output ""
 
-    # Show what we're about to copy
+    # Show source contents
     Write-Output "Source directory contents:"
     Get-ChildItem $source | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize | Out-String
 
     Write-Output ""
-    Write-Output "Starting file copy..."
-    Write-Output "This may take several minutes depending on file size..."
+    Write-Output "Starting file copy (this may take a few minutes)..."
     Write-Output ""
 
-    # Copy files using robocopy
-    # /E = Copy subdirectories, including Empty ones
-    # /R:3 = Retry 3 times on failed copies
-    # /W:5 = Wait 5 seconds between retries
-    # /NFL = No File List (don't log file names)
-    # /NDL = No Directory List (don't log directory names)
-    # /NP = No Progress (don't show percentage)
-    # /TEE = Output to console AND log file
-
+    # Copy files
     $logFile = "$env:TEMP\adfr-copy-log.txt"
     robocopy "$source" "$dest" /E /R:3 /W:5 /NFL /NDL /NP /TEE /LOG:$logFile
 
@@ -116,33 +106,21 @@
     Write-Output ""
     Write-Output "Robocopy exit code: $robocopyExitCode"
 
-    # Disconnect the share
+    # Disconnect share
     Write-Output ""
     Write-Output "Disconnecting share..."
     net use $shareRoot /delete /yes 2>$null | Out-Null
-    Write-Output "✓ Share disconnected"
+    Write-Output "Share disconnected"
 
     Write-Output ""
     Write-Output "================================================"
     Write-Output "Copy Operation Complete"
     Write-Output "================================================"
 
-    # Robocopy exit codes:
-    # 0 = No files copied (all files already exist)
-    # 1 = Files copied successfully
-    # 2 = Extra files detected (some files in dest not in source)
-    # 3 = Files copied + extra files detected
-    # 4 = Mismatched files detected
-    # 5 = Files copied + mismatches detected
-    # 6 = Extra files + mismatches detected
-    # 7 = Files copied + extra files + mismatches detected
-    # 8 = Copy errors occurred
-    # 16 = Serious error (no files copied)
-
     if ($robocopyExitCode -ge 8) {
       Write-Output ""
       Write-Output "ERROR: Robocopy encountered errors"
-      Write-Output "Check log file: $logFile"
+      Write-Output "Log file: $logFile"
 
       if (Test-Path $logFile) {
         Write-Output ""
@@ -153,10 +131,9 @@
       throw "Robocopy failed with exit code: $robocopyExitCode"
     }
 
-    # Success codes 0-7
-    Write-Output "✓ Copy completed successfully"
+    Write-Output "SUCCESS: Copy completed"
 
-    # Show what was copied
+    # Show summary
     Write-Output ""
     Write-Output "Destination directory summary:"
     $items = Get-ChildItem $dest -Recurse -File
@@ -170,76 +147,3 @@
 - name: Display copy results
   debug:
     msg: "{{ copy_result.stdout_lines }}"
-
-- name: List contents of ADFR directory
-  ansible.windows.win_shell: |
-    $dest = "{{ adfr_local_path }}"
-
-    Write-Output "Contents of $dest (top level):"
-    Get-ChildItem $dest | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize | Out-String
-
-    Write-Output ""
-    Write-Output "Searching for installer files..."
-
-    # Look for common installer file types
-    $installerPatterns = @("*.msi", "*.exe", "*.zip")
-
-    foreach ($pattern in $installerPatterns) {
-      $files = Get-ChildItem -Path $dest -Filter $pattern -Recurse -ErrorAction SilentlyContinue
-      if ($files) {
-        Write-Output ""
-        Write-Output "Found $pattern files:"
-        $files | ForEach-Object {
-          Write-Output "  $($_.FullName) ($([math]::Round($_.Length / 1MB, 2)) MB)"
-        }
-      }
-    }
-  register: contents_list
-  changed_when: false
-
-- name: Display directory contents
-  debug:
-    var: contents_list.stdout_lines
-
-- name: Check for ADFR installer (MSI)
-  ansible.windows.win_shell: |
-    $dest = "{{ adfr_local_path }}"
-    $msiFiles = Get-ChildItem -Path $dest -Filter "*.msi" -Recurse
-
-    if ($msiFiles) {
-      $msiFiles | ForEach-Object {
-        Write-Output "FOUND:$($_.FullName)"
-      }
-    } else {
-      Write-Output "NOT_FOUND"
-    }
-  register: msi_check
-  changed_when: false
-
-- name: Set installer path fact
-  set_fact:
-    adfr_installer_path: "{{ msi_check.stdout_lines | select('match', '^FOUND:') | first | default('') | regex_replace('^FOUND:', '') }}"
-  when: "'FOUND:' in msi_check.stdout"
-
-- name: Verify installer was found
-  assert:
-    that:
-      - adfr_installer_path is defined
-      - adfr_installer_path | length > 0
-    fail_msg: |
-      ADFR installer (.msi file) was not found in {{ adfr_local_path }}
-
-      Files may not have copied correctly. Check the copy_result output above.
-
-      You may need to verify:
-      1. The correct path on your Diskstation
-      2. That ADFR installation files are actually present in the share
-      3. File permissions on the Diskstation share
-    success_msg: "ADFR installer found at: {{ adfr_installer_path }}"
-
-- name: Display installer location
-  debug:
-    msg:
-      - "✓ ADFR installation files staged successfully"
-      - "  Installer: {{ adfr_installer_path }}"
-      - "  Ready for installation"
