@@ -1,42 +1,31 @@
 ---
 # Stage ADFR installation files from SMB share to local directory
 
+- name: Check current user
+  ansible.windows.win_shell: |
+    whoami
+  register: current_user
+  changed_when: false
+
+- name: Display current user
+  debug:
+    var: current_user.stdout
+
 - name: Create local Semperis directory
   ansible.windows.win_file:
     path: "{{ adfr_local_path }}"
     state: directory
 
-- name: Map network drive as guest
+- name: Copy using PowerShell Copy-Item
   ansible.windows.win_shell: |
-    net use Z: "\\192.168.33.13\Semperis"
-  register: map_result
-  failed_when: false
-  changed_when: false
-
-- name: Display map result
-  debug:
-    var: map_result
-
-- name: Copy ADFR files using mapped drive
-  ansible.windows.win_shell: |
-    Write-Host "Starting copy from Z:\ADFR\InstallationMedia\5.1\ADFR-5.1..."
-    $result = robocopy "Z:\ADFR\InstallationMedia\5.1\ADFR-5.1" "{{ adfr_local_path }}" /E /MT:8
-    Write-Host "Robocopy exit code: $LASTEXITCODE"
-    if ($LASTEXITCODE -lt 8) {
-      exit 0
-    } else {
-      exit $LASTEXITCODE
-    }
+    Copy-Item -Path "\\192.168.33.13\Semperis\ADFR\InstallationMedia\5.1\ADFR-5.1\*" -Destination "{{ adfr_local_path }}" -Recurse -Force
+    Write-Host "Copy completed"
   register: adfr_copy_result
-  changed_when: adfr_copy_result.rc == 0
-
-- name: Unmap network drive
-  ansible.windows.win_shell: |
-    net use Z: /delete
-  failed_when: false
+  async: 600
+  poll: 10
 
 - name: Display copy result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Copy result"
+      - "{{ inventory_hostname }} - Copy completed"
       - "{{ adfr_copy_result.stdout }}"
