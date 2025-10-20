@@ -20,4 +20,4 @@
   tasks:
     - name: Display completion
       debug:
-        msg: "ADFR staging complete on {{ groups['all'] | length }} hosts"
+        msg: "ADFR staging complete on ADFR hosts"
