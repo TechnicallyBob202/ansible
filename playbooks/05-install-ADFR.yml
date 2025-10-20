@@ -13,15 +13,6 @@
       include_role:
         name: semperis_adfr
 
-    - name: Verify installation
-      ansible.windows.win_stat:
-        path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
-      register: adfr_exe
-
-    - name: Display result
-      debug:
-        msg: "{{ inventory_hostname }} - {{ 'SUCCESS' if adfr_exe.stat.exists else 'FAILED' }}"
-
 - name: Summary
   hosts: localhost
   gather_facts: no
