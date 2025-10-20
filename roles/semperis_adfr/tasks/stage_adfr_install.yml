@@ -11,6 +11,8 @@
     src: "{{ adfr_smb_source }}"
     dest: "{{ adfr_local_path }}/"
     remote_src: yes
+    remote_user: guest
+    remote_password: ""
   register: adfr_copy_result
 
 - name: Display copy result
