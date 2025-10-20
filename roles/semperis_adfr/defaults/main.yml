@@ -9,3 +9,8 @@ adfr_local_path: "C:/Semperis"
 
 # ADFR version
 adfr_version: "5.1"
+
+# Installation timeouts
+adfr_install_timeout: 600
+adfr_service_start_retries: 10
+adfr_service_start_delay: 10

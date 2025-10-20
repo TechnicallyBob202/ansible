@@ -4,3 +4,7 @@
 - name: Stage ADFR installation files
   include_tasks: stage_adfr_install.yml
   when: adfr_operation == 'stage'
+
+- name: Install ADFR (ATLAS only)
+  include_tasks: install_adfr.yml
+  when: adfr_operation == 'install'

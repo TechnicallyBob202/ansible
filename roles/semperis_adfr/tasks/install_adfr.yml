@@ -1,0 +1,44 @@
+# roles/semperis_adfr/tasks/install_adfr.yml
+---
+- name: Check if ADFR is already installed
+  ansible.windows.win_service:
+    name: ADFRService
+  register: adfr_service_check
+  failed_when: false
+  changed_when: false
+
+- name: Display installation status
+  debug:
+    msg: "ADFR Service {{ 'already installed' if adfr_service_check.exists else 'not found - will install' }}"
+
+- name: Execute ADFR silent installation script
+  ansible.windows.win_shell: |
+    Set-Location "{{ adfr_local_path }}"
+
+    # Set execution policy for this session
+    Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
+
+    # Execute the silent installation script
+    .\install-adfr.ps1
+
+    # Return exit code
+    exit $LASTEXITCODE
+  register: install_result
+  when: not adfr_service_check.exists
+  failed_when: install_result.rc != 0
+
+- name: Wait for ADFR service to be ready
+  ansible.windows.win_service:
+    name: ADFRService
+    state: started
+  register: adfr_service
+  retries: 10
+  delay: 10
+  until: adfr_service.state == 'running'
+  when: install_result.changed
+
+- name: Display installation result
+  debug:
+    msg:
+      - "ADFR Installation on {{ inventory_hostname }}: {{ 'Completed Successfully' if install_result.changed else 'Already Installed' }}"
+      - "ADFR Service Status: {{ adfr_service.state if adfr_service is defined else 'Not checked' }}"

@@ -5,145 +5,18 @@
     path: "{{ adfr_local_path }}"
     state: directory
 
-- name: Copy ADFR files from authenticated SMB share
+- name: Copy ADFR files from SMB share
   ansible.windows.win_shell: |
-    $shareRoot = "\\192.168.33.13\Semperis"
-    $username = "{{ adfr_smb_username }}"
-    $password = "{{ adfr_smb_password }}"
-    $dest = "{{ adfr_local_path | replace('/', '\\') }}"
+    robocopy "{{ adfr_smb_source }}" "{{ adfr_local_path }}" /E /NFL /NDL /NJH /NJS /nc /ns /np
 
-    Write-Output "================================================"
-    Write-Output "ADFR File Copy from Authenticated SMB Share"
-    Write-Output "================================================"
-    Write-Output "Share: $shareRoot"
-    Write-Output "Username: $username"
-    Write-Output "Destination: $dest"
-    Write-Output ""
-
-    # Clear any existing connections
-    Write-Output "Clearing any existing connections..."
-    net use $shareRoot /delete /yes 2>$null | Out-Null
-
-    # Map the share
-    Write-Output "Mapping share with credentials..."
-    $netUseOutput = net use $shareRoot /user:$username $password /persistent:no 2>&1
-    $netUseExitCode = $LASTEXITCODE
-
-    if ($netUseExitCode -ne 0) {
-      Write-Output "ERROR: Failed to map share"
-      Write-Output "Exit code: $netUseExitCode"
-      Write-Output "Output: $netUseOutput"
-      throw "Failed to authenticate to network share. Check username/password."
+    # Robocopy exit codes 0-7 are success
+    if ($LASTEXITCODE -ge 8) {
+      exit 1
     }
-
-    Write-Output "SUCCESS: Share mapped"
-    Write-Output ""
-
-    # Verify share accessible
-    Write-Output "Verifying share access..."
-    if (Test-Path $shareRoot) {
-      Write-Output "SUCCESS: Share is accessible"
-    } else {
-      throw "Share mapped but not accessible via Test-Path"
-    }
-    Write-Output ""
-
-    # Find ADFR source
-    Write-Output "Locating ADFR installation files..."
-    $possiblePaths = @(
-      "$shareRoot\ADFR\InstallationMedia\{{ adfr_version }}\ADFR-{{ adfr_version }}",
-      "$shareRoot\ADFR\ADFR-{{ adfr_version }}",
-      "$shareRoot\ADFR\{{ adfr_version }}",
-      "$shareRoot\ADFR"
-    )
-
-    $source = $null
-    foreach ($path in $possiblePaths) {
-      Write-Output "  Checking: $path"
-      if (Test-Path $path) {
-        $source = $path
-        Write-Output "  FOUND!"
-        break
-      } else {
-        Write-Output "  Not found"
-      }
-    }
-
-    if (-not $source) {
-      Write-Output ""
-      Write-Output "ERROR: Could not find ADFR installation files"
-      Write-Output ""
-      Write-Output "Share contents:"
-      Get-ChildItem $shareRoot -ErrorAction SilentlyContinue | Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String
-
-      if (Test-Path "$shareRoot\ADFR") {
-        Write-Output ""
-        Write-Output "ADFR directory contents:"
-        Get-ChildItem "$shareRoot\ADFR" -ErrorAction SilentlyContinue | Select-Object Name, LastWriteTime | Format-Table -AutoSize | Out-String
-      }
-
-      throw "ADFR installation files not found"
-    }
-
-    Write-Output ""
-    Write-Output "Source: $source"
-    Write-Output ""
-
-    # Show source contents
-    Write-Output "Source directory contents:"
-    Get-ChildItem $source | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize | Out-String
-
-    Write-Output ""
-    Write-Output "Starting file copy (this may take a few minutes)..."
-    Write-Output ""
-
-    # Copy files
-    $logFile = "$env:TEMP\adfr-copy-log.txt"
-    robocopy "$source" "$dest" /E /R:3 /W:5 /NFL /NDL /NP /TEE /LOG:$logFile
-
-    $robocopyExitCode = $LASTEXITCODE
-
-    Write-Output ""
-    Write-Output "Robocopy exit code: $robocopyExitCode"
-
-    # Disconnect share
-    Write-Output ""
-    Write-Output "Disconnecting share..."
-    net use $shareRoot /delete /yes 2>$null | Out-Null
-    Write-Output "Share disconnected"
-
-    Write-Output ""
-    Write-Output "================================================"
-    Write-Output "Copy Operation Complete"
-    Write-Output "================================================"
-
-    if ($robocopyExitCode -ge 8) {
-      Write-Output ""
-      Write-Output "ERROR: Robocopy encountered errors"
-      Write-Output "Log file: $logFile"
-
-      if (Test-Path $logFile) {
-        Write-Output ""
-        Write-Output "Last 20 lines of log:"
-        Get-Content $logFile -Tail 20
-      }
-
-      throw "Robocopy failed with exit code: $robocopyExitCode"
-    }
-
-    Write-Output "SUCCESS: Copy completed"
-
-    # Show summary
-    Write-Output ""
-    Write-Output "Destination directory summary:"
-    $items = Get-ChildItem $dest -Recurse -File
-    $totalSize = ($items | Measure-Object Length -Sum).Sum
-    Write-Output "  Total files: $($items.Count)"
-    Write-Output "  Total size: $([math]::Round($totalSize / 1MB, 2)) MB"
-
+    exit 0
   register: copy_result
   failed_when: copy_result.rc != 0
 
-- name: Display copy results
+- name: Display staging results
   debug:
-    msg: "{{ copy_result.stdout_lines }}"
+    msg: "ADFR files staged to {{ adfr_local_path }}"

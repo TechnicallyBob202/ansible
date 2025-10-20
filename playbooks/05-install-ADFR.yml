@@ -1,5 +1,8 @@
 # playbooks/05-install-ADFR.yml
 ---
+# =============================================================================
+# PHASE 1: Stage ADFR Installation Files on All ADFR Hosts
+# =============================================================================
 - name: Stage ADFR Installation Files
   hosts: ATLAS:RIDGE:CREST
   gather_facts: no
@@ -9,15 +12,68 @@
     adfr_operation: stage
 
   tasks:
+    - name: Display staging plan
+      debug:
+        msg: "Staging ADFR {{ adfr_version }} files to {{ inventory_hostname }}"
+
     - name: Stage ADFR files
       include_role:
         name: semperis_adfr
 
-- name: Summary
+    - name: Display staging complete
+      debug:
+        msg: "{{ inventory_hostname }} - ADFR files staged to {{ adfr_local_path }}"
+
+# =============================================================================
+# PHASE 2: Install ADFR on ATLAS Only
+# =============================================================================
+- name: Install ADFR Management Server
+  hosts: ATLAS
+  gather_facts: no
+
+  vars:
+    adfr_operation: install
+
+  tasks:
+    - name: Display installation plan
+      debug:
+        msg:
+          - "Installing ADFR Management Server on {{ inventory_hostname }}"
+          - "Version: {{ adfr_version }}"
+          - "Source: {{ adfr_local_path }}"
+
+    - name: Install ADFR
+      include_role:
+        name: semperis_adfr
+
+    - name: Display installation complete
+      debug:
+        msg: "{{ inventory_hostname }} - ADFR Management Server installed successfully"
+
+# =============================================================================
+# PHASE 3: Summary
+# =============================================================================
+- name: Installation Summary
   hosts: localhost
   gather_facts: no
 
   tasks:
     - name: Display completion
       debug:
-        msg: "ADFR staging complete on ADFR hosts"
+        msg:
+          - "========================================="
+          - "ADFR Stage 5 Complete!"
+          - "========================================="
+          - ""
+          - "Files Staged:"
+          - "  ✓ ATLAS (192.168.35.10)"
+          - "  ✓ RIDGE (192.168.35.13)"
+          - "  ✓ CREST (192.168.35.14)"
+          - ""
+          - "ADFR Installed:"
+          - "  ✓ ATLAS - Management Server"
+          - ""
+          - "Next Steps:"
+          - "  1. Access ADFR Console: https://192.168.35.10"
+          - "  2. Configure Distribution Points (RIDGE, CREST)"
+          - "  3. Deploy ADFR Agents to Domain Controllers"
