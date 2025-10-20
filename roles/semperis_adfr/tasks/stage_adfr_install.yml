@@ -8,14 +8,23 @@
 
 - name: Copy ADFR files using robocopy
   ansible.windows.win_shell: |
-    robocopy "{{ adfr_smb_source }}" "{{ adfr_local_path }}" /E /NFL /NDL /NJH /NJS /nc /ns /np
-    if ($LASTEXITCODE -lt 8) { exit 0 } else { exit $LASTEXITCODE }
+    Write-Host "Starting copy from {{ adfr_smb_source }}..."
+    $result = robocopy "{{ adfr_smb_source }}" "{{ adfr_local_path }}" /E /MT:8
+    Write-Host "Robocopy exit code: $LASTEXITCODE"
+    if ($LASTEXITCODE -lt 8) {
+      Write-Host "Copy completed successfully"
+      exit 0
+    } else {
+      Write-Host "Copy failed with exit code $LASTEXITCODE"
+      exit $LASTEXITCODE
+    }
   register: adfr_copy_result
   changed_when: adfr_copy_result.rc == 0
+  async: 600
+  poll: 10
 
 - name: Display copy result
   debug:
     msg:
       - "{{ inventory_hostname }} - ADFR files copied"
-      - "  Source: {{ adfr_smb_source }}"
-      - "  Destination: {{ adfr_local_path }}"
+      - "  Output: {{ adfr_copy_result.stdout }}"
