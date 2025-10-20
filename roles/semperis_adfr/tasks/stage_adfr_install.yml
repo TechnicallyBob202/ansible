@@ -12,54 +12,55 @@
     path: "{{ adfr_local_path }}"
     state: directory
 
-- name: Get current directory info
+- name: Authenticate to SMB share and copy files
   ansible.windows.win_shell: |
-    Write-Output "Current user: $env:USERNAME"
-    Write-Output "Destination path: {{ adfr_local_path }}"
-    Write-Output "Destination exists: $(Test-Path '{{ adfr_local_path }}')"
-  register: pre_copy_check
+    # Create credential object for SMB access
+    $username = "{{ adfr_smb_username }}"
+    $password = ConvertTo-SecureString "{{ adfr_smb_password }}" -AsPlainText -Force
+    $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
-- name: Display pre-copy check
-  debug:
-    var: pre_copy_check.stdout_lines
+    # Map network drive with credentials
+    $driveLetter = "Z"
+    $shareRoot = "\\192.168.33.13\Semperis"
 
-- name: Copy ADFR files using Robocopy (with full logging)
-  ansible.windows.win_shell: |
-    # Use variables from Ansible
-    $source = "{{ adfr_smb_source | replace('/', '\\') }}"
+    Write-Output "Mapping network drive with credentials..."
+
+    # Remove existing mapping if present
+    if (Get-PSDrive -Name $driveLetter -ErrorAction SilentlyContinue) {
+      Remove-PSDrive -Name $driveLetter -Force
+    }
+
+    # Map drive with credentials
+    try {
+      New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $shareRoot -Credential $credential -Persist -ErrorAction Stop
+      Write-Output "Drive mapped successfully"
+    } catch {
+      throw "Failed to map drive: $_"
+    }
+
+    # Set source and destination using mapped drive
+    $source = "${driveLetter}:\ADFR\InstallationMedia\5.1\ADFR-5.1"
     $dest = "{{ adfr_local_path | replace('/', '\\') }}"
 
-    Write-Output "=== Robocopy Debug Info ==="
     Write-Output "Source: $source"
     Write-Output "Dest: $dest"
     Write-Output "Source exists: $(Test-Path $source)"
-    Write-Output "Dest exists: $(Test-Path $dest)"
-    Write-Output ""
 
-    # Test if we can access source
     if (-not (Test-Path $source)) {
       throw "Cannot access source path: $source"
     }
 
-    # Create dest if needed
-    if (-not (Test-Path $dest)) {
-      New-Item -Path $dest -ItemType Directory -Force | Out-Null
-    }
-
+    # Run robocopy
     Write-Output "Starting robocopy..."
-    Write-Output ""
-
-    # Run robocopy with detailed logging
     $logPath = Join-Path $dest "robocopy.log"
-    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /V /LOG:"$logPath"
+    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /LOG:"$logPath"
 
     $exitCode = $LASTEXITCODE
 
     Write-Output ""
-    Write-Output "=== Robocopy Results ==="
     Write-Output "Exit code: $exitCode"
 
-    # Show what we got
+    # Count results
     if (Test-Path $dest) {
       $fileCount = (Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
       $dirCount = (Get-ChildItem $dest -Recurse -Directory -ErrorAction SilentlyContinue).Count
@@ -71,19 +72,8 @@
       Write-Output "Total size: $totalSize MB"
     }
 
-    Write-Output ""
-    Write-Output "=== Last 30 lines of robocopy log ==="
-    if (Test-Path $logPath) {
-      Get-Content $logPath -Tail 30
-    }
-
-    # Robocopy exit codes
-    # 0 = No files copied (all up to date)
-    # 1 = Files copied successfully
-    # 2 = Extra files/directories detected
-    # 3 = Files copied + extras
-    # 4-7 = Mismatches but mostly OK
-    # 8+ = Errors
+    # Cleanup - unmap drive
+    Remove-PSDrive -Name $driveLetter -Force -ErrorAction SilentlyContinue
 
     if ($exitCode -ge 8) {
       throw "Robocopy failed with exit code: $exitCode"
@@ -91,7 +81,7 @@
   register: robocopy_result
   failed_when: false
 
-- name: Display full robocopy output
+- name: Display robocopy output
   debug:
     var: robocopy_result.stdout_lines
 
@@ -100,38 +90,16 @@
     msg: |
       Robocopy failed on {{ inventory_hostname }}
       Exit code: {{ robocopy_result.rc }}
-      See output above for details
   when:
     - robocopy_result.rc is defined
     - robocopy_result.rc >= 8
-
-- name: List what actually ended up in destination
-  ansible.windows.win_shell: |
-    if (Test-Path "{{ adfr_local_path }}") {
-      Get-ChildItem "{{ adfr_local_path }}" |
-      Select-Object Name, Length, Mode | Format-Table -AutoSize | Out-String
-    } else {
-      Write-Output "Destination directory does not exist!"
-    }
-  register: final_listing
-
-- name: Display final directory listing
-  debug:
-    var: final_listing.stdout_lines
 
 - name: Verify ADFR executable exists
   ansible.windows.win_stat:
     path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
   register: adfr_exe
 
-- name: Display executable check result
-  debug:
-    msg: "ADFR executable exists: {{ adfr_exe.stat.exists }}"
-
 - name: Fail if executable not found
   fail:
-    msg: |
-      ADFR executable not found at {{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe
-      This likely means the copy failed silently.
-      Check the robocopy output above for errors.
+    msg: "ADFR executable not found at {{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
   when: not adfr_exe.stat.exists

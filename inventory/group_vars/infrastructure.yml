@@ -10,3 +10,7 @@ windows_dns_suffix: lab
 adfr_version: "5.1"
 adfr_smb_source: "\\\\192.168.33.13\\Semperis\\ADFR\\InstallationMedia\\5.1\\ADFR-5.1"
 adfr_local_path: "C:/Semperis"
+
+# SMB share credentials
+adfr_smb_username: "administrator"  # or whatever user has access to the share
+adfr_smb_password: "{{ lookup('env', 'SMB_PASSWORD') }}"
