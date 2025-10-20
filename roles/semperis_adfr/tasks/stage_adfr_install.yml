@@ -12,83 +12,126 @@
     path: "{{ adfr_local_path }}"
     state: directory
 
-- name: Copy ADFR files using Robocopy
+- name: Get current directory info
   ansible.windows.win_shell: |
-    $source = "{{ adfr_smb_source | regex_replace('\\\\\\\\', '\\') }}"
-    $dest = "{{ adfr_local_path }}"
+    Write-Output "Current user: $env:USERNAME"
+    Write-Output "Destination path: {{ adfr_local_path }}"
+    Write-Output "Destination exists: $(Test-Path '{{ adfr_local_path }}')"
+  register: pre_copy_check
 
-    Write-Output "Starting copy from $source to $dest"
+- name: Display pre-copy check
+  debug:
+    var: pre_copy_check.stdout_lines
 
-    # Robocopy with multi-threaded copy
-    # Exit codes: 0-7 are success, 8+ are failures
-    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /NFL /NDL /NP
+- name: Copy ADFR files using Robocopy (with full logging)
+  ansible.windows.win_shell: |
+    # Use variables from Ansible
+    $source = "{{ adfr_smb_source | replace('/', '\\') }}"
+    $dest = "{{ adfr_local_path | replace('/', '\\') }}"
+
+    Write-Output "=== Robocopy Debug Info ==="
+    Write-Output "Source: $source"
+    Write-Output "Dest: $dest"
+    Write-Output "Source exists: $(Test-Path $source)"
+    Write-Output "Dest exists: $(Test-Path $dest)"
+    Write-Output ""
+
+    # Test if we can access source
+    if (-not (Test-Path $source)) {
+      throw "Cannot access source path: $source"
+    }
+
+    # Create dest if needed
+    if (-not (Test-Path $dest)) {
+      New-Item -Path $dest -ItemType Directory -Force | Out-Null
+    }
+
+    Write-Output "Starting robocopy..."
+    Write-Output ""
+
+    # Run robocopy with detailed logging
+    $logPath = Join-Path $dest "robocopy.log"
+    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /V /LOG:"$logPath"
 
     $exitCode = $LASTEXITCODE
 
-    # Count what we got
-    $fileCount = (Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
-    $dirCount = (Get-ChildItem $dest -Recurse -Directory -ErrorAction SilentlyContinue).Count
-    $totalSize = [math]::Round(((Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue |
-                  Measure-Object -Property Length -Sum).Sum / 1MB), 2)
+    Write-Output ""
+    Write-Output "=== Robocopy Results ==="
+    Write-Output "Exit code: $exitCode"
 
-    Write-Output "Robocopy exit code: $exitCode"
-    Write-Output "Files copied: $fileCount"
-    Write-Output "Directories: $dirCount"
-    Write-Output "Total size: $totalSize MB"
+    # Show what we got
+    if (Test-Path $dest) {
+      $fileCount = (Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
+      $dirCount = (Get-ChildItem $dest -Recurse -Directory -ErrorAction SilentlyContinue).Count
+      $totalSize = [math]::Round(((Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue |
+                    Measure-Object -Property Length -Sum).Sum / 1MB), 2)
+
+      Write-Output "Files copied: $fileCount"
+      Write-Output "Directories: $dirCount"
+      Write-Output "Total size: $totalSize MB"
+    }
+
+    Write-Output ""
+    Write-Output "=== Last 30 lines of robocopy log ==="
+    if (Test-Path $logPath) {
+      Get-Content $logPath -Tail 30
+    }
+
+    # Robocopy exit codes
+    # 0 = No files copied (all up to date)
+    # 1 = Files copied successfully
+    # 2 = Extra files/directories detected
+    # 3 = Files copied + extras
+    # 4-7 = Mismatches but mostly OK
+    # 8+ = Errors
 
     if ($exitCode -ge 8) {
       throw "Robocopy failed with exit code: $exitCode"
     }
-
-    # Verify key files exist
-    $requiredFiles = @(
-      "ADFR-{{ adfr_version }}.exe",
-      "ADFR-OSP-2.1.1.zip",
-      "Semperis.PowerShell.Installer.msi"
-    )
-
-    $missing = @()
-    foreach ($file in $requiredFiles) {
-      $path = Join-Path $dest $file
-      if (-not (Test-Path $path)) {
-        $missing += $file
-      }
-    }
-
-    if ($missing.Count -gt 0) {
-      throw "Missing required files: $($missing -join ', ')"
-    }
-
-    Write-Output "All required files verified"
   register: robocopy_result
   failed_when: false
 
-- name: Parse robocopy results
-  set_fact:
-    copy_stats: "{{ robocopy_result.stdout_lines | select('match', '^(Files copied|Directories|Total size|Robocopy exit code)') | list }}"
+- name: Display full robocopy output
+  debug:
+    var: robocopy_result.stdout_lines
 
 - name: Check if robocopy failed
   fail:
     msg: |
       Robocopy failed on {{ inventory_hostname }}
-      Exit code indicates failure (>= 8)
-      Output: {{ robocopy_result.stdout }}
+      Exit code: {{ robocopy_result.rc }}
+      See output above for details
   when:
     - robocopy_result.rc is defined
     - robocopy_result.rc >= 8
 
-- name: Display copy statistics
+- name: List what actually ended up in destination
+  ansible.windows.win_shell: |
+    if (Test-Path "{{ adfr_local_path }}") {
+      Get-ChildItem "{{ adfr_local_path }}" |
+      Select-Object Name, Length, Mode | Format-Table -AutoSize | Out-String
+    } else {
+      Write-Output "Destination directory does not exist!"
+    }
+  register: final_listing
+
+- name: Display final directory listing
   debug:
-    msg:
-      - "{{ inventory_hostname }} - ADFR staging complete"
-      - "{{ copy_stats | join('\n  ') }}"
+    var: final_listing.stdout_lines
 
 - name: Verify ADFR executable exists
   ansible.windows.win_stat:
     path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
   register: adfr_exe
 
+- name: Display executable check result
+  debug:
+    msg: "ADFR executable exists: {{ adfr_exe.stat.exists }}"
+
 - name: Fail if executable not found
   fail:
-    msg: "ADFR executable not found at {{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
+    msg: |
+      ADFR executable not found at {{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe
+      This likely means the copy failed silently.
+      Check the robocopy output above for errors.
   when: not adfr_exe.stat.exists

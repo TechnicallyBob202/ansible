@@ -1,0 +1,79 @@
+# playbooks/debug-robocopy.yml
+---
+- name: Debug Robocopy Issue
+  hosts: ATLAS
+  gather_facts: no
+
+  tasks:
+    - name: Display variables being used
+      debug:
+        msg:
+          - "adfr_smb_source: {{ adfr_smb_source }}"
+          - "adfr_local_path: {{ adfr_local_path }}"
+          - "adfr_version: {{ adfr_version }}"
+
+    - name: Test 1 - Can we see the share root?
+      ansible.windows.win_shell: |
+        $sharePath = "{{ adfr_smb_source.split('\')[0:4] | join('\') }}"
+        Write-Output "Testing share root: $sharePath"
+        Test-Path $sharePath
+      register: share_test
+
+    - name: Display share test
+      debug:
+        var: share_test.stdout_lines
+
+    - name: Test 2 - Can we list source files?
+      ansible.windows.win_shell: |
+        $source = "{{ adfr_smb_source | replace('/', '\\') }}"
+        Write-Output "Testing source: $source"
+        Get-ChildItem $source |
+        Select-Object Name, Length | Format-Table -AutoSize | Out-String
+      register: list_test
+      failed_when: false
+
+    - name: Display file list
+      debug:
+        var: list_test
+
+    - name: Test 3 - Manual robocopy with verbose output
+      ansible.windows.win_shell: |
+        $source = "{{ adfr_smb_source | replace('/', '\\') }}"
+        $dest = "{{ adfr_local_path | replace('/', '\\') }}"
+
+        Write-Output "Source: $source"
+        Write-Output "Dest: $dest"
+        Write-Output ""
+
+        # Run robocopy with full logging
+        $logPath = Join-Path $dest "robocopy-debug.log"
+        robocopy "$source" "$dest" /E /V /LOG:"$logPath"
+
+        $exitCode = $LASTEXITCODE
+        Write-Output ""
+        Write-Output "Exit code: $exitCode"
+        Write-Output ""
+        Write-Output "Log contents:"
+        if (Test-Path $logPath) {
+          Get-Content $logPath
+        }
+      register: manual_robocopy
+      failed_when: false
+
+    - name: Display manual robocopy results
+      debug:
+        var: manual_robocopy.stdout_lines
+
+    - name: Test 4 - Check what's in destination
+      ansible.windows.win_shell: |
+        if (Test-Path "{{ adfr_local_path }}") {
+          Get-ChildItem "{{ adfr_local_path }}" -Recurse |
+          Select-Object FullName, Length | Format-Table -AutoSize | Out-String
+        } else {
+          Write-Output "{{ adfr_local_path }} does not exist"
+        }
+      register: dest_check
+
+    - name: Display destination contents
+      debug:
+        var: dest_check.stdout_lines
