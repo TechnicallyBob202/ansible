@@ -41,8 +41,8 @@
     }
   register: copy_result
 
-- name: Verify ADFR executable
+- name: Verify ADFR zip
   ansible.windows.win_stat:
-    path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
-  register: adfr_exe
-  failed_when: not adfr_exe.stat.exists
+    path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.zip"
+  register: adfr_zip
+  failed_when: not adfr_zip.stat.exists
