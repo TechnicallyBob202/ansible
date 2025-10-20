@@ -1,0 +1,38 @@
+---
+- name: Stage ADFR Installation Files
+  hosts: ATLAS:RIDGE:CREST
+  gather_facts: no
+
+  vars:
+    adfr_operation: stage
+
+  tasks:
+    - name: Display staging plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Stage ADFR 5.1 Installation Files"
+          - "========================================="
+          - ""
+          - "Source: \\\\192.168.33.13\\Semperis\\ADFR\\InstallationMedia\\5.1\\ADFR-5.1"
+          - "Destination: C:/Semperis"
+          - "Targets: {{ ansible_play_hosts | join(', ') }}"
+      run_once: yes
+
+    - name: Stage ADFR files
+      include_role:
+        name: semperis_adfr
+
+    - name: Verify staged files
+      ansible.windows.win_stat:
+        path: C:/Semperis
+      register: semperis_dir
+
+    - name: Display verification
+      debug:
+        msg: "{{ inventory_hostname }} - Staged successfully: {{ semperis_dir.stat.exists }}"
+
+    - name: Summary
+      debug:
+        msg: "ADFR files staged on {{ ansible_play_hosts | length }} hosts"
+      run_once: yes

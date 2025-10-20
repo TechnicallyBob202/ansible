@@ -1,0 +1,11 @@
+---
+# Semperis ADFR Role Defaults
+
+# SMB source path for ADFR installation files
+adfr_smb_source: "\\\\192.168.33.13\\Semperis\\ADFR\\InstallationMedia\\5.1\\ADFR-5.1"
+
+# Local destination path on Windows host
+adfr_local_path: "C:/Semperis"
+
+# ADFR version
+adfr_version: "5.1"

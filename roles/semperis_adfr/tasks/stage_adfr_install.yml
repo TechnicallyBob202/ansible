@@ -1,0 +1,22 @@
+---
+# Stage ADFR installation files from SMB share to local directory
+
+- name: Create local Semperis directory
+  ansible.windows.win_file:
+    path: "{{ adfr_local_path }}"
+    state: directory
+
+- name: Copy ADFR files from SMB share
+  ansible.windows.win_copy:
+    src: "{{ adfr_smb_source }}"
+    dest: "{{ adfr_local_path }}/"
+    remote_src: yes
+  register: adfr_copy_result
+
+- name: Display copy result
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - ADFR files staged"
+      - "  Source: {{ adfr_smb_source }}"
+      - "  Destination: {{ adfr_local_path }}"
+      - "  Changed: {{ adfr_copy_result.changed }}"
