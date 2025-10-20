@@ -1,0 +1,6 @@
+---
+# Main task file for semperis_adfr role
+
+- name: Stage ADFR installation files
+  include_tasks: stage_adfr_install.yml
+  when: adfr_operation == 'stage'
