@@ -25,35 +25,9 @@
         msg: "{{ inventory_hostname }} - ADFR files staged to {{ adfr_local_path }}"
 
 # =============================================================================
-# PHASE 2: Install ADFR on ATLAS Only
+# PHASE 2: Summary
 # =============================================================================
-- name: Install ADFR Management Server
-  hosts: ATLAS
-  gather_facts: no
-
-  vars:
-    adfr_operation: install
-
-  tasks:
-    - name: Display installation plan
-      debug:
-        msg:
-          - "Installing ADFR Management Server on {{ inventory_hostname }}"
-          - "Version: {{ adfr_version }}"
-          - "Source: {{ adfr_local_path }}"
-
-    - name: Install ADFR
-      include_role:
-        name: semperis_adfr
-
-    - name: Display installation complete
-      debug:
-        msg: "{{ inventory_hostname }} - ADFR Management Server installed successfully"
-
-# =============================================================================
-# PHASE 3: Summary
-# =============================================================================
-- name: Installation Summary
+- name: Staging Summary
   hosts: localhost
   gather_facts: no
 
@@ -62,7 +36,7 @@
       debug:
         msg:
           - "========================================="
-          - "ADFR Stage 5 Complete!"
+          - "ADFR Files Staged"
           - "========================================="
           - ""
           - "Files Staged:"
@@ -70,10 +44,8 @@
           - "  ✓ RIDGE (192.168.35.13)"
           - "  ✓ CREST (192.168.35.14)"
           - ""
-          - "ADFR Installed:"
-          - "  ✓ ATLAS - Management Server"
-          - ""
           - "Next Steps:"
-          - "  1. Access ADFR Console: https://192.168.35.10"
-          - "  2. Configure Distribution Points (RIDGE, CREST)"
-          - "  3. Deploy ADFR Agents to Domain Controllers"
+          - "  1. RDP to ATLAS: mstsc /v:192.168.35.10"
+          - "  2. Run: C:\\Semperis\\install-adfr.ps1"
+          - "  3. Wait for installation to complete"
+          - "  4. Access ADFR Console: https://192.168.35.10"
