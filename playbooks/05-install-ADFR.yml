@@ -24,36 +24,4 @@
       include_role:
         name: semperis_adfr
 
-    - name: Final verification with detailed listing
-      ansible.windows.win_shell: |
-        if (Test-Path "{{ adfr_local_path }}") {
-          $files = Get-ChildItem "{{ adfr_local_path }}" -Recurse
-          $fileCount = ($files | Where-Object {-not $_.PSIsContainer}).Count
-          $totalSize = [math]::Round((($files | Where-Object {-not $_.PSIsContainer} |
-                       Measure-Object -Property Length -Sum).Sum / 1MB), 2)
-
-          Write-Output "Directory exists: True"
-          Write-Output "File count: $fileCount"
-          Write-Output "Total size: $totalSize MB"
-          Write-Output ""
-          Write-Output "Top-level contents:"
-          Get-ChildItem "{{ adfr_local_path }}" | Select-Object Name, Length, Mode | Format-Table -AutoSize | Out-String
-        } else {
-          Write-Output "Directory does not exist!"
-        }
-      register: final_check
-
-    - name: Display final verification
-      debug:
-        var: final_check.stdout_lines
-
-- name: Summary
-  hosts: localhost
-  gather_facts: no
-
-  tasks:
-    - name: Display completion
-      debug:
-        msg:
-          - "ADFR staging complete on all hosts"
-          - "Files staged to {{ hostvars['ATLAS'].adfr_local_path }}"
+    # ... rest

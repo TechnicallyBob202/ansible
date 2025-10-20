@@ -5,3 +5,8 @@ windows_dns_servers:
   - 192.168.35.30       # GRANITE-DC (alpine.lab PDC)
 
 windows_dns_suffix: lab
+
+# ADFR installation settings
+adfr_version: "5.1"
+adfr_smb_source: "\\\\192.168.33.13\\Semperis\\ADFR\\InstallationMedia\\5.1\\ADFR-5.1"
+adfr_local_path: "C:/Semperis"

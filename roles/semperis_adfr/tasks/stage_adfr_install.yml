@@ -1,5 +1,12 @@
 # roles/semperis_adfr/tasks/stage_adfr_install.yml
 ---
+- name: Display staging plan for {{ inventory_hostname }}
+  debug:
+    msg:
+      - "Staging ADFR {{ adfr_version }} on {{ inventory_hostname }}"
+      - "  Source: {{ adfr_smb_source }}"
+      - "  Destination: {{ adfr_local_path }}"
+
 - name: Create local Semperis directory structure
   ansible.windows.win_file:
     path: "{{ adfr_local_path }}"
@@ -13,6 +20,7 @@
     Write-Output "Starting copy from $source to $dest"
 
     # Robocopy with multi-threaded copy
+    # Exit codes: 0-7 are success, 8+ are failures
     robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /NFL /NDL /NP
 
     $exitCode = $LASTEXITCODE
@@ -34,7 +42,7 @@
 
     # Verify key files exist
     $requiredFiles = @(
-      "ADFR-5.1.exe",
+      "ADFR-{{ adfr_version }}.exe",
       "ADFR-OSP-2.1.1.zip",
       "Semperis.PowerShell.Installer.msi"
     )
@@ -73,8 +81,6 @@
   debug:
     msg:
       - "{{ inventory_hostname }} - ADFR staging complete"
-      - "Source: {{ adfr_smb_source }}"
-      - "Destination: {{ adfr_local_path }}"
       - "{{ copy_stats | join('\n  ') }}"
 
 - name: Verify ADFR executable exists
