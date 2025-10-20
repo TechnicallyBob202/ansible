@@ -1,105 +1,44 @@
 # roles/semperis_adfr/tasks/stage_adfr_install.yml
 ---
-- name: Display staging plan for {{ inventory_hostname }}
-  debug:
-    msg:
-      - "Staging ADFR {{ adfr_version }} on {{ inventory_hostname }}"
-      - "  Source: {{ adfr_smb_source }}"
-      - "  Destination: {{ adfr_local_path }}"
-
-- name: Create local Semperis directory structure
+- name: Create local Semperis directory
   ansible.windows.win_file:
     path: "{{ adfr_local_path }}"
     state: directory
 
-- name: Authenticate to SMB share and copy files
+- name: Copy ADFR files from SMB share
   ansible.windows.win_shell: |
-    # Create credential object for SMB access
+    # Authenticate to SMB share
     $username = "{{ adfr_smb_username }}"
     $password = ConvertTo-SecureString "{{ adfr_smb_password }}" -AsPlainText -Force
     $credential = New-Object System.Management.Automation.PSCredential($username, $password)
 
-    # Map network drive with credentials
+    # Map drive
     $driveLetter = "Z"
     $shareRoot = "\\192.168.33.13\Semperis"
 
-    Write-Output "Mapping network drive with credentials..."
-
-    # Remove existing mapping if present
     if (Get-PSDrive -Name $driveLetter -ErrorAction SilentlyContinue) {
       Remove-PSDrive -Name $driveLetter -Force
     }
 
-    # Map drive with credentials
-    try {
-      New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $shareRoot -Credential $credential -Persist -ErrorAction Stop
-      Write-Output "Drive mapped successfully"
-    } catch {
-      throw "Failed to map drive: $_"
-    }
+    New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $shareRoot -Credential $credential -Persist -ErrorAction Stop | Out-Null
 
-    # Set source and destination using mapped drive
+    # Copy files
     $source = "${driveLetter}:\ADFR\InstallationMedia\5.1\ADFR-5.1"
     $dest = "{{ adfr_local_path | replace('/', '\\') }}"
 
-    Write-Output "Source: $source"
-    Write-Output "Dest: $dest"
-    Write-Output "Source exists: $(Test-Path $source)"
+    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /NFL /NDL /NP /LOG:"$dest\robocopy.log" | Out-Null
 
-    if (-not (Test-Path $source)) {
-      throw "Cannot access source path: $source"
-    }
-
-    # Run robocopy
-    Write-Output "Starting robocopy..."
-    $logPath = Join-Path $dest "robocopy.log"
-    robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /LOG:"$logPath"
-
-    $exitCode = $LASTEXITCODE
-
-    Write-Output ""
-    Write-Output "Exit code: $exitCode"
-
-    # Count results
-    if (Test-Path $dest) {
-      $fileCount = (Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue).Count
-      $dirCount = (Get-ChildItem $dest -Recurse -Directory -ErrorAction SilentlyContinue).Count
-      $totalSize = [math]::Round(((Get-ChildItem $dest -Recurse -File -ErrorAction SilentlyContinue |
-                    Measure-Object -Property Length -Sum).Sum / 1MB), 2)
-
-      Write-Output "Files copied: $fileCount"
-      Write-Output "Directories: $dirCount"
-      Write-Output "Total size: $totalSize MB"
-    }
-
-    # Cleanup - unmap drive
+    # Cleanup
     Remove-PSDrive -Name $driveLetter -Force -ErrorAction SilentlyContinue
 
-    if ($exitCode -ge 8) {
-      throw "Robocopy failed with exit code: $exitCode"
+    # Check exit code
+    if ($LASTEXITCODE -ge 8) {
+      throw "Robocopy failed with exit code: $LASTEXITCODE"
     }
-  register: robocopy_result
-  failed_when: false
+  register: copy_result
 
-- name: Display robocopy output
-  debug:
-    var: robocopy_result.stdout_lines
-
-- name: Check if robocopy failed
-  fail:
-    msg: |
-      Robocopy failed on {{ inventory_hostname }}
-      Exit code: {{ robocopy_result.rc }}
-  when:
-    - robocopy_result.rc is defined
-    - robocopy_result.rc >= 8
-
-- name: Verify ADFR executable exists
+- name: Verify ADFR executable
   ansible.windows.win_stat:
     path: "{{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
   register: adfr_exe
-
-- name: Fail if executable not found
-  fail:
-    msg: "ADFR executable not found at {{ adfr_local_path }}/ADFR-{{ adfr_version }}.exe"
-  when: not adfr_exe.stat.exists
+  failed_when: not adfr_exe.stat.exists
