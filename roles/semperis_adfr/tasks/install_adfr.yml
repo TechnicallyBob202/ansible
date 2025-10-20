@@ -27,18 +27,6 @@
   when: not adfr_service_check.exists
   failed_when: install_result.rc != 0
 
-- name: Wait for ADFR service to be ready
-  ansible.windows.win_service:
-    name: ADFRService
-    state: started
-  register: adfr_service
-  retries: 10
-  delay: 10
-  until: adfr_service.state == 'running'
-  when: install_result.changed
-
 - name: Display installation result
   debug:
-    msg:
-      - "ADFR Installation on {{ inventory_hostname }}: {{ 'Completed Successfully' if install_result.changed else 'Already Installed' }}"
-      - "ADFR Service Status: {{ adfr_service.state if adfr_service is defined else 'Not checked' }}"
+    msg: "ADFR Installation on {{ inventory_hostname }}: {{ 'Completed Successfully' if install_result.changed else 'Already Installed' }}"
