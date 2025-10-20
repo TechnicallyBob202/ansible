@@ -1,5 +1,9 @@
 # roles/semperis_adfr/tasks/stage_adfr_install.yml
 ---
+- name: Remove all files and subfolders in the Semperis directory
+  ansible.windows.win_shell: |
+    Get-ChildItem -Path "{{ adfr_local_path }}" -Recurse -Force | Remove-Item -Recurse -Force
+
 - name: Create local Semperis directory
   ansible.windows.win_file:
     path: "{{ adfr_local_path }}"
@@ -23,7 +27,7 @@
     New-PSDrive -Name $driveLetter -PSProvider FileSystem -Root $shareRoot -Credential $credential -Persist -ErrorAction Stop | Out-Null
 
     # Copy files
-    $source = "${driveLetter}:\ADFR\InstallationMedia\5.1\ADFR-5.1"
+    $source = "${driveLetter}:\ADFR"
     $dest = "{{ adfr_local_path | replace('/', '\\') }}"
 
     robocopy "$source" "$dest" /E /Z /R:3 /W:5 /MT:8 /NFL /NDL /NP /LOG:"$dest\robocopy.log" | Out-Null
