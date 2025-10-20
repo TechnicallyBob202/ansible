@@ -19,13 +19,26 @@
     Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process -Force
 
     # Execute the silent installation script
-    .\install-adfr.ps1
+    & "{{ adfr_local_path }}\install-adfr.ps1"
 
-    # Return exit code
-    exit $LASTEXITCODE
+    # Wait to ensure service exists
+    $timeout = 1200
+    $elapsed = 0
+    while ($elapsed -lt $timeout) {
+      if (Get-Service -Name ADFRService -ErrorAction SilentlyContinue) {
+        Write-Output "ADFR service found"
+        exit 0
+      }
+      Start-Sleep -Seconds 10
+      $elapsed += 10
+    }
+
+    Write-Error "ADFR service not found after $timeout seconds"
+    exit 1
   register: install_result
   when: not adfr_service_check.exists
-  failed_when: install_result.rc != 0
+  async: 600
+  poll: 30
 
 - name: Display installation result
   debug:
