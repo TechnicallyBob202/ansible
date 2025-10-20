@@ -5,41 +5,28 @@
   ansible.windows.win_file:
     path: "{{ adfr_local_path }}"
     state: directory
+  register: folder_create
 
-- name: Copy ADFR files from SMB share
-  ansible.windows.win_copy:
-    src: "{{ adfr_smb_source }}"
-    dest: "{{ adfr_local_path }}/"
-    remote_src: yes
-  register: adfr_copy_result
-  failed_when: adfr_copy_result.failed or adfr_copy_result.rc is defined
-
-- name: Verify files were actually copied
-  ansible.windows.win_stat:
-    path: "{{ adfr_local_path }}"
-  register: verify_dir
-
-- name: Fail if directory doesn't exist
-  fail:
-    msg: "Copy appeared to succeed but {{ adfr_local_path }} doesn't exist!"
-  when: not verify_dir.stat.exists
-
-- name: Get file count in destination
-  ansible.windows.win_shell: |
-    (Get-ChildItem -Path "{{ adfr_local_path }}" -Recurse -File).Count
-  register: file_count
-  changed_when: false
-
-- name: Fail if no files were copied
-  fail:
-    msg: "Directory exists but contains no files!"
-  when: file_count.stdout | trim | int == 0
-
-- name: Display copy result
+- name: Display folder creation result
   debug:
     msg:
-      - "{{ inventory_hostname }} - ADFR files staged successfully"
-      - "  Source: {{ adfr_smb_source }}"
-      - "  Destination: {{ adfr_local_path }}"
-      - "  Files copied: {{ file_count.stdout | trim }}"
-      - "  Changed: {{ adfr_copy_result.changed }}"
+      - "{{ inventory_hostname }} - Folder creation"
+      - "  Path: {{ adfr_local_path }}"
+      - "  Changed: {{ folder_create.changed }}"
+
+- name: Verify folder exists
+  ansible.windows.win_stat:
+    path: "{{ adfr_local_path }}"
+  register: folder_stat
+
+- name: Display folder verification
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - Folder verification"
+      - "  Exists: {{ folder_stat.stat.exists }}"
+      - "  Path: {{ folder_stat.stat.path | default('N/A') }}"
+
+- name: Fail if folder doesn't exist
+  fail:
+    msg: "Failed to create {{ adfr_local_path }}"
+  when: not folder_stat.stat.exists
