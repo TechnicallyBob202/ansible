@@ -13,10 +13,10 @@
     top_level_ou_name: "{{ netbios_name }}"
     standard_users_ou: "OU=Standard Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
-- name: Define themed first/last names based on domain
+- name: Define themed first/last names based on domain (uses your firstnames/lastnames as default)
   set_fact:
-    themed_first_names: "{{ lookup('vars', netbios_name.lower() + '_first_names', default=default_first_names) }}"
-    themed_last_names:  "{{ lookup('vars', netbios_name.lower() + '_last_names',  default=default_last_names) }}"
+    themed_first_names: "{{ lookup('vars', netbios_name.lower() + '_first_names', default=firstnames) }}"
+    themed_last_names:  "{{ lookup('vars', netbios_name.lower() + '_last_names',  default=lastnames) }}"
 
 - name: Prepare JSON literals to avoid inline Jinja in script
   set_fact:
