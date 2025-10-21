@@ -1,0 +1,166 @@
+---
+# Delete existing OU structure and recreate with nested sub-OUs
+
+- name: Get domain distinguished name
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou: "{{ netbios_name }}"
+
+# =============================================================================
+# DELETE existing OU structure
+# =============================================================================
+
+- name: Check if top-level OU exists
+  ansible.windows.win_shell: |
+    try {
+      Get-ADOrganizationalUnit -Identity "OU={{ top_level_ou }},{{ domain_dn }}" -ErrorAction Stop
+      Write-Output "EXISTS"
+    } catch {
+      Write-Output "NOT_EXISTS"
+    }
+  register: top_ou_check
+  changed_when: false
+
+- name: Delete existing OU structure and all contents
+  ansible.windows.win_shell: |
+    # Remove protection from top-level OU
+    Set-ADOrganizationalUnit -Identity "OU={{ top_level_ou }},{{ domain_dn }}" `
+      -ProtectedFromAccidentalDeletion $false
+
+    # Remove protection from all child OUs recursively
+    Get-ADOrganizationalUnit -Filter * -SearchBase "OU={{ top_level_ou }},{{ domain_dn }}" |
+      Set-ADOrganizationalUnit -ProtectedFromAccidentalDeletion $false
+
+    # Delete the entire OU structure recursively
+    Remove-ADOrganizationalUnit -Identity "OU={{ top_level_ou }},{{ domain_dn }}" `
+      -Recursive -Confirm:$false
+
+    Write-Output "DELETED: OU={{ top_level_ou }} and all contents"
+  when: "'EXISTS' in top_ou_check.stdout"
+  register: ou_deleted
+
+- name: Display deletion result
+  debug:
+    msg: "{{ inventory_hostname }}: {{ ou_deleted.stdout | default('OU did not exist - will create fresh') }}"
+
+# =============================================================================
+# CREATE new OU structure with nested sub-OUs
+# =============================================================================
+
+- name: Define new OU structure
+  set_fact:
+    ou_structure:
+      # Top-level OU
+      - name: "{{ top_level_ou }}"
+        path: "{{ domain_dn }}"
+        description: "{{ domain_name }} organizational structure"
+
+      # Users and sub-OUs
+      - name: "Users"
+        path: "OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "User accounts"
+      - name: "Standard Users"
+        path: "OU=Users,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Regular user accounts"
+      - name: "Privileged Users"
+        path: "OU=Users,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Administrative and privileged user accounts"
+      - name: "Disabled Users"
+        path: "OU=Users,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Disabled user accounts"
+
+      # Groups and sub-OUs
+      - name: "Groups"
+        path: "OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Security and distribution groups"
+      - name: "Security Groups"
+        path: "OU=Groups,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Security groups"
+      - name: "Distribution Groups"
+        path: "OU=Groups,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Distribution groups"
+
+      # Computers and sub-OUs
+      - name: "Computers"
+        path: "OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Computer accounts"
+      - name: "Workstations"
+        path: "OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Desktop and laptop computers"
+      - name: "Servers"
+        path: "OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Server computers"
+      - name: "Disabled Computers"
+        path: "OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Disabled computer accounts"
+
+      # Service Accounts (flat)
+      - name: "Service Accounts"
+        path: "OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Service account users"
+
+      # Administrators (flat)
+      - name: "Administrators"
+        path: "OU={{ top_level_ou }},{{ domain_dn }}"
+        description: "Administrative user accounts"
+
+- name: Create OUs in order
+  ansible.windows.win_shell: |
+    New-ADOrganizationalUnit -Name "{{ item.name }}" `
+      -Path "{{ item.path }}" `
+      -Description "{{ item.description }}" `
+      -ProtectedFromAccidentalDeletion $true
+
+    Write-Output "CREATED: OU={{ item.name }},{{ item.path }}"
+  loop: "{{ ou_structure }}"
+  register: ou_creation
+
+- name: Display OU creation summary
+  debug:
+    msg:
+      - "✓ Created clean OU structure for {{ domain_name }}:"
+      - "  OU={{ top_level_ou }},{{ domain_dn }}"
+      - "    ├── OU=Users"
+      - "    │   ├── OU=Standard Users"
+      - "    │   ├── OU=Privileged Users"
+      - "    │   └── OU=Disabled Users"
+      - "    ├── OU=Groups"
+      - "    │   ├── OU=Security Groups"
+      - "    │   └── OU=Distribution Groups"
+      - "    ├── OU=Computers"
+      - "    │   ├── OU=Workstations"
+      - "    │   ├── OU=Servers"
+      - "    │   └── OU=Disabled Computers"
+      - "    ├── OU=Service Accounts"
+      - "    └── OU=Administrators"
+
+- name: Save OU structure to file
+  copy:
+    content: |
+      Domain: {{ domain_name }}
+      NetBIOS: {{ netbios_name }}
+      Distinguished Name: {{ domain_dn }}
+
+      OU Structure (REBUILT):
+        OU={{ top_level_ou }},{{ domain_dn }}
+          OU=Users,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Standard Users,OU=Users,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Privileged Users,OU=Users,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Disabled Users,OU=Users,OU={{ top_level_ou }},{{ domain_dn }}
+          OU=Groups,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Security Groups,OU=Groups,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Distribution Groups,OU=Groups,OU={{ top_level_ou }},{{ domain_dn }}
+          OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Workstations,OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Servers,OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}
+            OU=Disabled Computers,OU=Computers,OU={{ top_level_ou }},{{ domain_dn }}
+          OU=Service Accounts,OU={{ top_level_ou }},{{ domain_dn }}
+          OU=Administrators,OU={{ top_level_ou }},{{ domain_dn }}
+    dest: "/tmp/ou-structure-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
