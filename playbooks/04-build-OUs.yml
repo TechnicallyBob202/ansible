@@ -55,7 +55,7 @@
 - name: Delete Existing OU Structure
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Delete existing domain OU structure
       include_role:
@@ -73,7 +73,7 @@
 - name: Create OU Structure
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create OU hierarchy
       include_role:
@@ -91,7 +91,7 @@
 - name: Create Group Policy Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create GPOs
       include_role:
@@ -109,7 +109,7 @@
 - name: Link GPOs to OUs
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Link GPOs
       include_role:
@@ -127,7 +127,7 @@
 - name: Create User Accounts
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create users
       include_role:
@@ -145,7 +145,7 @@
 - name: Create Security and Distribution Groups
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create groups
       include_role:
@@ -163,7 +163,7 @@
 - name: Create Computer Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create computers
       include_role:
@@ -181,7 +181,7 @@
 - name: Create Test Accounts
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Create test accounts
       include_role:
@@ -199,7 +199,7 @@
 - name: Assign Group Memberships
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Populate group memberships
       include_role:
@@ -217,7 +217,7 @@
 - name: Create Intentional Security Issues
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
-  serial: 1
+  serial: 0
   tasks:
     - name: Plant security issues
       include_role:
