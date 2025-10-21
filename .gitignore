@@ -23,10 +23,12 @@ inventory/adfr-lab-updated.yml
 # Temporary domain info files (we consolidate these)
 files/fsmo-roles.txt
 files/domain-sids.txt
+files/ou-structures.txt
 
 # BUT we DO want to track these consolidated files:
 !files/forest-domain-sids.txt
 !files/adfr-lab-mremoteng.xml
+!files/forest-ou-structures.txt
 
 # Temporary files
 /tmp/

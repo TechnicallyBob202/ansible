@@ -37,3 +37,7 @@
 - name: Include FSMO role check tasks
   include_tasks: check_fsmo_roles.yml
   when: ad_operation == 'check_fsmo_roles'
+
+- name: Include OU structure creation tasks
+  include_tasks: create_ou_structure.yml
+  when: ad_operation == 'create_ou_structure'

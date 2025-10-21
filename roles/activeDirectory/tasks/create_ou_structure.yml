@@ -1,0 +1,101 @@
+---
+# Create standard OU structure for domain
+
+- name: Get domain distinguished name
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain DN fact
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+
+- name: Set top-level OU name
+  set_fact:
+    top_level_ou: "{{ netbios_name }}"
+
+- name: Define OU structure
+  set_fact:
+    ou_structure:
+      - name: "{{ top_level_ou }}"
+        path: "{{ domain_dn }}"
+        description: "{{ domain_name }} Top-Level OU"
+        child_ous:
+          - name: "Users"
+            description: "Domain Users"
+          - name: "Groups"
+            description: "Domain Groups"
+          - name: "Administrators"
+            description: "Administrative Users"
+          - name: "ServiceAccounts"
+            description: "Service Account Users"
+          - name: "Servers"
+            description: "Server Computer Objects"
+          - name: "Computers"
+            description: "Workstation Computer Objects"
+
+- name: Check if top-level OU exists
+  ansible.windows.win_shell: |
+    try {
+      Get-ADOrganizationalUnit -Identity "OU={{ top_level_ou }},{{ domain_dn }}" -ErrorAction Stop
+      Write-Output "EXISTS"
+    } catch {
+      Write-Output "NOT_EXISTS"
+    }
+  register: top_ou_check
+  changed_when: false
+
+- name: Create top-level OU
+  ansible.windows.win_shell: |
+    New-ADOrganizationalUnit -Name "{{ top_level_ou }}" `
+      -Path "{{ domain_dn }}" `
+      -Description "{{ domain_name }} Top-Level OU" `
+      -ProtectedFromAccidentalDeletion $true
+  when: "'NOT_EXISTS' in top_ou_check.stdout"
+  register: top_ou_created
+
+- name: Check which child OUs exist
+  ansible.windows.win_shell: |
+    try {
+      Get-ADOrganizationalUnit -Identity "OU={{ item.name }},OU={{ top_level_ou }},{{ domain_dn }}" -ErrorAction Stop
+      Write-Output "EXISTS"
+    } catch {
+      Write-Output "NOT_EXISTS"
+    }
+  loop: "{{ ou_structure[0].child_ous }}"
+  register: child_ou_checks
+  changed_when: false
+
+- name: Create child OUs
+  ansible.windows.win_shell: |
+    New-ADOrganizationalUnit -Name "{{ item.item.name }}" `
+      -Path "OU={{ top_level_ou }},{{ domain_dn }}" `
+      -Description "{{ item.item.description }}" `
+      -ProtectedFromAccidentalDeletion $true
+  loop: "{{ child_ou_checks.results }}"
+  when: "'NOT_EXISTS' in item.stdout"
+  register: child_ous_created
+
+- name: Display OU creation results
+  debug:
+    msg:
+      - "OU Structure for {{ domain_name }}:"
+      - "  Top-level OU: {{ 'Created' if top_ou_created.changed else 'Already exists' }} - OU={{ top_level_ou }},{{ domain_dn }}"
+      - "  Child OUs:"
+      - "{% for result in child_ou_checks.results %}    - {{ result.item.name }}: {{ 'Created' if result.stdout == 'NOT_EXISTS' else 'Already exists' }}{% endfor %}"
+
+- name: Save OU structure to localhost
+  copy:
+    content: |
+      Domain: {{ domain_name }}
+      NetBIOS: {{ netbios_name }}
+      Distinguished Name: {{ domain_dn }}
+
+      OU Structure:
+        OU={{ top_level_ou }},{{ domain_dn }}
+      {% for ou in ou_structure[0].child_ous %}    OU={{ ou.name }},OU={{ top_level_ou }},{{ domain_dn }}
+      {% endfor %}
+    dest: "/tmp/ou-structure-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost

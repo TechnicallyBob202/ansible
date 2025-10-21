@@ -201,7 +201,24 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 7: Create Service Accounts
+# PHASE 7: Create OU Structure (on PDCs only)
+# =============================================================================
+- name: Create OU Structure
+  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+  tasks:
+    - name: Create standard OU structure
+      include_role:
+        name: activeDirectory
+        tasks_from: create_ou_structure.yml
+      register: ou_result
+
+    - name: Mark VM as changed if OUs were created
+      set_fact:
+        vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 8: Create Service Accounts
 # =============================================================================
 - name: Create Service Accounts
   hosts: arbor_pdc:alpine_pdc
@@ -218,7 +235,7 @@
         vm_changed: "{{ vm_changed or (accounts_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 8: Final Validation
+# PHASE 9: Final Validation
 # =============================================================================
 - name: Final Validation
   hosts: domain_controllers
@@ -254,6 +271,11 @@
         cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
       changed_when: false
 
+    - name: Consolidate OU structures
+      shell: |
+        cat /tmp/ou-structure-*.txt > {{ playbook_dir }}/../files/ou-structures.txt 2>/dev/null || echo "# No OU structure files found"
+      changed_when: false
+
     - name: Display completion message
       debug:
         msg:
@@ -267,9 +289,10 @@
           - "Domain information saved to files/"
           - "  - domain-sids.txt"
           - "  - fsmo-roles.txt"
+          - "  - ou-structures.txt"
 
 # =============================================================================
-# PHASE 9: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
+# PHASE 10: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: all
@@ -291,7 +314,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 10: Final Summary
+# PHASE 11: Final Summary
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost
