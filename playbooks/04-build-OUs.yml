@@ -267,9 +267,10 @@
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
       vars:
         snapshot_name: post-ou-build
-      delegate_to: localhost
       when: vm_changed | default(false)
 
 # =============================================================================
