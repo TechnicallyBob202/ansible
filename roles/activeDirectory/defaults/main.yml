@@ -1,37 +1,85 @@
----
-# Active Directory defaults
-ad_safe_mode_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-ad_database_path: C:\Windows\NTDS
-ad_sysvol_path: C:\Windows\SYSVOL
-ad_log_path: C:\Windows\NTDS
+# ---------------------------------------------------------------------------
+# Group and computer profiles (merged from role vars files)
+# ---------------------------------------------------------------------------
 
-# Forest/Domain settings
-ad_create_dns_delegation: no
-ad_install_dns: yes
+# Realistic group names by category
+group_names:  # from roles/activeDirectory/vars/group_names.yml
+  departments:
+    - Finance-Users
+    - Finance-Admins
+    - IT-Help-Desk
+    - IT-Server-Admins
+    - IT-Network-Admins
+    - HR-Users
+    - HR-Managers
+    - Sales-Users
+    - Sales-Managers
+    - Marketing-Users
+    - Engineering-Users
+    - Engineering-Leads
+    - Legal-Users
+    - Operations-Users
+    - Executive-Team
+    - Contractors
+    - Interns
 
-# Timeouts - OPTIMIZED
-ad_promotion_timeout: 1200
-ad_reboot_timeout: 900
-ad_replication_check_retries: 5  # Reduced from 10
-ad_replication_check_delay: 20   # Reduced from 30
+  access:
+    - VPN-Access
+    - Remote-Desktop-Users
+    - File-Share-Users
+    - Printer-Users
+    - WiFi-Users
+    - Building-Access
+    - Conference-Room-Access
+    - Lab-Access
 
-# Service accounts (to be created post-deployment)
-ad_service_accounts:
-  - name: svc-adfr
-    description: "ADFR Agent Service Account"
-    groups:
-      - Domain Admins
-      - Enterprise Admins
-  - name: svc-dsp
-    description: "DSP Monitoring Service Account"
-    groups:
-      - Domain Admins
-      - Enterprise Admins
+  applications:
+    - SharePoint-Users
+    - Exchange-Users
+    - CRM-Users
+    - ERP-Users
+    - Project-Management-Users
+    - BI-Dashboard-Users
+    - Database-Developers
+    - Web-Developers
+    - Azure-Users
+    - AWS-Users
 
-# Feature names
-ad_features:
-  - AD-Domain-Services
-  - RSAT-AD-Tools
-  - RSAT-AD-PowerShell
-  - RSAT-ADDS
-  - RSAT-AD-AdminCenter
+  distribution:
+    - All-Company
+    - All-IT
+    - All-Finance
+    - All-Sales
+    - All-Marketing
+    - All-Engineering
+    - Department-Heads
+    - Project-Leads
+    - Security-Alerts
+    - IT-Maintenance-Alerts
+
+  legacy:
+    - Old-VPN-Users
+    - Deprecated-App-Access
+    - Former-Contractors
+    - Test-Group-2019
+    - Migration-Group-Old
+
+# Computer naming patterns and roles
+computer_roles:  # from roles/activeDirectory/vars/computer_prefixes.yml
+  workstation:
+    os_types:
+      - name: WIN10
+        weight: 60   # Percentage of workstations
+      - name: WIN11
+        weight: 40
+  server:
+    roles:
+      - APP      # Application servers
+      - DB       # Database servers
+      - FILE     # File servers
+      - PRINT    # Print servers
+      - WEB      # Web servers
+      - SQL      # SQL servers
+      - EXCH     # Exchange (if applicable)
+      - SCCM     # Config Manager
+      - WSUS     # Update servers

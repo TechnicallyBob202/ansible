@@ -1,5 +1,5 @@
 ---
-# Create computer accounts (workstations and servers)
+# Create computer accounts (workstations and servers) based on computer_roles
 
 - name: Get domain DN
   ansible.windows.win_shell: |
@@ -14,6 +14,29 @@
     workstations_ou: "OU=Workstations,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
     servers_ou: "OU=Servers,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
+# Prepare a weighted OS list like ["WIN10","WIN10",...,"WIN11",...]
+- name: Build weighted workstation OS list
+  set_fact:
+    ws_os_weighted: >-
+      {{
+        computer_roles.workstation.os_types
+        | map('extract', {'name':'name','weight':'weight'})
+        | list
+        | map('combine', [])
+        | map('json_query', '{name: name, weight: weight}')
+        | list
+      }}
+
+- name: Expand weighted OS list into array
+  set_fact:
+    ws_os_expanded: >-
+      {{
+        ws_os_weighted
+        | map('community.general.lists_repeat', attribute='name', count_attribute='weight')
+        | list | flatten
+      }}
+
+# Workstations
 - name: Create workstation computer accounts
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
@@ -22,9 +45,16 @@
     $createdCount = 0
     $existingCount = 0
 
-    for ($i = 1; $i -le $count; $i++) {
-      $computerName = "WKS-{0:D3}" -f $i
+    # OS pool from Ansible (JSON -> PS array)
+    $osJson = @'
+    {{ ws_os_expanded | to_json }}
+    '@
+    $osPool = $osJson | ConvertFrom-Json
+    if (-not $osPool -or $osPool.Count -eq 0) { $osPool = @("WIN10","WIN11") }
 
+    for ($i = 1; $i -le $count; $i++) {
+      $os = $osPool | Get-Random
+      $computerName = "WKS-$($os)-{0:D3}" -f $i
       try {
         Get-ADComputer -Identity $computerName -ErrorAction Stop | Out-Null
         $existingCount++
@@ -32,50 +62,48 @@
         New-ADComputer -Name $computerName `
           -Path $ouPath `
           -Enabled $true `
-          -Description "Workstation $i" `
+          -Description "Workstation $i ($os)" `
           -ErrorAction Stop | Out-Null
         $createdCount++
       }
     }
-
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: workstation_creation
   changed_when: "'CREATED=' in workstation_creation.stdout and (workstation_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
 
+# Servers (derive names from role list)
 - name: Create server computer accounts
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     $ouPath = "{{ servers_ou }}"
 
-    $serverNames = @(
-      @{Name="SRV-SQL01"; Description="SQL Server Primary"},
-      @{Name="SRV-SQL02"; Description="SQL Server Replica"},
-      @{Name="SRV-FILE01"; Description="File Server"},
-      @{Name="SRV-PRINT01"; Description="Print Server"},
-      @{Name="SRV-WEB01"; Description="Web Server 1"},
-      @{Name="SRV-WEB02"; Description="Web Server 2"},
-      @{Name="SRV-APP01"; Description="Application Server 1"},
-      @{Name="SRV-APP02"; Description="Application Server 2"},
-      @{Name="SRV-DC-BKP"; Description="Backup Domain Controller"},
-      @{Name="SRV-DHCP01"; Description="DHCP Server"},
-      @{Name="SRV-WSUS01"; Description="WSUS Server"},
-      @{Name="SRV-EXCH01"; Description="Exchange Server"}
-    )
+    # Roles from Ansible (JSON -> PS array)
+    $rolesJson = @'
+    {{ (computer_roles.server.roles | default([])) | to_json }}
+    '@
+    $roles = $rolesJson | ConvertFrom-Json
+    if (-not $roles -or $roles.Count -eq 0) {
+      $roles = @("APP","DB","FILE","PRINT","WEB","SQL","EXCH","SCCM","WSUS")
+    }
 
     $createdCount = 0
     $existingCount = 0
 
-    foreach ($server in $serverNames) {
-      try {
-        Get-ADComputer -Identity $server.Name -ErrorAction Stop | Out-Null
-        $existingCount++
-      } catch {
-        New-ADComputer -Name $server.Name `
-          -Path $ouPath `
-          -Enabled $true `
-          -Description $server.Description `
-          -ErrorAction Stop | Out-Null
-        $createdCount++
+    foreach ($role in $roles) {
+      # Create two servers per role (01, 02) to mirror your previous volume
+      foreach ($n in 1..2) {
+        $computerName = "SRV-$($role){0:D2}" -f $n
+        try {
+          Get-ADComputer -Identity $computerName -ErrorAction Stop | Out-Null
+          $existingCount++
+        } catch {
+          New-ADComputer -Name $computerName `
+            -Path $ouPath `
+            -Enabled $true `
+            -Description "$role Server $n" `
+            -ErrorAction Stop | Out-Null
+          $createdCount++
+        }
       }
     }
 
@@ -85,10 +113,10 @@
 
 - name: Parse computer creation results
   set_fact:
-    workstations_created: "{{ workstation_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    workstations_existing: "{{ workstation_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
-    servers_created: "{{ server_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    servers_existing: "{{ server_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+    workstations_created: "{{ workstation_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | default('0') }}"
+    workstations_existing: "{{ workstation_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first | default('0') }}"
+    servers_created: "{{ server_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | default('0') }}"
+    servers_existing: "{{ server_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first | default('0') }}"
 
 - name: Display computer creation summary
   debug:

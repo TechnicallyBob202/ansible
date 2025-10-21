@@ -1,5 +1,5 @@
 ---
-# Create security and distribution groups
+# Create security and distribution groups from group_names
 
 - name: Get domain DN
   ansible.windows.win_shell: |
@@ -14,151 +14,35 @@
     security_groups_ou: "OU=Security Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
     distribution_groups_ou: "OU=Distribution Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
-- name: Define security groups
+# Build security and distribution lists from group_names
+- name: Build security group list from categories
   set_fact:
-    security_groups:
-      - name: "IT-Admins"
-        scope: Global
-        category: Security
-        description: "IT Administrators"
-      - name: "IT-HelpDesk"
-        scope: Global
-        category: Security
-        description: "Help Desk Staff"
-      - name: "IT-ServerAdmins"
-        scope: Global
-        category: Security
-        description: "Server Administrators"
-      - name: "Finance-Users"
-        scope: Global
-        category: Security
-        description: "Finance Department"
-      - name: "HR-Users"
-        scope: Global
-        category: Security
-        description: "Human Resources"
-      - name: "Sales-Users"
-        scope: Global
-        category: Security
-        description: "Sales Department"
-      - name: "Marketing-Users"
-        scope: Global
-        category: Security
-        description: "Marketing Department"
-      - name: "Engineering-Users"
-        scope: Global
-        category: Security
-        description: "Engineering Department"
-      - name: "VPN-Users"
-        scope: DomainLocal
-        category: Security
-        description: "VPN Access"
-      - name: "File-Share-RW"
-        scope: DomainLocal
-        category: Security
-        description: "File Share Read/Write"
-      - name: "File-Share-RO"
-        scope: DomainLocal
-        category: Security
-        description: "File Share Read Only"
-      - name: "Remote-Desktop-Users"
-        scope: DomainLocal
-        category: Security
-        description: "Remote Desktop Access"
-      - name: "Backup-Operators-Custom"
-        scope: DomainLocal
-        category: Security
-        description: "Custom Backup Operators"
-      - name: "SQL-Admins"
-        scope: Global
-        category: Security
-        description: "SQL Server Administrators"
-      - name: "Web-Admins"
-        scope: Global
-        category: Security
-        description: "Web Server Administrators"
-      - name: "Security-Team"
-        scope: Global
-        category: Security
-        description: "Security Operations Team"
-      - name: "Privileged-Access"
-        scope: Universal
-        category: Security
-        description: "Privileged Access Management"
-      - name: "Application-Owners"
-        scope: Global
-        category: Security
-        description: "Application Owners"
+    security_groups: >-
+      {{
+        (group_names.departments | default([])) +
+        (group_names.access | default([])) +
+        (group_names.applications | default([])) +
+        (group_names.legacy | default([]))
+      }}
 
-- name: Define distribution groups
+- name: Build distribution group list from categories
   set_fact:
-    distribution_groups:
-      - name: "All-Employees"
-        scope: Universal
-        category: Distribution
-        description: "All Employees Distribution List"
-      - name: "IT-Team"
-        scope: Global
-        category: Distribution
-        description: "IT Team Distribution"
-      - name: "Finance-Team"
-        scope: Global
-        category: Distribution
-        description: "Finance Team Distribution"
-      - name: "HR-Team"
-        scope: Global
-        category: Distribution
-        description: "HR Team Distribution"
-      - name: "Sales-Team"
-        scope: Global
-        category: Distribution
-        description: "Sales Team Distribution"
-      - name: "Marketing-Team"
-        scope: Global
-        category: Distribution
-        description: "Marketing Team Distribution"
-      - name: "Engineering-Team"
-        scope: Global
-        category: Distribution
-        description: "Engineering Team Distribution"
-      - name: "Executives"
-        scope: Universal
-        category: Distribution
-        description: "Executive Leadership"
-      - name: "Managers"
-        scope: Universal
-        category: Distribution
-        description: "All Managers"
-      - name: "Company-News"
-        scope: Universal
-        category: Distribution
-        description: "Company News and Announcements"
-      - name: "Social-Events"
-        scope: Universal
-        category: Distribution
-        description: "Social Events and Activities"
-      - name: "Training-Announcements"
-        scope: Universal
-        category: Distribution
-        description: "Training Opportunities"
+    distribution_groups: "{{ group_names.distribution | default([]) }}"
 
+# Create security groups
 - name: Create security groups
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-    $groupName = "{{ item.name }}"
-    $groupScope = "{{ item.scope }}"
-    $groupCategory = "{{ item.category }}"
-    $description = "{{ item.description }}"
+    $groupName = "{{ item }}"
     $ouPath = "{{ security_groups_ou }}"
-
     try {
       Get-ADGroup -Identity $groupName -ErrorAction Stop | Out-Null
       Write-Output "EXISTS"
     } catch {
       New-ADGroup -Name $groupName `
-        -GroupScope $groupScope `
-        -GroupCategory $groupCategory `
-        -Description $description `
+        -GroupScope Global `
+        -GroupCategory Security `
+        -Description "$groupName" `
         -Path $ouPath `
         -ErrorAction Stop | Out-Null
       Write-Output "CREATED"
@@ -167,23 +51,20 @@
   register: security_group_creation
   changed_when: "'CREATED' in security_group_creation.stdout"
 
+# Create distribution groups
 - name: Create distribution groups
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-    $groupName = "{{ item.name }}"
-    $groupScope = "{{ item.scope }}"
-    $groupCategory = "{{ item.category }}"
-    $description = "{{ item.description }}"
+    $groupName = "{{ item }}"
     $ouPath = "{{ distribution_groups_ou }}"
-
     try {
       Get-ADGroup -Identity $groupName -ErrorAction Stop | Out-Null
       Write-Output "EXISTS"
     } catch {
       New-ADGroup -Name $groupName `
-        -GroupScope $groupScope `
-        -GroupCategory $groupCategory `
-        -Description $description `
+        -GroupScope Universal `
+        -GroupCategory Distribution `
+        -Description "$groupName" `
         -Path $ouPath `
         -ErrorAction Stop | Out-Null
       Write-Output "CREATED"
@@ -194,8 +75,8 @@
 
 - name: Count created groups
   set_fact:
-    security_created: "{{ security_group_creation.results | selectattr('changed', 'equalto', true) | list | length }}"
-    distribution_created: "{{ distribution_group_creation.results | selectattr('changed', 'equalto', true) | list | length }}"
+    security_created: "{{ security_group_creation.results | selectattr('changed','equalto',true) | list | length | default(0) }}"
+    distribution_created: "{{ distribution_group_creation.results | selectattr('changed','equalto',true) | list | length | default(0) }}"
 
 - name: Display group creation summary
   debug:
