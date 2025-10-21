@@ -14,7 +14,7 @@
     security_groups_ou: "OU=Security Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
     distribution_groups_ou: "OU=Distribution Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
-# Build security and distribution lists from group_names
+# Build security and distribution lists from group_names in role defaults
 - name: Build security group list from categories
   set_fact:
     security_groups: >-
@@ -49,7 +49,10 @@
     }
   loop: "{{ security_groups }}"
   register: security_group_creation
-  changed_when: "'CREATED' in security_group_creation.stdout"
+  changed_when: >
+    {{
+      'CREATED' in (security_group_creation.stdout | default(''))
+    }}
 
 # Create distribution groups
 - name: Create distribution groups
@@ -71,7 +74,10 @@
     }
   loop: "{{ distribution_groups }}"
   register: distribution_group_creation
-  changed_when: "'CREATED' in distribution_group_creation.stdout"
+  changed_when: >
+    {{
+      'CREATED' in (distribution_group_creation.stdout | default(''))
+    }}
 
 - name: Count created groups
   set_fact:
