@@ -113,14 +113,17 @@
 - name: Create GPO links
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
+
     $gpoName = "{{ item.item.item.gpo_name }}"
     $ouPath = "{{ item.item.item.ou_path }}"
-    $linkEnabled = [bool]::Parse("{{ item.item.item.link_enabled }}")
-    $enforced = [bool]::Parse("{{ item.item.item.enforced }}")
+
+    # Map booleans to enum string values expected by New-GPLink
+    $linkEnabled = "{{ item.item.item.link_enabled | ternary('Yes','No') }}"
+    $enforced = "{{ item.item.item.enforced | ternary('Yes','No') }}"
     $order = {{ item.item.item.order }}
 
     try {
-      $link = New-GPLink -Name $gpoName -Target $ouPath -LinkEnabled $linkEnabled -Enforced $enforced -Order $order -ErrorAction Stop
+      $null = New-GPLink -Name $gpoName -Target $ouPath -LinkEnabled $linkEnabled -Enforced $enforced -Order $order -ErrorAction Stop
       Write-Output "LINKED: $gpoName to $ouPath"
     } catch {
       Write-Output "ERROR: $($_.Exception.Message)"
@@ -136,7 +139,7 @@
 - name: Count GPO links
   set_fact:
     total_links: "{{ gpo_links | length }}"
-    created_links: "{{ link_creation.results | selectattr('changed', 'equalto', true) | list | length }}"
+    created_links: "{{ link_creation.results | selectattr('changed', 'equalto', true) | list | length | default(0) }}"
     existing_links: "{{ link_check.results | selectattr('stdout', 'search', 'LINKED') | list | length | default(0) }}"
 
 - name: Display GPO linking summary
