@@ -1,106 +1,173 @@
 ---
 # Plant intentional security issues for DSP/Purple Knight demos
 
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+
 - name: Create Kerberoasting targets
   ansible.windows.win_shell: |
-    # Service accounts with SPNs already created
-    # Set weak passwords on some of them
-    $accounts = Get-ADUser -Filter {ServicePrincipalName -like "*"} -SearchBase "OU=Service Accounts,OU=Users,{{ domain_dn }}" |
-      Get-Random -Count {{ populate_kerberoasting_accounts }}
+    $ErrorActionPreference = "Stop"
+    # Service Accounts OU under top-level OU
+    $svcOU = "OU=Service Accounts,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $all = Get-ADUser -Filter {ServicePrincipalName -like "*"} -SearchBase $svcOU
+    if (-not $all) { Write-Output "Kerberoast: 0 (no candidates)"; exit 0 }
 
+    $desired = {{ populate_kerberoasting_accounts | default(3) | int }}
+    if ($desired -lt 0) { $desired = 0 }
+    if ($desired -gt $all.Count) { $desired = $all.Count }
+    if ($desired -eq 0) { Write-Output "Kerberoast: 0 (desired=0)"; exit 0 }
+
+    $targets = $all | Get-Random -Count $desired
     $weakPassword = ConvertTo-SecureString "Summer2024!" -AsPlainText -Force
-
-    foreach ($account in $accounts) {
-      Set-ADAccountPassword -Identity $account -NewPassword $weakPassword -Reset
-      Set-ADUser -Identity $account -PasswordNeverExpires $true
+    foreach ($account in $targets) {
+      try {
+        Set-ADAccountPassword -Identity $account -NewPassword $weakPassword -Reset -ErrorAction Stop
+        Set-ADUser -Identity $account -PasswordNeverExpires $true -ErrorAction Stop
+      } catch {}
     }
-
-    Write-Output "Created {{ populate_kerberoasting_accounts }} Kerberoasting targets"
+    Write-Output "Kerberoast: $desired"
   register: kerberoasting_setup
-  changed_when: true
+  changed_when: >
+    'Kerberoast:' in (kerberoasting_setup.stdout | default('')) and
+    ((kerberoasting_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
 - name: Create AS-REP Roasting targets
   ansible.windows.win_shell: |
-    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
-      Get-Random -Count {{ populate_asrep_roasting_accounts }}
+    $ErrorActionPreference = "Stop"
+    $usersOU = "OU=Standard Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $all = Get-ADUser -Filter * -SearchBase $usersOU
+    if (-not $all) { Write-Output "ASREP: 0 (no users)"; exit 0 }
 
-    foreach ($user in $users) {
-      Set-ADAccountControl -Identity $user -DoesNotRequirePreAuth $true
+    $desired = {{ populate_asrep_roasting_accounts | default(2) | int }}
+    if ($desired -lt 0) { $desired = 0 }
+    if ($desired -gt $all.Count) { $desired = $all.Count }
+    if ($desired -eq 0) { Write-Output "ASREP: 0 (desired=0)"; exit 0 }
+
+    $targets = $all | Get-Random -Count $desired
+    foreach ($user in $targets) {
+      try { Set-ADAccountControl -Identity $user -DoesNotRequirePreAuth $true -ErrorAction Stop } catch {}
     }
-
-    Write-Output "Created {{ populate_asrep_roasting_accounts }} AS-REP Roasting targets"
+    Write-Output "ASREP: $desired"
   register: asrep_setup
-  changed_when: true
+  changed_when: >
+    'ASREP:' in (asrep_setup.stdout | default('')) and
+    ((asrep_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
-- name: Grant excessive delegation
+- name: Grant excessive delegation (DCSync rights) to random users
   ansible.windows.win_shell: |
-    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
-      Get-Random -Count {{ populate_excessive_delegation_accounts }}
+    $ErrorActionPreference = "Stop"
+    $usersOU = "OU=Standard Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $all = Get-ADUser -Filter * -SearchBase $usersOU
+    if (-not $all) { Write-Output "Delegation: 0 (no users)"; exit 0 }
 
+    $desired = {{ populate_excessive_delegation_accounts | default(2) | int }}
+    if ($desired -lt 0) { $desired = 0 }
+    if ($desired -gt $all.Count) { $desired = $all.Count }
+    if ($desired -eq 0) { Write-Output "Delegation: 0 (desired=0)"; exit 0 }
+
+    $targets = $all | Get-Random -Count $desired
     $domainDN = (Get-ADDomain).DistinguishedName
+    $acl = Get-Acl "AD:$domainDN"
 
-    foreach ($user in $users) {
-      # Grant "Replicating Directory Changes" (DCSync rights)
-      $acl = Get-Acl "AD:$domainDN"
-      $sid = [System.Security.Principal.SecurityIdentifier]$user.SID
-
-      $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
-        $sid,
-        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight,
-        [System.Security.AccessControl.AccessControlType]::Allow,
-        [System.Guid]"1131f6aa-9c07-11d1-f79f-00c04fc2dcd2"
-      )
-
-      $acl.AddAccessRule($ace)
-      Set-Acl -Path "AD:$domainDN" -AclObject $acl
+    foreach ($user in $targets) {
+      try {
+        $sid = [System.Security.Principal.SecurityIdentifier]$user.SID
+        $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+          $sid,
+          [System.Security.AccessControl.AccessControlType]::Allow,
+          [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight,
+          [System.Guid]"1131f6aa-9c07-11d1-f79f-00c04fc2dcd2"
+        )
+        $acl.AddAccessRule($ace)
+      } catch {}
     }
-
-    Write-Output "Granted excessive delegation to {{ populate_excessive_delegation_accounts }} users"
+    try { Set-Acl -Path "AD:$domainDN" -AclObject $acl } catch {}
+    Write-Output "Delegation: $desired"
   register: delegation_setup
-  changed_when: true
+  changed_when: >
+    'Delegation:' in (delegation_setup.stdout | default('')) and
+    ((delegation_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
 - name: Create passwords in description field
   ansible.windows.win_shell: |
-    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
-      Get-Random -Count {{ populate_password_in_description }}
+    $ErrorActionPreference = "Stop"
+    $usersOU = "OU=Standard Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $all = Get-ADUser -Filter * -SearchBase $usersOU
+    if (-not $all) { Write-Output "PwdDesc: 0 (no users)"; exit 0 }
 
-    foreach ($user in $users) {
-      Set-ADUser -Identity $user -Description "Password: Summer2024!"
+    $desired = {{ populate_password_in_description | default(5) | int }}
+    if ($desired -lt 0) { $desired = 0 }
+    if ($desired -gt $all.Count) { $desired = $all.Count }
+    if ($desired -eq 0) { Write-Output "PwdDesc: 0 (desired=0)"; exit 0 }
+
+    $targets = $all | Get-Random -Count $desired
+    foreach ($user in $targets) {
+      try { Set-ADUser -Identity $user -Description "Password: Summer2024!" -ErrorAction Stop } catch {}
     }
-
-    Write-Output "Added passwords to {{ populate_password_in_description }} user descriptions"
+    Write-Output "PwdDesc: $desired"
   register: password_desc_setup
-  changed_when: true
+  changed_when: >
+    'PwdDesc:' in (password_desc_setup.stdout | default('')) and
+    ((password_desc_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
-- name: Pollute AdminSDHolder
+- name: Pollute AdminSDHolder (optional)
   ansible.windows.win_shell: |
-    # Add a regular user to Domain Admins temporarily (will be caught by DSP)
-    $user = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
-      Get-Random -Count 1
-
-    Add-ADGroupMember -Identity "Domain Admins" -Members $user
-
-    Write-Output "Added $($user.SamAccountName) to Domain Admins (AdminSDHolder pollution)"
+    $ErrorActionPreference = "Stop"
+    if (-not [bool]::Parse("{{ (populate_adminsdholder_pollution | default(false)) | bool | ternary('True','False') }}")) {
+      Write-Output "AdminSDHolder: Skipped"
+      exit 0
+    }
+    $usersOU = "OU=Standard Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $user = Get-ADUser -Filter * -SearchBase $usersOU | Get-Random -Count 1
+    if (-not $user) { Write-Output "AdminSDHolder: 0 (no users)"; exit 0 }
+    try {
+      Add-ADGroupMember -Identity "Domain Admins" -Members $user -ErrorAction Stop
+      Write-Output "AdminSDHolder: 1"
+    } catch {
+      Write-Output "AdminSDHolder: 0"
+    }
   register: adminsdholder_setup
-  changed_when: true
-  when: populate_adminsdholder_pollution
+  changed_when: >
+    'AdminSDHolder:' in (adminsdholder_setup.stdout | default('')) and
+    ((adminsdholder_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
 - name: Create RBCD vulnerable computers
   ansible.windows.win_shell: |
-    $computers = Get-ADComputer -Filter * -SearchBase "OU=Workstations,OU=Computers,{{ domain_dn }}" |
-      Get-Random -Count {{ populate_rbcd_vulnerable_computers }}
+    $ErrorActionPreference = "Stop"
+    $workstationsOU = "OU=Workstations,OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $computers = Get-ADComputer -Filter * -SearchBase $workstationsOU
+    if (-not $computers) { Write-Output "RBCD: 0 (no computers)"; exit 0 }
+
+    $desired = {{ populate_rbcd_vulnerable_computers | default(2) | int }}
+    if ($desired -lt 0) { $desired = 0 }
+    if ($desired -gt $computers.Count) { $desired = $computers.Count }
+    if ($desired -eq 0) { Write-Output "RBCD: 0 (desired=0)"; exit 0 }
+
+    $targets = $computers | Get-Random -Count $desired
 
     # Get a service account SID to allow delegation
-    $svcAccount = Get-ADUser -Filter {SamAccountName -like "svc-*"} | Select-Object -First 1
+    $svcOU = "OU=Service Accounts,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $svcAccount = Get-ADUser -Filter {SamAccountName -like "svc-*"} -SearchBase $svcOU | Select-Object -First 1
+    if (-not $svcAccount) { Write-Output "RBCD: 0 (no svc account)"; exit 0 }
 
-    foreach ($computer in $computers) {
-      $sid = $svcAccount.SID
-      Set-ADComputer -Identity $computer -PrincipalsAllowedToDelegateToAccount $svcAccount
+    foreach ($computer in $targets) {
+      try {
+        Set-ADComputer -Identity $computer -PrincipalsAllowedToDelegateToAccount $svcAccount -ErrorAction Stop
+      } catch {}
     }
-
-    Write-Output "Created {{ populate_rbcd_vulnerable_computers }} RBCD vulnerable computers"
+    Write-Output "RBCD: $desired"
   register: rbcd_setup
-  changed_when: true
+  changed_when: >
+    'RBCD:' in (rbcd_setup.stdout | default('')) and
+    ((rbcd_setup.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
 
 - name: Display security issues summary
   debug:
@@ -110,5 +177,5 @@
       - "  {{ asrep_setup.stdout | trim }}"
       - "  {{ delegation_setup.stdout | trim }}"
       - "  {{ password_desc_setup.stdout | trim }}"
-      - "  {{ adminsdholder_setup.stdout | trim if populate_adminsdholder_pollution else 'AdminSDHolder: Skipped' }}"
+      - "  {{ adminsdholder_setup.stdout | trim }}"
       - "  {{ rbcd_setup.stdout | trim }}"
