@@ -23,18 +23,18 @@
     $password = ConvertTo-SecureString "Winter2024!" -AsPlainText -Force
 
     $privilegedUsers = @(
-      @{First="John"; Last="ITManager"; Title="IT Manager"; Dept="IT"},
-      @{First="Sarah"; Last="SecurityLead"; Title="Security Lead"; Dept="Security"},
-      @{First="Michael"; Last="SysAdmin"; Title="Systems Administrator"; Dept="IT"},
-      @{First="Emily"; Last="NetAdmin"; Title="Network Administrator"; Dept="IT"},
-      @{First="David"; Last="DBAdmin"; Title="Database Administrator"; Dept="IT"},
-      @{First="Jessica"; Last="CloudArch"; Title="Cloud Architect"; Dept="IT"},
-      @{First="Robert"; Last="DevOpsLead"; Title="DevOps Lead"; Dept="Engineering"},
-      @{First="Ashley"; Last="HRManager"; Title="HR Manager"; Dept="HR"},
-      @{First="William"; Last="FinanceDir"; Title="Finance Director"; Dept="Finance"},
-      @{First="Jennifer"; Last="SalesDir"; Title="Sales Director"; Dept="Sales"},
-      @{First="James"; Last="MarketingDir"; Title="Marketing Director"; Dept="Marketing"},
-      @{First="Linda"; Last="ProjectMgr"; Title="Project Manager"; Dept="PMO"}
+      @{First="John";     Last="ITManager";    Title="IT Manager";               Dept="IT"},
+      @{First="Sarah";    Last="SecurityLead"; Title="Security Lead";            Dept="Security"},
+      @{First="Michael";  Last="SysAdmin";     Title="Systems Administrator";    Dept="IT"},
+      @{First="Emily";    Last="NetAdmin";     Title="Network Administrator";    Dept="IT"},
+      @{First="David";    Last="DBAdmin";      Title="Database Administrator";   Dept="IT"},
+      @{First="Jessica";  Last="CloudArch";    Title="Cloud Architect";          Dept="IT"},
+      @{First="Robert";   Last="DevOpsLead";   Title="DevOps Lead";              Dept="Engineering"},
+      @{First="Ashley";   Last="HRManager";    Title="HR Manager";               Dept="HR"},
+      @{First="William";  Last="FinanceDir";   Title="Finance Director";         Dept="Finance"},
+      @{First="Jennifer"; Last="SalesDir";     Title="Sales Director";           Dept="Sales"},
+      @{First="James";    Last="MarketingDir"; Title="Marketing Director";       Dept="Marketing"},
+      @{First="Linda";    Last="ProjectMgr";   Title="Project Manager";          Dept="PMO"}
     )
 
     $createdCount = 0
@@ -71,7 +71,14 @@
 
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: privileged_creation
-  changed_when: "'CREATED=' in privileged_creation.stdout and (privileged_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+  changed_when: >
+    {{
+      'CREATED=' in (privileged_creation.stdout | default('')) and
+      (
+        (privileged_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+        | split('=') | last | int
+      ) > 0
+    }}
 
 - name: Create administrator accounts
   ansible.windows.win_shell: |
@@ -81,14 +88,14 @@
     $password = ConvertTo-SecureString "Admin2024!" -AsPlainText -Force
 
     $adminUsers = @(
-      @{User="admin.helpdesk"; Name="Help Desk Admin"; Desc="Help Desk Administrator"},
-      @{User="admin.server"; Name="Server Admin"; Desc="Server Administrator"},
-      @{User="admin.network"; Name="Network Admin"; Desc="Network Administrator"},
-      @{User="admin.security"; Name="Security Admin"; Desc="Security Administrator"},
-      @{User="admin.backup"; Name="Backup Admin"; Desc="Backup Administrator"},
-      @{User="admin.sql"; Name="SQL Admin"; Desc="SQL Server Administrator"},
-      @{User="admin.exchange"; Name="Exchange Admin"; Desc="Exchange Administrator"},
-      @{User="admin.test"; Name="Test Admin"; Desc="Testing Administrator"}
+      @{User="admin.helpdesk";  Name="Help Desk Admin";   Desc="Help Desk Administrator"},
+      @{User="admin.server";    Name="Server Admin";      Desc="Server Administrator"},
+      @{User="admin.network";   Name="Network Admin";     Desc="Network Administrator"},
+      @{User="admin.security";  Name="Security Admin";    Desc="Security Administrator"},
+      @{User="admin.backup";    Name="Backup Admin";      Desc="Backup Administrator"},
+      @{User="admin.sql";       Name="SQL Admin";         Desc="SQL Server Administrator"},
+      @{User="admin.exchange";  Name="Exchange Admin";    Desc="Exchange Administrator"},
+      @{User="admin.test";      Name="Test Admin";        Desc="Testing Administrator"}
     )
 
     $createdCount = 0
@@ -100,7 +107,6 @@
         $existingCount++
       } catch {
         $upn = "$($admin.User)@$domain"
-
         New-ADUser -Name $admin.Name `
           -SamAccountName $admin.User `
           -UserPrincipalName $upn `
@@ -111,14 +117,20 @@
           -PasswordNeverExpires $true `
           -Description $admin.Desc `
           -ErrorAction Stop | Out-Null
-
         $createdCount++
       }
     }
 
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: admin_creation
-  changed_when: "'CREATED=' in admin_creation.stdout and (admin_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+  changed_when: >
+    {{
+      'CREATED=' in (admin_creation.stdout | default('')) and
+      (
+        (admin_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+        | split('=') | last | int
+      ) > 0
+    }}
 
 - name: Create additional service accounts
   ansible.windows.win_shell: |
@@ -128,12 +140,12 @@
     $password = ConvertTo-SecureString "Service2024!" -AsPlainText -Force
 
     $serviceAccounts = @(
-      @{User="svc-backup"; Desc="Backup Service Account"},
-      @{User="svc-sql"; Desc="SQL Service Account"},
-      @{User="svc-web"; Desc="Web Application Service Account"},
-      @{User="svc-app"; Desc="Application Service Account"},
+      @{User="svc-backup";     Desc="Backup Service Account"},
+      @{User="svc-sql";        Desc="SQL Service Account"},
+      @{User="svc-web";        Desc="Web Application Service Account"},
+      @{User="svc-app";        Desc="Application Service Account"},
       @{User="svc-monitoring"; Desc="Monitoring Service Account"},
-      @{User="svc-reporting"; Desc="Reporting Service Account"}
+      @{User="svc-reporting";  Desc="Reporting Service Account"}
     )
 
     $createdCount = 0
@@ -145,7 +157,6 @@
         $existingCount++
       } catch {
         $upn = "$($svc.User)@$domain"
-
         New-ADUser -Name $svc.User `
           -SamAccountName $svc.User `
           -UserPrincipalName $upn `
@@ -156,23 +167,65 @@
           -PasswordNeverExpires $true `
           -Description $svc.Desc `
           -ErrorAction Stop | Out-Null
-
         $createdCount++
       }
     }
 
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: service_creation
-  changed_when: "'CREATED=' in service_creation.stdout and (service_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+  changed_when: >
+    {{
+      'CREATED=' in (service_creation.stdout | default('')) and
+      (
+        (service_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+        | split('=') | last | int
+      ) > 0
+    }}
 
 - name: Parse test account creation results
   set_fact:
-    privileged_created: "{{ privileged_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    privileged_existing: "{{ privileged_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
-    admin_created: "{{ admin_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    admin_existing: "{{ admin_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
-    service_created: "{{ service_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    service_existing: "{{ service_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+    privileged_created: >
+      {{
+        (
+          (privileged_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+          | split('=') | last
+        )
+      }}
+    privileged_existing: >
+      {{
+        (
+          (privileged_creation.stdout | default('') | split(';') | select('search', '^EXISTS=') | list | first | default('EXISTS=0'))
+          | split('=') | last
+        )
+      }}
+    admin_created: >
+      {{
+        (
+          (admin_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+          | split('=') | last
+        )
+      }}
+    admin_existing: >
+      {{
+        (
+          (admin_creation.stdout | default('') | split(';') | select('search', '^EXISTS=') | list | first | default('EXISTS=0'))
+          | split('=') | last
+        )
+      }}
+    service_created: >
+      {{
+        (
+          (service_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+          | split('=') | last
+        )
+      }}
+    service_existing: >
+      {{
+        (
+          (service_creation.stdout | default('') | split(';') | select('search', '^EXISTS=') | list | first | default('EXISTS=0'))
+          | split('=') | last
+        )
+      }}
 
 - name: Display test account creation summary
   debug:
