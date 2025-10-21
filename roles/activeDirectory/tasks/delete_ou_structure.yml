@@ -1,0 +1,74 @@
+---
+# Delete existing top-level OU structure to start fresh
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+
+- name: Check if top-level OU exists
+  ansible.windows.win_shell: |
+    try {
+      $ouPath = "OU={{ top_level_ou_name }},{{ domain_dn }}"
+      Get-ADOrganizationalUnit -Identity $ouPath -ErrorAction Stop | Out-Null
+      Write-Output "EXISTS"
+    } catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+      Write-Output "NOT_FOUND"
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+    }
+  register: ou_check
+  failed_when: "'ERROR:' in ou_check.stdout"
+  changed_when: false
+
+- name: Remove protection from OU before deletion
+  ansible.windows.win_shell: |
+    $ouPath = "OU={{ top_level_ou_name }},{{ domain_dn }}"
+    try {
+      $ou = Get-ADOrganizationalUnit -Identity $ouPath
+      Set-ADOrganizationalUnit -Identity $ou -ProtectedFromAccidentalDeletion $false -ErrorAction Stop
+      Write-Output "UNPROTECTED"
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+    }
+  register: unprotect_result
+  when: "'EXISTS' in ou_check.stdout"
+  failed_when: "'ERROR:' in unprotect_result.stdout"
+
+- name: Recursively remove all child OUs protection
+  ansible.windows.win_shell: |
+    $ouPath = "OU={{ top_level_ou_name }},{{ domain_dn }}"
+    try {
+      Get-ADOrganizationalUnit -Filter * -SearchBase $ouPath |
+        Set-ADOrganizationalUnit -ProtectedFromAccidentalDeletion $false -ErrorAction Stop
+      Write-Output "ALL_UNPROTECTED"
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+    }
+  register: unprotect_all_result
+  when: "'EXISTS' in ou_check.stdout"
+  failed_when: "'ERROR:' in unprotect_all_result.stdout"
+
+- name: Delete top-level OU and all contents
+  ansible.windows.win_shell: |
+    $ouPath = "OU={{ top_level_ou_name }},{{ domain_dn }}"
+    try {
+      Remove-ADOrganizationalUnit -Identity $ouPath -Recursive -Confirm:$false -ErrorAction Stop
+      Write-Output "DELETED"
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+    }
+  register: delete_result
+  when: "'EXISTS' in ou_check.stdout"
+  failed_when: "'ERROR:' in delete_result.stdout"
+  changed_when: "'DELETED' in delete_result.stdout"
+
+- name: Display deletion result
+  debug:
+    msg: "{{ inventory_hostname }} - OU={{ top_level_ou_name }} {{ 'deleted' if (delete_result.changed | default(false)) else 'did not exist' }}"
