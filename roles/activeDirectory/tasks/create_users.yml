@@ -18,17 +18,32 @@
     themed_first_names: "{{ lookup('vars', netbios_name.lower() + '_first_names', default=default_first_names) }}"
     themed_last_names:  "{{ lookup('vars', netbios_name.lower() + '_last_names',  default=default_last_names) }}"
 
+- name: Prepare JSON literals to avoid inline Jinja in script
+  set_fact:
+    first_names_json: "{{ themed_first_names | to_json }}"
+    last_names_json: "{{ themed_last_names  | to_json }}"
+    user_count_value: "{{ populate_standard_users | default(50) }}"
+
 - name: Generate random users
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
 
-    # Safely inject name arrays from Ansible as JSON and cast to PowerShell arrays
-    $firstNames = @({{ themed_first_names | to_json }})
-    $lastNames  = @({{ themed_last_names  | to_json }})
+    # Receive JSON from Ansible (no inline Jinja in this block)
+    $firstJson = @'
+    {{ first_names_json }}
+    '@
+
+    $lastJson = @'
+    {{ last_names_json }}
+    '@
+
+    # Convert JSON to PowerShell arrays
+    $firstNames = $firstJson | ConvertFrom-Json
+    $lastNames  = $lastJson  | ConvertFrom-Json
 
     $ouPath = "{{ standard_users_ou }}"
     $domain = "{{ domain_name }}"
-    $userCount = {{ populate_standard_users | default(50) }}
+    $userCount = [int]"{{ user_count_value }}"
 
     $createdUsers = @()
     $existingCount = 0
@@ -44,7 +59,7 @@
         $existingCount++
         continue
       } catch {
-        # User doesn't exist, proceed to create
+        # proceed to create
       }
 
       $displayName = "$firstName $lastName"
