@@ -193,7 +193,7 @@
     - name: Populate group memberships
       include_role:
         name: activeDirectory
-        tasks_from: assign_membership.yml   # <-- ensure filename matches your repo
+        tasks_from: assign_memberships.yml   # <-- ensure filename matches your repo
       register: membership_result
 
     - name: Mark VM as changed if memberships were assigned
