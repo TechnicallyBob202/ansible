@@ -53,11 +53,11 @@
   failed_when: "'ERROR:' in gpo_check.stdout"
   changed_when: false
 
-- name: Create GPOs that don't exist
+- name: Create only missing GPOs
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     try {
-      $gpo = New-GPO -Name "{{ item.item.name }}" -Comment "{{ item.item.comment }}"
+      $null = New-GPO -Name "{{ item.item.name }}" -Comment "{{ item.item.comment }}"
       Write-Output "CREATED: {{ item.item.name }}"
     } catch {
       Write-Output "ERROR: $($_.Exception.Message)"
@@ -70,8 +70,8 @@
 
 - name: Count created and existing GPOs
   set_fact:
-    created_gpos: "{{ gpo_creation.results | selectattr('changed', 'equalto', true) | list | length }}"
-    existing_gpos: "{{ gpo_check.results | selectattr('stdout', 'search', 'EXISTS') | list | length }}"
+    created_gpos: "{{ gpo_creation.results | selectattr('changed', 'equalto', true) | list | length | default(0) }}"
+    existing_gpos: "{{ gpo_check.results | selectattr('stdout', 'search', 'EXISTS') | list | length | default(0) }}"
 
 - name: Display GPO creation summary
   debug:
@@ -79,17 +79,4 @@
       - "GPO Creation Summary for {{ domain_name }}:"
       - "  Created: {{ created_gpos }}"
       - "  Already existed: {{ existing_gpos }}"
-      - "  Total: {{ gpos_to_create | length }}"
-      - ""
-      - "GPOs created:"
-      - "  ✓ Password Policy - Weak"
-      - "  ✓ Desktop Lockdown"
-      - "  ✓ Software Deployment - Office"
-      - "  ✓ Printer Deployment"
-      - "  ✓ Mapped Drives"
-      - "  ✓ Firewall Rules"
-      - "  ✓ Windows Update Settings"
-      - "  ✓ Screen Saver Policy"
-      - "  ✓ Audit Policy"
-      - "  ✓ Orphaned GPO 1 (unlinked)"
-      - "  ✓ Orphaned GPO 2 (unlinked)"
+      - "  Total (tracked): {{ gpos_to_create | length }}"

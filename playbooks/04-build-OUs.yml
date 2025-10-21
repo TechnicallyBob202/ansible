@@ -2,15 +2,6 @@
 # =============================================================================
 # Stage 4: Build Organizational Unit (OU) Structure
 # =============================================================================
-# This playbook creates a comprehensive OU structure across all domains with:
-#   - Tiered OU hierarchy (Tier 0/1/2)
-#   - Domain-themed department OUs
-#   - User accounts (admins, service accounts, regular users)
-#   - Security and distribution groups
-#   - Computer objects
-#   - GPOs and GPO links
-#   - Intentional security issues for DSP demos
-# =============================================================================
 
 - name: Build OU Structure - Introduction
   hosts: localhost
@@ -28,11 +19,9 @@
           - "For EACH domain (arbor, alpine, mauna, rainier):"
           - "  • Delete existing OU structure (clean slate)"
           - "  • Create tiered OU hierarchy"
-          - "  • Generate 70+ themed user accounts"
-          - "  • Create 30 security/distribution groups"
-          - "  • Add 47 computer objects"
-          - "  • Create and link 11 GPOs"
-          - "  • Plant 7 security vulnerabilities (DSP demos)"
+          - "  • Create/link GPOs"
+          - "  • Generate users, groups, computers"
+          - "  • Assign memberships and security issues"
           - "  • Snapshot changed VMs"
           - ""
           - "Estimated time: 20-30 minutes"
@@ -86,7 +75,7 @@
         vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 4: Create GPOs
+# PHASE 4: Create GPOs (create only if missing)
 # =============================================================================
 - name: Create Group Policy Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -204,7 +193,7 @@
     - name: Populate group memberships
       include_role:
         name: activeDirectory
-        tasks_from: assign_memberships.yml
+        tasks_from: assign_membership.yml   # <-- ensure filename matches your repo
       register: membership_result
 
     - name: Mark VM as changed if memberships were assigned
@@ -235,20 +224,19 @@
 - name: Validate OU Structure and Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
+  serial: 0
   tasks:
     - name: Count created objects
       ansible.windows.win_shell: |
         $domain = "{{ domain_name }}"
         $dn = (Get-ADDomain -Identity $domain).DistinguishedName
-
         $stats = @{
-          OUs = (Get-ADOrganizationalUnit -Filter * -SearchBase $dn).Count
-          Users = (Get-ADUser -Filter * -SearchBase $dn).Count
-          Groups = (Get-ADGroup -Filter * -SearchBase $dn).Count
+          OUs       = (Get-ADOrganizationalUnit -Filter * -SearchBase $dn).Count
+          Users     = (Get-ADUser -Filter * -SearchBase $dn).Count
+          Groups    = (Get-ADGroup -Filter * -SearchBase $dn).Count
           Computers = (Get-ADComputer -Filter * -SearchBase $dn).Count
-          GPOs = (Get-GPO -All -Domain $domain).Count
+          GPOs      = (Get-GPO -All -Domain $domain).Count
         }
-
         $stats | ConvertTo-Json
       register: object_counts
       changed_when: false
@@ -279,8 +267,8 @@
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
-        apply:
-          delegate_to: localhost
+      apply:
+        delegate_to: localhost
       vars:
         snapshot_name: post-ou-build
       when: vm_changed | default(false)
