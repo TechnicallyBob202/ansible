@@ -1,0 +1,28 @@
+---
+# Create stale/inactive objects for realism
+
+- name: Mark computers as stale
+  ansible.windows.win_shell: |
+    $computers = Get-ADComputer -Filter * -SearchBase "OU=Computers,{{ domain_dn }}" |
+      Get-Random -Count {{ ((populate_computer_count * populate_stale_computer_percentage) / 100) | int }}
+
+    $count = 0
+    foreach ($computer in $computers) {
+      # Set last logon to >90 days ago
+      $staleDate = (Get-Date).AddDays(-120)
+      Set-ADComputer -Identity $computer -Replace @{lastLogonTimestamp = $staleDate.ToFileTime()}
+
+      # Disable some of them
+      if ((Get-Random -Minimum 1 -Maximum 100) -lt 50) {
+        Disable-ADAccount -Identity $computer
+      }
+      $count++
+    }
+
+    Write-Output "Marked $count computers as stale"
+  register: stale_computers
+  changed_when: true
+
+- name: Display stale object summary
+  debug:
+    msg: "{{ stale_computers.stdout | trim }}"

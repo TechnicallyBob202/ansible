@@ -1,0 +1,96 @@
+---
+# Active Directory Population Defaults
+# Controls realistic dummy data generation for demo environments
+
+# =============================================================================
+# Object Counts
+# =============================================================================
+populate_user_count: 85
+populate_group_count: 28
+populate_computer_count: 50
+populate_gpo_count: 12
+
+# =============================================================================
+# Realism Percentages (% of total objects)
+# =============================================================================
+populate_stale_user_percentage: 15        # Disabled/inactive users
+populate_stale_computer_percentage: 20    # Inactive computer accounts
+populate_service_account_percentage: 8    # Users that are service accounts
+populate_privileged_user_percentage: 5    # Users with elevated rights
+
+# =============================================================================
+# Security Issues (for DSP/Purple Knight demos)
+# =============================================================================
+populate_create_security_issues: yes
+
+# Kerberos attack vectors
+populate_kerberoasting_accounts: 2        # SPNs with weak passwords
+populate_asrep_roasting_accounts: 1       # No Kerberos pre-auth required
+
+# Delegation issues
+populate_excessive_delegation_accounts: 2  # Users with dangerous rights
+populate_unconstrained_delegation: 1       # Computer with unconstrained delegation
+
+# Password issues
+populate_password_never_expires: 3         # Accounts with non-expiring passwords
+populate_password_in_description: 2        # Passwords stored in description field
+populate_weak_passwords: 5                 # Easily crackable passwords
+
+# Group issues
+populate_orphaned_sid_count: 3             # Groups with deleted user SIDs
+populate_circular_nesting: 2               # Circular group memberships
+populate_excessive_group_membership: 2     # Groups with >500 members
+
+# AdminSDHolder pollution
+populate_adminsdholder_pollution: yes      # Add regular user to protected groups
+
+# RBCD attack vectors
+populate_rbcd_vulnerable_computers: 2      # msDS-AllowedToActOnBehalfOfOtherIdentity
+
+# =============================================================================
+# Admin Account Distribution
+# =============================================================================
+populate_tier0_admins: 3                   # Domain/Enterprise Admins
+populate_tier1_admins: 5                   # Server operators, Help desk
+populate_breakglass_accounts: 2            # Disabled emergency accounts
+
+# =============================================================================
+# Computer Types
+# =============================================================================
+populate_workstation_percentage: 70        # % workstations vs servers
+populate_windows10_percentage: 60          # % Win10 vs Win11 workstations
+populate_server_roles:                     # Simple list of server roles
+  - APP
+  - DB
+  - FILE
+  - PRINT
+  - WEB
+  - SQL
+
+# =============================================================================
+# Group Types
+# =============================================================================
+populate_security_group_percentage: 60     # Security vs Distribution groups
+populate_empty_groups: 3                   # Groups with no members
+
+# =============================================================================
+# GPO Settings
+# =============================================================================
+populate_create_gpos: yes
+populate_unlinked_gpos: 2                  # Orphaned GPOs
+populate_misconfigured_gpo: 1              # GPO with permission issues
+
+# =============================================================================
+# Naming Conventions
+# =============================================================================
+populate_user_format: "firstname.lastname"  # john.smith
+populate_service_account_prefix: "svc-"     # svc-sql, svc-iis
+populate_workstation_format: "{NETBIOS}-WS-{number:03d}"  # ARBOR-WS-001
+populate_server_format: "{NETBIOS}-SRV-{role}-{number:02d}"  # ALPINE-SRV-SQL-01
+
+# =============================================================================
+# Timeouts and Retries
+# =============================================================================
+populate_creation_delay: 1                 # Seconds between object creation
+populate_retry_count: 3
+populate_retry_delay: 10

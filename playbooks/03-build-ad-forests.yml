@@ -218,6 +218,61 @@
         vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
 
 # =============================================================================
+# PHASE 7.5: Populate Domains with Realistic Data
+# =============================================================================
+- name: Populate arbor.lab Forest
+  hosts: arbor_pdc
+  gather_facts: no
+  tasks:
+    - name: Populate arbor.lab with dummy data
+      include_role:
+        name: activeDirectory_populate
+      register: populate_result
+
+    - name: Mark VM as changed if data was populated
+      set_fact:
+        vm_changed: "{{ vm_changed or (populate_result.changed | default(false)) }}"
+
+- name: Populate alpine.lab Forest Root
+  hosts: alpine_pdc
+  gather_facts: no
+  tasks:
+    - name: Populate alpine.lab with dummy data
+      include_role:
+        name: activeDirectory_populate
+      register: populate_result
+
+    - name: Mark VM as changed if data was populated
+      set_fact:
+        vm_changed: "{{ vm_changed or (populate_result.changed | default(false)) }}"
+
+- name: Populate mauna.alpine.lab Child Domain
+  hosts: alpine_mauna_pdc
+  gather_facts: no
+  tasks:
+    - name: Populate mauna.alpine.lab with dummy data
+      include_role:
+        name: activeDirectory_populate
+      register: populate_result
+
+    - name: Mark VM as changed if data was populated
+      set_fact:
+        vm_changed: "{{ vm_changed or (populate_result.changed | default(false)) }}"
+
+- name: Populate rainier.alpine.lab Child Domain
+  hosts: alpine_rainier_pdc
+  gather_facts: no
+  tasks:
+    - name: Populate rainier.alpine.lab with dummy data
+      include_role:
+        name: activeDirectory_populate
+      register: populate_result
+
+    - name: Mark VM as changed if data was populated
+      set_fact:
+        vm_changed: "{{ vm_changed or (populate_result.changed | default(false)) }}"
+        
+# =============================================================================
 # PHASE 8: Create Service Accounts
 # =============================================================================
 - name: Create Service Accounts

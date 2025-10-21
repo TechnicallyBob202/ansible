@@ -1,0 +1,37 @@
+---
+# Create realistic Group Policy Objects
+
+- name: Create GPOs
+  ansible.windows.win_shell: |
+    $gpoNames = @(
+      "Password Policy - Weak",
+      "Desktop Lockdown",
+      "Software Deployment - Office",
+      "Printer Deployment",
+      "Mapped Drives",
+      "Screen Saver Policy",
+      "Windows Update Settings",
+      "Internet Explorer Settings",
+      "Firewall Rules",
+      "Audit Policy",
+      "User Rights Assignment",
+      "Orphaned GPO 1"
+    )
+
+    $created = 0
+    foreach ($gpoName in $gpoNames[0..{{ populate_gpo_count - 1 }}]) {
+      try {
+        Get-GPO -Name $gpoName -ErrorAction Stop | Out-Null
+      } catch {
+        New-GPO -Name $gpoName -Comment "Auto-generated GPO" | Out-Null
+        $created++
+      }
+    }
+
+    Write-Output "Created $created GPOs"
+  register: gpo_creation
+  changed_when: "'Created' in gpo_creation.stdout and not '0 GPOs' in gpo_creation.stdout"
+
+- name: Display GPO creation summary
+  debug:
+    msg: "{{ gpo_creation.stdout | trim }}"

@@ -1,0 +1,54 @@
+---
+# Main task file for activeDirectory_populate role
+# Routes to specific task files based on operation
+
+- name: Display population plan
+  debug:
+    msg:
+      - "Populating {{ domain_name }} with realistic data"
+      - "  Users: {{ populate_user_count }}"
+      - "  Groups: {{ populate_group_count }}"
+      - "  Computers: {{ populate_computer_count }}"
+      - "  Security issues: {{ 'Enabled' if populate_create_security_issues else 'Disabled' }}"
+
+- name: Load name data
+  include_vars:
+    dir: "{{ role_path }}/vars"
+
+- name: Create OUs (if not already created)
+  include_tasks: create_ous.yml
+
+- name: Create user accounts
+  include_tasks: create_users.yml
+
+- name: Create service accounts
+  include_tasks: create_service_accounts.yml
+
+- name: Create groups
+  include_tasks: create_groups.yml
+
+- name: Create computer objects
+  include_tasks: create_computers.yml
+
+- name: Populate group memberships
+  include_tasks: populate_groups.yml
+
+- name: Create stale/inactive objects
+  include_tasks: create_stale_objects.yml
+
+- name: Create security issues (for demos)
+  include_tasks: create_security_issues.yml
+  when: populate_create_security_issues
+
+- name: Create GPOs
+  include_tasks: create_gpos.yml
+  when: populate_create_gpos
+
+- name: Display completion summary
+  debug:
+    msg:
+      - "Domain population complete for {{ domain_name }}"
+      - "Created {{ populate_user_count }} users"
+      - "Created {{ populate_group_count }} groups"
+      - "Created {{ populate_computer_count }} computers"
+      - "Planted {{ 'security issues' if populate_create_security_issues else 'no security issues' }}"

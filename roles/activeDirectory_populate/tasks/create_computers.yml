@@ -1,0 +1,94 @@
+---
+# Create computer objects (workstations and servers)
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain DN fact
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+
+- name: Calculate computer distribution
+  set_fact:
+    workstation_count: "{{ ((populate_computer_count | int * populate_workstation_percentage | int) / 100) | int }}"
+
+- name: Calculate server count
+  set_fact:
+    server_count: "{{ (populate_computer_count | int - workstation_count | int) | int }}"
+
+- name: Initialize empty computer list
+  set_fact:
+    computers_to_create: []
+
+- name: Build workstation list
+  set_fact:
+    computers_to_create: "{{ computers_to_create + [computer_item] }}"
+  vars:
+    computer_item:
+      name: "{{ netbios_name }}-WS-{{ '%03d' | format(item) }}"
+      type: "workstation"
+      os: "{{ 'WIN10' if (item % 100) < 60 else 'WIN11' }}"
+      ou: "OU=Workstations,OU=Computers,{{ domain_dn }}"
+      enabled: true
+  loop: "{{ range(1, workstation_count | int + 1) | list }}"
+
+- name: Get server role count
+  set_fact:
+    server_role_count: "{{ populate_server_roles | length }}"
+
+- name: Build server list
+  set_fact:
+    computers_to_create: "{{ computers_to_create + [computer_item] }}"
+  vars:
+    role_index: "{{ item % (server_role_count | int) }}"
+    role_name: "{{ populate_server_roles[role_index | int] }}"
+    server_number: "{{ ((item / (server_role_count | int)) | int) + 1 }}"
+    computer_item:
+      name: "{{ netbios_name }}-SRV-{{ role_name }}-{{ '%02d' | format(server_number | int) }}"
+      type: "server"
+      role: "{{ role_name }}"
+      ou: "OU=Servers,OU=Computers,{{ domain_dn }}"
+      enabled: true
+  loop: "{{ range(0, server_count | int) | list }}"
+
+- name: Create computer objects
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    $computerName = "{{ item.name }}"
+    $ouPath = "{{ item.ou }}"
+    $enabled = ${{ item.enabled | string | lower }}
+
+    # Check if exists
+    try {
+      Get-ADComputer -Identity $computerName -ErrorAction Stop | Out-Null
+      Write-Output "EXISTS: $computerName"
+      exit 0
+    } catch {}
+
+    New-ADComputer -Name $computerName `
+      -SamAccountName "$computerName$" `
+      -Path $ouPath `
+      -Enabled $enabled `
+      -Description "Auto-generated {{ item.type }}"
+
+    Write-Output "CREATED: $computerName"
+  loop: "{{ computers_to_create }}"
+  register: computer_creation
+  changed_when: "'CREATED' in computer_creation.stdout"
+  failed_when: computer_creation.rc != 0 and 'EXISTS' not in computer_creation.stdout
+  throttle: 5
+
+- name: Count created computers
+  set_fact:
+    created_computer_count: "{{ computer_creation.results | selectattr('changed', 'equalto', true) | list | length }}"
+
+- name: Display computer creation summary
+  debug:
+    msg:
+      - "Created {{ created_computer_count }} computers"
+      - "  Workstations: {{ workstation_count }}"
+      - "  Servers: {{ server_count }}"

@@ -1,0 +1,114 @@
+---
+# Plant intentional security issues for DSP/Purple Knight demos
+
+- name: Create Kerberoasting targets
+  ansible.windows.win_shell: |
+    # Service accounts with SPNs already created
+    # Set weak passwords on some of them
+    $accounts = Get-ADUser -Filter {ServicePrincipalName -like "*"} -SearchBase "OU=Service Accounts,OU=Users,{{ domain_dn }}" |
+      Get-Random -Count {{ populate_kerberoasting_accounts }}
+
+    $weakPassword = ConvertTo-SecureString "Summer2024!" -AsPlainText -Force
+
+    foreach ($account in $accounts) {
+      Set-ADAccountPassword -Identity $account -NewPassword $weakPassword -Reset
+      Set-ADUser -Identity $account -PasswordNeverExpires $true
+    }
+
+    Write-Output "Created {{ populate_kerberoasting_accounts }} Kerberoasting targets"
+  register: kerberoasting_setup
+  changed_when: true
+
+- name: Create AS-REP Roasting targets
+  ansible.windows.win_shell: |
+    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
+      Get-Random -Count {{ populate_asrep_roasting_accounts }}
+
+    foreach ($user in $users) {
+      Set-ADAccountControl -Identity $user -DoesNotRequirePreAuth $true
+    }
+
+    Write-Output "Created {{ populate_asrep_roasting_accounts }} AS-REP Roasting targets"
+  register: asrep_setup
+  changed_when: true
+
+- name: Grant excessive delegation
+  ansible.windows.win_shell: |
+    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
+      Get-Random -Count {{ populate_excessive_delegation_accounts }}
+
+    $domainDN = (Get-ADDomain).DistinguishedName
+
+    foreach ($user in $users) {
+      # Grant "Replicating Directory Changes" (DCSync rights)
+      $acl = Get-Acl "AD:$domainDN"
+      $sid = [System.Security.Principal.SecurityIdentifier]$user.SID
+
+      $ace = New-Object System.DirectoryServices.ActiveDirectoryAccessRule(
+        $sid,
+        [System.DirectoryServices.ActiveDirectoryRights]::ExtendedRight,
+        [System.Security.AccessControl.AccessControlType]::Allow,
+        [System.Guid]"1131f6aa-9c07-11d1-f79f-00c04fc2dcd2"
+      )
+
+      $acl.AddAccessRule($ace)
+      Set-Acl -Path "AD:$domainDN" -AclObject $acl
+    }
+
+    Write-Output "Granted excessive delegation to {{ populate_excessive_delegation_accounts }} users"
+  register: delegation_setup
+  changed_when: true
+
+- name: Create passwords in description field
+  ansible.windows.win_shell: |
+    $users = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
+      Get-Random -Count {{ populate_password_in_description }}
+
+    foreach ($user in $users) {
+      Set-ADUser -Identity $user -Description "Password: Summer2024!"
+    }
+
+    Write-Output "Added passwords to {{ populate_password_in_description }} user descriptions"
+  register: password_desc_setup
+  changed_when: true
+
+- name: Pollute AdminSDHolder
+  ansible.windows.win_shell: |
+    # Add a regular user to Domain Admins temporarily (will be caught by DSP)
+    $user = Get-ADUser -Filter * -SearchBase "OU=Standard Users,OU=Users,{{ domain_dn }}" |
+      Get-Random -Count 1
+
+    Add-ADGroupMember -Identity "Domain Admins" -Members $user
+
+    Write-Output "Added $($user.SamAccountName) to Domain Admins (AdminSDHolder pollution)"
+  register: adminsdholder_setup
+  changed_when: true
+  when: populate_adminsdholder_pollution
+
+- name: Create RBCD vulnerable computers
+  ansible.windows.win_shell: |
+    $computers = Get-ADComputer -Filter * -SearchBase "OU=Workstations,OU=Computers,{{ domain_dn }}" |
+      Get-Random -Count {{ populate_rbcd_vulnerable_computers }}
+
+    # Get a service account SID to allow delegation
+    $svcAccount = Get-ADUser -Filter {SamAccountName -like "svc-*"} | Select-Object -First 1
+
+    foreach ($computer in $computers) {
+      $sid = $svcAccount.SID
+      Set-ADComputer -Identity $computer -PrincipalsAllowedToDelegateToAccount $svcAccount
+    }
+
+    Write-Output "Created {{ populate_rbcd_vulnerable_computers }} RBCD vulnerable computers"
+  register: rbcd_setup
+  changed_when: true
+
+- name: Display security issues summary
+  debug:
+    msg:
+      - "Security issues planted for demos:"
+      - "  {{ kerberoasting_setup.stdout | trim }}"
+      - "  {{ asrep_setup.stdout | trim }}"
+      - "  {{ delegation_setup.stdout | trim }}"
+      - "  {{ password_desc_setup.stdout | trim }}"
+      - "  {{ adminsdholder_setup.stdout | trim if populate_adminsdholder_pollution else 'AdminSDHolder: Skipped' }}"
+      - "  {{ rbcd_setup.stdout | trim }}"

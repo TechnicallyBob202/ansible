@@ -1,0 +1,62 @@
+---
+# Realistic group names by category
+group_names:
+  departments:
+    - Finance-Users
+    - Finance-Admins
+    - IT-Help-Desk
+    - IT-Server-Admins
+    - IT-Network-Admins
+    - HR-Users
+    - HR-Managers
+    - Sales-Users
+    - Sales-Managers
+    - Marketing-Users
+    - Engineering-Users
+    - Engineering-Leads
+    - Legal-Users
+    - Operations-Users
+    - Executive-Team
+    - Contractors
+    - Interns
+
+  access:
+    - VPN-Access
+    - Remote-Desktop-Users
+    - File-Share-Users
+    - Printer-Users
+    - WiFi-Users
+    - Building-Access
+    - Conference-Room-Access
+    - Lab-Access
+
+  applications:
+    - SharePoint-Users
+    - Exchange-Users
+    - CRM-Users
+    - ERP-Users
+    - Project-Management-Users
+    - BI-Dashboard-Users
+    - Database-Developers
+    - Web-Developers
+    - Azure-Users
+    - AWS-Users
+
+  distribution:
+    - All-Company
+    - All-IT
+    - All-Finance
+    - All-Sales
+    - All-Marketing
+    - All-Engineering
+    - Department-Heads
+    - Project-Leads
+    - Security-Alerts
+    - IT-Maintenance-Alerts
+
+  legacy:
+    - Old-VPN-Users
+    - Deprecated-App-Access
+    - Former-Contractors
+    - Test-Group-2019
+    - Migration-Group-Old
