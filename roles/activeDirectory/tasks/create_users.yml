@@ -87,12 +87,31 @@
 
     Write-Output "CREATED=$($createdUsers.Count);EXISTS=$existingCount"
   register: user_creation
-  changed_when: "'CREATED=' in user_creation.stdout and (user_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+  changed_when: >
+    {{
+      'CREATED=' in (user_creation.stdout | default('')) and
+      (
+        (user_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+        | split('=') | last | int
+      ) > 0
+    }}
 
 - name: Parse user creation results
   set_fact:
-    users_created: "{{ user_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
-    users_existing: "{{ user_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+    users_created: >
+      {{
+        (
+          (user_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+          | split('=') | last
+        )
+      }}
+    users_existing: >
+      {{
+        (
+          (user_creation.stdout | default('') | split(';') | select('search', '^EXISTS=') | list | first | default('EXISTS=0'))
+          | split('=') | last
+        )
+      }}
 
 - name: Display user creation summary
   debug:
