@@ -13,16 +13,19 @@
     top_level_ou_name: "{{ netbios_name }}"
     standard_users_ou: "OU=Standard Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
-- name: Define themed first names based on domain
+- name: Define themed first/last names based on domain
   set_fact:
     themed_first_names: "{{ lookup('vars', netbios_name.lower() + '_first_names', default=default_first_names) }}"
-    themed_last_names: "{{ lookup('vars', netbios_name.lower() + '_last_names', default=default_last_names) }}"
+    themed_last_names:  "{{ lookup('vars', netbios_name.lower() + '_last_names',  default=default_last_names) }}"
 
 - name: Generate random users
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-    $firstNames = @({{ themed_first_names | map('regex_replace', '^(.*)$', '"\1"') | join(', ') }})
-    $lastNames = @({{ themed_last_names | map('regex_replace', '^(.*)$', '"\1"') | join(', ') }})
+
+    # Safely inject name arrays from Ansible as JSON and cast to PowerShell arrays
+    $firstNames = @({{ themed_first_names | to_json }})
+    $lastNames  = @({{ themed_last_names  | to_json }})
+
     $ouPath = "{{ standard_users_ou }}"
     $domain = "{{ domain_name }}"
     $userCount = {{ populate_standard_users | default(50) }}
@@ -41,7 +44,7 @@
         $existingCount++
         continue
       } catch {
-        # User doesn't exist, create it
+        # User doesn't exist, proceed to create
       }
 
       $displayName = "$firstName $lastName"
