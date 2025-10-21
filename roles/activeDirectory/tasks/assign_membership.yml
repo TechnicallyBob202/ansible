@@ -1,0 +1,237 @@
+---
+# Assign users to groups to create realistic membership patterns
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+
+- name: Assign users to department security groups
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    # Get all standard users
+    $standardUsersOU = "OU=Standard Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $allUsers = Get-ADUser -Filter * -SearchBase $standardUsersOU
+
+    if ($allUsers.Count -eq 0) {
+      Write-Output "NO_USERS"
+      exit 0
+    }
+
+    # Define department groups and assign random users
+    $departments = @(
+      "Finance-Users",
+      "HR-Users",
+      "Sales-Users",
+      "Marketing-Users",
+      "Engineering-Users"
+    )
+
+    $assignedCount = 0
+    $usersPerDept = [math]::Floor($allUsers.Count / $departments.Count)
+
+    $userPool = $allUsers | Sort-Object {Get-Random}
+    $currentIndex = 0
+
+    foreach ($deptGroup in $departments) {
+      try {
+        $group = Get-ADGroup -Identity $deptGroup -ErrorAction Stop
+        $usersForThisGroup = $userPool[$currentIndex..($currentIndex + $usersPerDept - 1)]
+
+        foreach ($user in $usersForThisGroup) {
+          try {
+            Add-ADGroupMember -Identity $group -Members $user -ErrorAction SilentlyContinue
+            $assignedCount++
+          } catch {
+            # User might already be a member, ignore
+          }
+        }
+
+        $currentIndex += $usersPerDept
+      } catch {
+        Write-Warning "Could not assign to $deptGroup : $_"
+      }
+    }
+
+    Write-Output "ASSIGNED=$assignedCount"
+  register: department_assignments
+  changed_when: "'ASSIGNED=' in department_assignments.stdout and (department_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Assign privileged users to IT groups
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    # Get privileged users
+    $privUsersOU = "OU=Privileged Users,OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $privUsers = Get-ADUser -Filter * -SearchBase $privUsersOU
+
+    if ($privUsers.Count -eq 0) {
+      Write-Output "NO_USERS"
+      exit 0
+    }
+
+    $assignedCount = 0
+
+    # Add all privileged users to IT-Admins
+    try {
+      $itAdminsGroup = Get-ADGroup -Identity "IT-Admins"
+      foreach ($user in $privUsers) {
+        try {
+          Add-ADGroupMember -Identity $itAdminsGroup -Members $user -ErrorAction SilentlyContinue
+          $assignedCount++
+        } catch {
+          # Ignore if already member
+        }
+      }
+    } catch {
+      Write-Warning "Could not assign to IT-Admins"
+    }
+
+    # Randomly assign some to other IT groups
+    $itGroups = @("IT-HelpDesk", "IT-ServerAdmins", "Security-Team")
+    foreach ($group in $itGroups) {
+      try {
+        $groupObj = Get-ADGroup -Identity $group
+        $randomUsers = $privUsers | Get-Random -Count ([math]::Min(3, $privUsers.Count))
+
+        foreach ($user in $randomUsers) {
+          try {
+            Add-ADGroupMember -Identity $groupObj -Members $user -ErrorAction SilentlyContinue
+            $assignedCount++
+          } catch {
+            # Ignore if already member
+          }
+        }
+      } catch {
+        Write-Warning "Could not assign to $group"
+      }
+    }
+
+    Write-Output "ASSIGNED=$assignedCount"
+  register: privileged_assignments
+  changed_when: "'ASSIGNED=' in privileged_assignments.stdout and (privileged_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Assign administrators to admin groups
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    # Get admin accounts
+    $adminsOU = "OU=Administrators,OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $adminUsers = Get-ADUser -Filter * -SearchBase $adminsOU
+
+    if ($adminUsers.Count -eq 0) {
+      Write-Output "NO_USERS"
+      exit 0
+    }
+
+    $assignedCount = 0
+
+    # Add help desk admins to specific groups
+    $helpDeskUser = $adminUsers | Where-Object {$_.SamAccountName -like "*helpdesk*"} | Select-Object -First 1
+    if ($helpDeskUser) {
+      try {
+        Add-ADGroupMember -Identity "IT-HelpDesk" -Members $helpDeskUser -ErrorAction SilentlyContinue
+        $assignedCount++
+      } catch {}
+    }
+
+    # Add server admins
+    $serverAdminUser = $adminUsers | Where-Object {$_.SamAccountName -like "*server*"} | Select-Object -First 1
+    if ($serverAdminUser) {
+      try {
+        Add-ADGroupMember -Identity "IT-ServerAdmins" -Members $serverAdminUser -ErrorAction SilentlyContinue
+        $assignedCount++
+      } catch {}
+    }
+
+    # Add all admins to Privileged-Access universal group
+    try {
+      $privAccessGroup = Get-ADGroup -Identity "Privileged-Access"
+      foreach ($admin in $adminUsers) {
+        try {
+          Add-ADGroupMember -Identity $privAccessGroup -Members $admin -ErrorAction SilentlyContinue
+          $assignedCount++
+        } catch {}
+      }
+    } catch {
+      Write-Warning "Could not assign to Privileged-Access"
+    }
+
+    Write-Output "ASSIGNED=$assignedCount"
+  register: admin_assignments
+  changed_when: "'ASSIGNED=' in admin_assignments.stdout and (admin_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Assign random users to distribution groups
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    # Get all users
+    $topOU = "OU={{ top_level_ou_name }},{{ domain_dn }}"
+    $allUsers = Get-ADUser -Filter * -SearchBase $topOU
+
+    if ($allUsers.Count -eq 0) {
+      Write-Output "NO_USERS"
+      exit 0
+    }
+
+    $assignedCount = 0
+
+    # Assign everyone to All-Employees distribution group
+    try {
+      $allEmployeesGroup = Get-ADGroup -Identity "All-Employees"
+      foreach ($user in $allUsers) {
+        try {
+          Add-ADGroupMember -Identity $allEmployeesGroup -Members $user -ErrorAction SilentlyContinue
+          $assignedCount++
+        } catch {}
+      }
+    } catch {
+      Write-Warning "Could not assign to All-Employees"
+    }
+
+    # Randomly assign users to other distribution groups
+    $distGroups = @("Company-News", "Social-Events", "Training-Announcements")
+    foreach ($group in $distGroups) {
+      try {
+        $groupObj = Get-ADGroup -Identity $group
+        $randomCount = [math]::Floor($allUsers.Count * 0.3)  # 30% of users
+        $randomUsers = $allUsers | Get-Random -Count $randomCount
+
+        foreach ($user in $randomUsers) {
+          try {
+            Add-ADGroupMember -Identity $groupObj -Members $user -ErrorAction SilentlyContinue
+            $assignedCount++
+          } catch {}
+        }
+      } catch {
+        Write-Warning "Could not assign to $group"
+      }
+    }
+
+    Write-Output "ASSIGNED=$assignedCount"
+  register: distribution_assignments
+  changed_when: "'ASSIGNED=' in distribution_assignments.stdout and (distribution_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Parse assignment results
+  set_fact:
+    department_assigned: "{{ department_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | default('0') }}"
+    privileged_assigned: "{{ privileged_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | default('0') }}"
+    admin_assigned: "{{ admin_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | default('0') }}"
+    distribution_assigned: "{{ distribution_assignments.stdout | regex_search('ASSIGNED=([0-9]+)', '\\1') | first | default('0') }}"
+
+- name: Display membership assignment summary
+  debug:
+    msg:
+      - "Group memberships assigned for {{ domain_name }}:"
+      - "  Department groups: {{ department_assigned }} assignments"
+      - "  Privileged/IT groups: {{ privileged_assigned }} assignments"
+      - "  Admin groups: {{ admin_assigned }} assignments"
+      - "  Distribution groups: {{ distribution_assigned }} assignments"
+      - "  Total: {{ (department_assigned | int) + (privileged_assigned | int) + (admin_assigned | int) + (distribution_assigned | int) }} memberships"

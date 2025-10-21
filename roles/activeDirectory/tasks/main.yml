@@ -2,6 +2,10 @@
 # Main task file for activeDirectory role
 # Routes to specific task files based on operation
 
+# =============================================================================
+# Stage 03 Operations - DC Promotion and Forest Building
+# =============================================================================
+
 - name: Include domain status check tasks
   include_tasks: check_domain_status.yml
   when: ad_operation == 'check_domain_status'
@@ -38,6 +42,46 @@
   include_tasks: check_fsmo_roles.yml
   when: ad_operation == 'check_fsmo_roles'
 
+# =============================================================================
+# Stage 04 Operations - OU Structure and Domain Population
+# =============================================================================
+
+- name: Include OU structure deletion tasks
+  include_tasks: delete_ou_structure.yml
+  when: ad_operation == 'delete_ou_structure'
+
 - name: Include OU structure creation tasks
   include_tasks: create_ou_structure.yml
   when: ad_operation == 'create_ou_structure'
+
+- name: Include GPO creation tasks
+  include_tasks: create_gpos.yml
+  when: ad_operation == 'create_gpos'
+
+- name: Include GPO linking tasks
+  include_tasks: link_gpos.yml
+  when: ad_operation == 'link_gpos'
+
+- name: Include user creation tasks
+  include_tasks: create_users.yml
+  when: ad_operation == 'create_users'
+
+- name: Include group creation tasks
+  include_tasks: create_groups.yml
+  when: ad_operation == 'create_groups'
+
+- name: Include computer creation tasks
+  include_tasks: create_computers.yml
+  when: ad_operation == 'create_computers'
+
+- name: Include test account creation tasks
+  include_tasks: create_test_accounts.yml
+  when: ad_operation == 'create_test_accounts'
+
+- name: Include group membership assignment tasks
+  include_tasks: assign_memberships.yml
+  when: ad_operation == 'assign_memberships'
+
+- name: Include security issue creation tasks
+  include_tasks: create_security_issues.yml
+  when: ad_operation == 'create_security_issues'

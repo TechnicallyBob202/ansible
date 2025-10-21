@@ -1,101 +1,133 @@
 ---
-# Create standard OU structure for domain
+# Create complete nested OU structure
 
-- name: Get domain distinguished name
+- name: Get domain DN
   ansible.windows.win_shell: |
-    $domain = Get-ADDomain -Identity "{{ domain_name }}"
-    Write-Output $domain.DistinguishedName
+    (Get-ADDomain).DistinguishedName
   register: domain_dn_result
   changed_when: false
 
-- name: Set domain DN fact
+- name: Set domain facts
   set_fact:
     domain_dn: "{{ domain_dn_result.stdout | trim }}"
-
-- name: Set top-level OU name
-  set_fact:
-    top_level_ou: "{{ netbios_name }}"
+    top_level_ou_name: "{{ netbios_name }}"
 
 - name: Define OU structure
   set_fact:
     ou_structure:
-      - name: "{{ top_level_ou }}"
+      # Top-level OU
+      - name: "{{ top_level_ou_name }}"
         path: "{{ domain_dn }}"
-        description: "{{ domain_name }} Top-Level OU"
-        child_ous:
-          - name: "Users"
-            description: "Domain Users"
-          - name: "Groups"
-            description: "Domain Groups"
-          - name: "Administrators"
-            description: "Administrative Users"
-          - name: "ServiceAccounts"
-            description: "Service Account Users"
-          - name: "Servers"
-            description: "Server Computer Objects"
-          - name: "Computers"
-            description: "Workstation Computer Objects"
+        description: "Top-level OU for {{ domain_name }}"
+        protected: yes
 
-- name: Check if top-level OU exists
+      # First-level OUs
+      - name: "Users"
+        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "User accounts"
+        protected: yes
+
+      - name: "Groups"
+        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Security and distribution groups"
+        protected: yes
+
+      - name: "Computers"
+        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Computer accounts"
+        protected: yes
+
+      - name: "Service Accounts"
+        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Service accounts for applications and services"
+        protected: yes
+
+      - name: "Administrators"
+        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Administrative accounts"
+        protected: yes
+
+      # Users sub-OUs
+      - name: "Standard Users"
+        path: "OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Standard employee user accounts"
+        protected: yes
+
+      - name: "Privileged Users"
+        path: "OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Privileged user accounts (IT staff, managers)"
+        protected: yes
+
+      - name: "Disabled Users"
+        path: "OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Disabled user accounts"
+        protected: yes
+
+      # Groups sub-OUs
+      - name: "Security Groups"
+        path: "OU=Groups,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Security groups"
+        protected: yes
+
+      - name: "Distribution Groups"
+        path: "OU=Groups,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Distribution groups"
+        protected: yes
+
+      # Computers sub-OUs
+      - name: "Workstations"
+        path: "OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "End-user workstations"
+        protected: yes
+
+      - name: "Servers"
+        path: "OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Server computer accounts"
+        protected: yes
+
+      - name: "Disabled Computers"
+        path: "OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        description: "Disabled computer accounts"
+        protected: yes
+
+- name: Create OUs in order
   ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $ouName = "{{ item.name }}"
+    $ouPath = "{{ item.path }}"
+    $description = "{{ item.description }}"
+    $protected = [bool]::Parse("{{ item.protected }}")
+
     try {
-      Get-ADOrganizationalUnit -Identity "OU={{ top_level_ou }},{{ domain_dn }}" -ErrorAction Stop
+      $fullPath = "OU=$ouName,$ouPath"
+      Get-ADOrganizationalUnit -Identity $fullPath -ErrorAction Stop | Out-Null
       Write-Output "EXISTS"
-    } catch {
-      Write-Output "NOT_EXISTS"
+    } catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+      New-ADOrganizationalUnit -Name $ouName -Path $ouPath `
+        -Description $description `
+        -ProtectedFromAccidentalDeletion $protected `
+        -ErrorAction Stop | Out-Null
+      Write-Output "CREATED"
     }
-  register: top_ou_check
-  changed_when: false
+  loop: "{{ ou_structure }}"
+  register: ou_creation
+  changed_when: "'CREATED' in ou_creation.stdout"
 
-- name: Create top-level OU
-  ansible.windows.win_shell: |
-    New-ADOrganizationalUnit -Name "{{ top_level_ou }}" `
-      -Path "{{ domain_dn }}" `
-      -Description "{{ domain_name }} Top-Level OU" `
-      -ProtectedFromAccidentalDeletion $true
-  when: "'NOT_EXISTS' in top_ou_check.stdout"
-  register: top_ou_created
-
-- name: Check which child OUs exist
-  ansible.windows.win_shell: |
-    try {
-      Get-ADOrganizationalUnit -Identity "OU={{ item.name }},OU={{ top_level_ou }},{{ domain_dn }}" -ErrorAction Stop
-      Write-Output "EXISTS"
-    } catch {
-      Write-Output "NOT_EXISTS"
-    }
-  loop: "{{ ou_structure[0].child_ous }}"
-  register: child_ou_checks
-  changed_when: false
-
-- name: Create child OUs
-  ansible.windows.win_shell: |
-    New-ADOrganizationalUnit -Name "{{ item.item.name }}" `
-      -Path "OU={{ top_level_ou }},{{ domain_dn }}" `
-      -Description "{{ item.item.description }}" `
-      -ProtectedFromAccidentalDeletion $true
-  loop: "{{ child_ou_checks.results }}"
-  when: "'NOT_EXISTS' in item.stdout"
-  register: child_ous_created
-
-- name: Display OU creation results
+- name: Display OU creation summary
   debug:
     msg:
-      - "OU Structure for {{ domain_name }}:"
-      - "  Top-level OU: {{ 'Created' if top_ou_created.changed else 'Already exists' }} - OU={{ top_level_ou }},{{ domain_dn }}"
-      - "  Child OUs:"
-      - "{% for result in child_ou_checks.results %}    - {{ result.item.name }}: {{ 'Created' if result.stdout == 'NOT_EXISTS' else 'Already exists' }}{% endfor %}"
-
-- name: Save OU structure to localhost
-  copy:
-    content: |
-      Domain: {{ domain_name }}
-      NetBIOS: {{ netbios_name }}
-      Distinguished Name: {{ domain_dn }}
-
-      OU Structure:
-        OU={{ top_level_ou }},{{ domain_dn }}
-      {% for ou in ou_structure[0].child_ous %}    OU={{ ou.name }},OU={{ top_level_ou }},{{ domain_dn }}
-      {% endfor %}
-    dest: "/tmp/ou-structure-{{ domain_name | replace('.', '-') }}.txt"
-  delegate_to: localhost
+      - "OU Structure created for {{ domain_name }}:"
+      - "  ✓ OU={{ top_level_ou_name }},{{ domain_dn }}"
+      - "    ├── OU=Users"
+      - "    │   ├── OU=Standard Users"
+      - "    │   ├── OU=Privileged Users"
+      - "    │   └── OU=Disabled Users"
+      - "    ├── OU=Groups"
+      - "    │   ├── OU=Security Groups"
+      - "    │   └── OU=Distribution Groups"
+      - "    ├── OU=Computers"
+      - "    │   ├── OU=Workstations"
+      - "    │   ├── OU=Servers"
+      - "    │   └── OU=Disabled Computers"
+      - "    ├── OU=Service Accounts"
+      - "    └── OU=Administrators"

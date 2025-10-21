@@ -1,0 +1,85 @@
+---
+# Create standard user accounts with domain-themed names
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+    standard_users_ou: "OU=Standard Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+
+- name: Define themed first names based on domain
+  set_fact:
+    themed_first_names: "{{ lookup('vars', netbios_name.lower() + '_first_names', default=default_first_names) }}"
+    themed_last_names: "{{ lookup('vars', netbios_name.lower() + '_last_names', default=default_last_names) }}"
+
+- name: Generate random users
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $firstNames = @({{ themed_first_names | map('regex_replace', '^(.*)$', '"\1"') | join(', ') }})
+    $lastNames = @({{ themed_last_names | map('regex_replace', '^(.*)$', '"\1"') | join(', ') }})
+    $ouPath = "{{ standard_users_ou }}"
+    $domain = "{{ domain_name }}"
+    $userCount = {{ populate_standard_users | default(50) }}
+
+    $createdUsers = @()
+    $existingCount = 0
+
+    for ($i = 1; $i -le $userCount; $i++) {
+      $firstName = $firstNames | Get-Random
+      $lastName = $lastNames | Get-Random
+      $samAccountName = "$($firstName.Substring(0,1))$lastName".ToLower()
+
+      # Check if user already exists
+      try {
+        Get-ADUser -Identity $samAccountName -ErrorAction Stop | Out-Null
+        $existingCount++
+        continue
+      } catch {
+        # User doesn't exist, create it
+      }
+
+      $displayName = "$firstName $lastName"
+      $upn = "$samAccountName@$domain"
+      $password = ConvertTo-SecureString "Summer2024!" -AsPlainText -Force
+
+      try {
+        New-ADUser -Name $displayName `
+          -GivenName $firstName `
+          -Surname $lastName `
+          -SamAccountName $samAccountName `
+          -UserPrincipalName $upn `
+          -Path $ouPath `
+          -AccountPassword $password `
+          -Enabled $true `
+          -ChangePasswordAtLogon $false `
+          -PasswordNeverExpires $true `
+          -ErrorAction Stop
+
+        $createdUsers += $samAccountName
+      } catch {
+        Write-Warning "Failed to create $samAccountName : $_"
+      }
+    }
+
+    Write-Output "CREATED=$($createdUsers.Count);EXISTS=$existingCount"
+  register: user_creation
+  changed_when: "'CREATED=' in user_creation.stdout and (user_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Parse user creation results
+  set_fact:
+    users_created: "{{ user_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
+    users_existing: "{{ user_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+
+- name: Display user creation summary
+  debug:
+    msg:
+      - "Standard Users created in {{ domain_name }}:"
+      - "  Created: {{ users_created }}"
+      - "  Already existed: {{ users_existing }}"
+      - "  OU: {{ standard_users_ou }}"

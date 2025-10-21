@@ -42,51 +42,7 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 3: Configure DNS on All DCs (BEFORE any promotions)
-# =============================================================================
-- name: Configure DNS on All Domain Controllers
-  hosts: domain_controllers
-  gather_facts: no
-  serial: 0
-  tasks:
-    - name: Set DNS to point to DC IPs (uses group_vars)
-      include_role:
-        name: windows
-        tasks_from: set_dns.yml
-      register: dns_result
-
-    - name: Mark VM as changed if DNS was configured
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
-
-    - name: Display DNS configuration
-      debug:
-        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }} (changed={{ dns_result.changed | default(false) }})"
-
-# =============================================================================
-# PHASE 4: Configure DNS on Infrastructure and Recovery VMs
-# =============================================================================
-- name: Configure DNS on Infrastructure and Recovery VMs
-  hosts: infrastructure:recovery_vms
-  gather_facts: no
-  serial: 0
-  tasks:
-    - name: Set DNS to point to DCs (uses group_vars)
-      include_role:
-        name: windows
-        tasks_from: set_dns.yml
-      register: dns_result
-
-    - name: Mark VM as changed if DNS was configured
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
-
-    - name: Display DNS configuration
-      debug:
-        msg: "{{ inventory_hostname }} - DNS configured to {{ windows_dns_servers | join(', ') }} (changed={{ dns_result.changed | default(false) }})"
-
-# =============================================================================
-# PHASE 5: Promote Forest Root PDCs
+# PHASE 3: Promote Forest Root PDCs (serial: 1)
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: arbor_pdc:alpine_pdc
@@ -102,6 +58,7 @@
       include_role:
         name: activeDirectory
         tasks_from: promote_forest_root.yml
+      when: not is_domain_controller
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -112,6 +69,7 @@
       include_role:
         name: activeDirectory
         tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
 
     - name: Check FSMO roles
       include_role:
@@ -119,16 +77,22 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 6: Promote Forest Root Replica DCs
+# PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: arbor_replica:alpine_replica
   gather_facts: no
   tasks:
+    - name: Check domain status
+      include_role:
+        name: activeDirectory
+        tasks_from: check_domain_status.yml
+
     - name: Promote to replica DC
       include_role:
         name: activeDirectory
         tasks_from: promote_replica_dc.yml
+      when: not is_domain_controller
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -139,6 +103,7 @@
       include_role:
         name: activeDirectory
         tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
 
     - name: Verify replication
       include_role:
@@ -146,17 +111,23 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 7: Promote Child Domain PDCs
+# PHASE 5: Promote Child Domain PDCs (serial: 1)
 # =============================================================================
 - name: Promote Child Domain PDCs
   hosts: alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
   serial: 1
   tasks:
+    - name: Check domain status
+      include_role:
+        name: activeDirectory
+        tasks_from: check_domain_status.yml
+
     - name: Promote to child domain PDC
       include_role:
         name: activeDirectory
         tasks_from: promote_child_domain.yml
+      when: not is_domain_controller
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -167,6 +138,7 @@
       include_role:
         name: activeDirectory
         tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
 
     - name: Check FSMO roles
       include_role:
@@ -174,16 +146,22 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 8: Promote Child Domain Replica DCs
+# PHASE 6: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: alpine_mauna_replica:alpine_rainier_replica
   gather_facts: no
   tasks:
+    - name: Check domain status
+      include_role:
+        name: activeDirectory
+        tasks_from: check_domain_status.yml
+
     - name: Promote to replica DC
       include_role:
         name: activeDirectory
         tasks_from: promote_replica_dc.yml
+      when: not is_domain_controller
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -194,6 +172,7 @@
       include_role:
         name: activeDirectory
         tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
 
     - name: Verify replication
       include_role:
@@ -201,58 +180,7 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 9: Delete and Recreate OU Structure
-# =============================================================================
-- name: Delete and Recreate OU Structure
-  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
-  gather_facts: no
-  tasks:
-    - name: Rebuild OU structure (delete old, create new with nested sub-OUs)
-      include_role:
-        name: activeDirectory
-        tasks_from: create_ou_structure.yml
-      register: ou_result
-
-    - name: Mark VM as changed if OUs were rebuilt
-      set_fact:
-        vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
-
-# =============================================================================
-# PHASE 10: Link GPOs to OUs
-# =============================================================================
-- name: Link GPOs to OUs
-  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
-  gather_facts: no
-  tasks:
-    - name: Link existing GPOs to appropriate OUs
-      include_role:
-        name: activeDirectory
-        tasks_from: link_gpos.yml
-      register: gpo_result
-
-    - name: Mark VM as changed if GPOs were linked
-      set_fact:
-        vm_changed: "{{ vm_changed or (gpo_result.changed | default(false)) }}"
-
-# =============================================================================
-# PHASE 11: Create Service Accounts
-# =============================================================================
-- name: Create Service Accounts
-  hosts: arbor_pdc:alpine_pdc
-  gather_facts: no
-  tasks:
-    - name: Create ADFR and DSP service accounts in new Service Accounts OU
-      include_role:
-        name: activeDirectory
-        tasks_from: create_service_accounts.yml
-      register: accounts_result
-
-    - name: Mark VM as changed if accounts were created
-      set_fact:
-        vm_changed: "{{ vm_changed or (accounts_result.changed | default(false)) }}"
-
-# =============================================================================
-# PHASE 12: Final Validation
+# PHASE 7: Final Validation
 # =============================================================================
 - name: Final Validation
   hosts: domain_controllers
@@ -288,11 +216,6 @@
         cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
       changed_when: false
 
-    - name: Consolidate OU structures
-      shell: |
-        cat /tmp/ou-structure-*.txt > {{ playbook_dir }}/../files/ou-structures.txt 2>/dev/null || echo "# No OU structure files found"
-      changed_when: false
-
     - name: Display completion message
       debug:
         msg:
@@ -303,17 +226,12 @@
           - "  rainier.alpine.lab: 2 DCs"
           - "Total: 8 Domain Controllers"
           - ""
-          - "OU Structure rebuilt with nested sub-OUs"
-          - "GPOs linked to appropriate OUs"
-          - "Service accounts created in Service Accounts OU"
-          - ""
           - "Domain information saved to files/"
           - "  - domain-sids.txt"
           - "  - fsmo-roles.txt"
-          - "  - ou-structures.txt"
 
 # =============================================================================
-# PHASE 13: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
+# PHASE 8: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: all
@@ -322,7 +240,7 @@
   tasks:
     - name: Display snapshot plan
       debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot (changed={{ vm_changed | default(false) }})"
+        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot"
 
     - name: Take snapshot - only for changed VMs
       include_role:
@@ -335,7 +253,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 14: Final Summary
+# PHASE 9: Final Summary
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost
@@ -370,3 +288,5 @@
           - "  Total: {{ total_changed }}/{{ total_vms }} VMs snapshotted"
           - ""
           - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured and skipped"
+          - ""
+          - "Next: Run playbooks/04-build-OUs.yml to create OU structure and populate domains"

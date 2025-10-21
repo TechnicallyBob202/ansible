@@ -1,0 +1,99 @@
+---
+# Create computer accounts (workstations and servers)
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+    workstations_ou: "OU=Workstations,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+    servers_ou: "OU=Servers,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+
+- name: Create workstation computer accounts
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $ouPath = "{{ workstations_ou }}"
+    $count = {{ populate_workstations | default(35) }}
+    $createdCount = 0
+    $existingCount = 0
+
+    for ($i = 1; $i -le $count; $i++) {
+      $computerName = "WKS-{0:D3}" -f $i
+
+      try {
+        Get-ADComputer -Identity $computerName -ErrorAction Stop | Out-Null
+        $existingCount++
+      } catch {
+        New-ADComputer -Name $computerName `
+          -Path $ouPath `
+          -Enabled $true `
+          -Description "Workstation $i" `
+          -ErrorAction Stop | Out-Null
+        $createdCount++
+      }
+    }
+
+    Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
+  register: workstation_creation
+  changed_when: "'CREATED=' in workstation_creation.stdout and (workstation_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Create server computer accounts
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $ouPath = "{{ servers_ou }}"
+
+    $serverNames = @(
+      @{Name="SRV-SQL01"; Description="SQL Server Primary"},
+      @{Name="SRV-SQL02"; Description="SQL Server Replica"},
+      @{Name="SRV-FILE01"; Description="File Server"},
+      @{Name="SRV-PRINT01"; Description="Print Server"},
+      @{Name="SRV-WEB01"; Description="Web Server 1"},
+      @{Name="SRV-WEB02"; Description="Web Server 2"},
+      @{Name="SRV-APP01"; Description="Application Server 1"},
+      @{Name="SRV-APP02"; Description="Application Server 2"},
+      @{Name="SRV-DC-BKP"; Description="Backup Domain Controller"},
+      @{Name="SRV-DHCP01"; Description="DHCP Server"},
+      @{Name="SRV-WSUS01"; Description="WSUS Server"},
+      @{Name="SRV-EXCH01"; Description="Exchange Server"}
+    )
+
+    $createdCount = 0
+    $existingCount = 0
+
+    foreach ($server in $serverNames) {
+      try {
+        Get-ADComputer -Identity $server.Name -ErrorAction Stop | Out-Null
+        $existingCount++
+      } catch {
+        New-ADComputer -Name $server.Name `
+          -Path $ouPath `
+          -Enabled $true `
+          -Description $server.Description `
+          -ErrorAction Stop | Out-Null
+        $createdCount++
+      }
+    }
+
+    Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
+  register: server_creation
+  changed_when: "'CREATED=' in server_creation.stdout and (server_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first | int) > 0"
+
+- name: Parse computer creation results
+  set_fact:
+    workstations_created: "{{ workstation_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
+    workstations_existing: "{{ workstation_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+    servers_created: "{{ server_creation.stdout | regex_search('CREATED=([0-9]+)', '\\1') | first }}"
+    servers_existing: "{{ server_creation.stdout | regex_search('EXISTS=([0-9]+)', '\\1') | first }}"
+
+- name: Display computer creation summary
+  debug:
+    msg:
+      - "Computers created for {{ domain_name }}:"
+      - "  Workstations: {{ workstations_created }} created, {{ workstations_existing }} existed"
+      - "  Servers: {{ servers_created }} created, {{ servers_existing }} existed"
+      - "  Total: {{ (workstations_created | int) + (servers_created | int) }} new computers"
