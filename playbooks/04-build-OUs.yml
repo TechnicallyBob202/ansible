@@ -230,7 +230,8 @@
     - name: Disable and move objects
       include_role:
         name: activeDirectory
-        tasks_from: disable_objects.yml
+      vars:
+        ad_operation: disable_objects
       register: disable_result
 
     - name: Mark VM as changed if objects were disabled
