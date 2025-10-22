@@ -22,6 +22,7 @@
           - "  • Create/link GPOs"
           - "  • Generate users, groups, computers"
           - "  • Assign memberships and security issues"
+          - "  • Disable some users/computers"
           - "  • Snapshot changed VMs"
           - ""
           - "Estimated time: 20-30 minutes"
@@ -75,7 +76,7 @@
         vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 4: Create GPOs (create only if missing)
+# PHASE 4: Create GPOs
 # =============================================================================
 - name: Create Group Policy Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -111,9 +112,9 @@
         vm_changed: "{{ vm_changed or (link_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 6: Create User Accounts
+# PHASE 6: Create Users
 # =============================================================================
-- name: Create User Accounts
+- name: Create Standard Users
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
   gather_facts: no
   serial: 0
@@ -193,7 +194,7 @@
     - name: Populate group memberships
       include_role:
         name: activeDirectory
-        tasks_from: assign_memberships.yml   # <-- ensure filename matches your repo
+        tasks_from: assign_memberships.yml
       register: membership_result
 
     - name: Mark VM as changed if memberships were assigned
@@ -219,7 +220,25 @@
         vm_changed: "{{ vm_changed or (security_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 12: Validation
+# PHASE 12: Disable Some Objects (realistic environment)
+# =============================================================================
+- name: Disable Some Users and Computers
+  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Disable and move objects
+      include_role:
+        name: activeDirectory
+        tasks_from: disable_objects.yml
+      register: disable_result
+
+    - name: Mark VM as changed if objects were disabled
+      set_fact:
+        vm_changed: "{{ vm_changed or (disable_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 13: Validation
 # =============================================================================
 - name: Validate OU Structure and Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -252,7 +271,7 @@
           - "  GPOs: {{ (object_counts.stdout | from_json).GPOs }}"
 
 # =============================================================================
-# PHASE 13: Snapshot Changed VMs
+# PHASE 14: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot After OU Build
   hosts: all
@@ -274,7 +293,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 14: Final Summary
+# PHASE 15: Final Summary
 # =============================================================================
 - name: Build Summary
   hosts: localhost
@@ -295,11 +314,12 @@
           - "Snapshots Created: {{ changed_dcs }}/{{ total_dcs }} DCs"
           - ""
           - "Each domain now contains:"
-          - "  ✓ 15 Organizational Units"
+          - "  ✓ 14 Organizational Units"
           - "  ✓ 70+ User accounts (themed names)"
-          - "  ✓ 30 Security/Distribution groups"
+          - "  ✓ 50+ Security/Distribution groups"
           - "  ✓ 47 Computer objects"
           - "  ✓ 11 Group Policy Objects"
           - "  ✓ 7 Security vulnerabilities (DSP demos)"
+          - "  ✓ 5-10 Disabled users/computers"
           - ""
           - "Lab is ready for ADFR/DSP testing!"

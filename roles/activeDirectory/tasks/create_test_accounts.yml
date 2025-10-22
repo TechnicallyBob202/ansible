@@ -1,5 +1,5 @@
 ---
-# Create privileged users and service test accounts
+# Create privileged users with proper first/last names
 
 - name: Get domain DN
   ansible.windows.win_shell: |
@@ -22,35 +22,48 @@
     $password = ConvertTo-SecureString "Winter2024!" -AsPlainText -Force
 
     $privilegedUsers = @(
-      @{User="john.admin";      Name="John Admin";      Desc="IT Manager"},
-      @{User="sarah.manager";   Name="Sarah Manager";   Desc="Operations Manager"},
-      @{User="mike.itstaff";    Name="Mike ITStaff";    Desc="Senior IT Technician"},
-      @{User="lisa.support";    Name="Lisa Support";    Desc="IT Support Specialist"},
-      @{User="david.engineer";  Name="David Engineer";  Desc="Systems Engineer"},
-      @{User="amanda.lead";     Name="Amanda Lead";     Desc="Development Lead"},
-      @{User="robert.architect";Name="Robert Architect";Desc="Solutions Architect"},
-      @{User="jennifer.analyst";Name="Jennifer Analyst";Desc="Security Analyst"}
+      @{First="John";     Last="Mitchell";   Title="IT Manager";               Dept="IT"},
+      @{First="Sarah";    Last="Peterson";   Title="Security Lead";            Dept="Security"},
+      @{First="Michael";  Last="Anderson";   Title="Systems Administrator";    Dept="IT"},
+      @{First="Emily";    Last="Thompson";   Title="Network Administrator";    Dept="IT"},
+      @{First="David";    Last="Roberts";    Title="Database Administrator";   Dept="IT"},
+      @{First="Jessica";  Last="Martinez";   Title="Cloud Architect";          Dept="IT"},
+      @{First="Robert";   Last="Garcia";     Title="DevOps Lead";              Dept="Engineering"},
+      @{First="Ashley";   Last="Rodriguez";  Title="HR Manager";               Dept="HR"},
+      @{First="William";  Last="Campbell";   Title="Finance Director";         Dept="Finance"},
+      @{First="Jennifer"; Last="Turner";     Title="Sales Director";           Dept="Sales"},
+      @{First="James";    Last="Phillips";   Title="Marketing Director";       Dept="Marketing"},
+      @{First="Linda";    Last="Parker";     Title="Project Manager";          Dept="PMO"}
     )
 
     $createdCount = 0
     $existingCount = 0
 
-    foreach ($priv in $privilegedUsers) {
+    foreach ($user in $privilegedUsers) {
+      $samAccountName = "$($user.First.Substring(0,1))$($user.Last)".ToLower()
+
       try {
-        Get-ADUser -Identity $priv.User -ErrorAction Stop | Out-Null
+        Get-ADUser -Identity $samAccountName -ErrorAction Stop | Out-Null
         $existingCount++
       } catch {
-        $upn = "$($priv.User)@$domain"
-        New-ADUser -Name $priv.Name `
-          -SamAccountName $priv.User `
+        $displayName = "$($user.First) $($user.Last)"
+        $upn = "$samAccountName@$domain"
+
+        New-ADUser -Name $displayName `
+          -GivenName $user.First `
+          -Surname $user.Last `
+          -SamAccountName $samAccountName `
           -UserPrincipalName $upn `
           -Path $ouPath `
           -AccountPassword $password `
           -Enabled $true `
           -ChangePasswordAtLogon $false `
           -PasswordNeverExpires $true `
-          -Description $priv.Desc `
+          -Title $user.Title `
+          -Department $user.Dept `
+          -Description "Privileged User - $($user.Title)" `
           -ErrorAction Stop | Out-Null
+
         $createdCount++
       }
     }

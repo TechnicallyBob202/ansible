@@ -1,0 +1,157 @@
+---
+# Move some users and computers to Disabled OUs and disable them
+
+- name: Get domain DN
+  ansible.windows.win_shell: |
+    (Get-ADDomain).DistinguishedName
+  register: domain_dn_result
+  changed_when: false
+
+- name: Set domain facts
+  set_fact:
+    domain_dn: "{{ domain_dn_result.stdout | trim }}"
+    top_level_ou_name: "{{ netbios_name }}"
+    standard_users_ou: "OU=Standard Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+    disabled_users_ou: "OU=Disabled Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+    workstations_ou: "OU=Workstations,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+    servers_ou: "OU=Servers,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+    disabled_computers_ou: "OU=Disabled Computers,OU=Computers,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
+
+- name: Disable and move random users
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    $sourceOU = "{{ standard_users_ou }}"
+    $targetOU = "{{ disabled_users_ou }}"
+    $disableCount = {{ populate_disabled_users | default(5) | int }}
+
+    $allUsers = Get-ADUser -Filter * -SearchBase $sourceOU
+
+    if (-not $allUsers -or $allUsers.Count -eq 0) {
+      Write-Output "DISABLED=0"
+      exit 0
+    }
+
+    # Don't disable more than exist
+    if ($disableCount -gt $allUsers.Count) { $disableCount = $allUsers.Count }
+    if ($disableCount -le 0) { Write-Output "DISABLED=0"; exit 0 }
+
+    $usersToDisable = $allUsers | Get-Random -Count $disableCount
+    $disabledCount = 0
+
+    foreach ($user in $usersToDisable) {
+      try {
+        # Disable the account
+        Disable-ADAccount -Identity $user -ErrorAction Stop
+
+        # Move to Disabled OU
+        Move-ADObject -Identity $user.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
+
+        $disabledCount++
+      } catch {
+        Write-Warning "Failed to disable/move $($user.SamAccountName): $_"
+      }
+    }
+
+    Write-Output "DISABLED=$disabledCount"
+  register: users_disabled
+  changed_when: >
+    'DISABLED=' in (users_disabled.stdout | default('')) and
+    ((users_disabled.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
+
+- name: Disable and move random workstations
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    $sourceOU = "{{ workstations_ou }}"
+    $targetOU = "{{ disabled_computers_ou }}"
+    $disableCount = {{ populate_disabled_computers | default(3) | int }}
+
+    $allComputers = Get-ADComputer -Filter * -SearchBase $sourceOU
+
+    if (-not $allComputers -or $allComputers.Count -eq 0) {
+      Write-Output "DISABLED=0"
+      exit 0
+    }
+
+    if ($disableCount -gt $allComputers.Count) { $disableCount = $allComputers.Count }
+    if ($disableCount -le 0) { Write-Output "DISABLED=0"; exit 0 }
+
+    $computersToDisable = $allComputers | Get-Random -Count $disableCount
+    $disabledCount = 0
+
+    foreach ($computer in $computersToDisable) {
+      try {
+        # Disable the account
+        Disable-ADAccount -Identity $computer -ErrorAction Stop
+
+        # Move to Disabled OU
+        Move-ADObject -Identity $computer.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
+
+        $disabledCount++
+      } catch {
+        Write-Warning "Failed to disable/move $($computer.Name): $_"
+      }
+    }
+
+    Write-Output "DISABLED=$disabledCount"
+  register: workstations_disabled
+  changed_when: >
+    'DISABLED=' in (workstations_disabled.stdout | default('')) and
+    ((workstations_disabled.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
+
+- name: Disable and move random servers
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    $sourceOU = "{{ servers_ou }}"
+    $targetOU = "{{ disabled_computers_ou }}"
+    $disableCount = {{ populate_disabled_servers | default(2) | int }}
+
+    $allServers = Get-ADComputer -Filter * -SearchBase $sourceOU
+
+    if (-not $allServers -or $allServers.Count -eq 0) {
+      Write-Output "DISABLED=0"
+      exit 0
+    }
+
+    if ($disableCount -gt $allServers.Count) { $disableCount = $allServers.Count }
+    if ($disableCount -le 0) { Write-Output "DISABLED=0"; exit 0 }
+
+    $serversToDisable = $allServers | Get-Random -Count $disableCount
+    $disabledCount = 0
+
+    foreach ($server in $serversToDisable) {
+      try {
+        # Disable the account
+        Disable-ADAccount -Identity $server -ErrorAction Stop
+
+        # Move to Disabled OU
+        Move-ADObject -Identity $server.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
+
+        $disabledCount++
+      } catch {
+        Write-Warning "Failed to disable/move $($server.Name): $_"
+      }
+    }
+
+    Write-Output "DISABLED=$disabledCount"
+  register: servers_disabled
+  changed_when: >
+    'DISABLED=' in (servers_disabled.stdout | default('')) and
+    ((servers_disabled.stdout | default('') | regex_replace('[^0-9]', '') | int) > 0)
+
+- name: Parse disabled counts
+  set_fact:
+    users_disabled_count: "{{ (users_disabled.stdout | default('DISABLED=0') | regex_replace('[^0-9]', '')) | int }}"
+    workstations_disabled_count: "{{ (workstations_disabled.stdout | default('DISABLED=0') | regex_replace('[^0-9]', '')) | int }}"
+    servers_disabled_count: "{{ (servers_disabled.stdout | default('DISABLED=0') | regex_replace('[^0-9]', '')) | int }}"
+
+- name: Display disabled objects summary
+  debug:
+    msg:
+      - "Disabled objects for {{ domain_name }}:"
+      - "  Users: {{ users_disabled_count }}"
+      - "  Workstations: {{ workstations_disabled_count }}"
+      - "  Servers: {{ servers_disabled_count }}"
+      - "  Total: {{ users_disabled_count + workstations_disabled_count + servers_disabled_count }}"

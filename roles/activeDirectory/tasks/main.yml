@@ -85,3 +85,7 @@
 - name: Include security issue creation tasks
   include_tasks: create_security_issues.yml
   when: ad_operation == 'create_security_issues'
+
+- name: Include disable objects tasks
+  include_tasks: disable_objects.yml
+  when: ad_operation == 'disable_objects'
