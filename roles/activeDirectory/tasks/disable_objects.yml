@@ -20,7 +20,6 @@
 - name: Disable and move random users
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-
     $sourceOU = "{{ standard_users_ou }}"
     $targetOU = "{{ disabled_users_ou }}"
     $disableCount = {{ populate_disabled_users | default(5) | int }}
@@ -62,7 +61,6 @@
 - name: Disable and move random workstations
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-
     $sourceOU = "{{ workstations_ou }}"
     $targetOU = "{{ disabled_computers_ou }}"
     $disableCount = {{ populate_disabled_computers | default(3) | int }}
@@ -103,7 +101,6 @@
 - name: Disable and move random servers
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-
     $sourceOU = "{{ servers_ou }}"
     $targetOU = "{{ disabled_computers_ou }}"
     $disableCount = {{ populate_disabled_servers | default(2) | int }}
