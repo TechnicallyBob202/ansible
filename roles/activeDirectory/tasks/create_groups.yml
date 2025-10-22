@@ -1,5 +1,5 @@
 ---
-# Create security and distribution groups from group_names
+# Create security and distribution groups from ad_groups
 
 - name: Get domain DN
   ansible.windows.win_shell: |
@@ -14,62 +14,20 @@
     security_groups_ou: "OU=Security Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
     distribution_groups_ou: "OU=Distribution Groups,OU=Groups,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
-- name: Debug - Show group_names variable
-  debug:
-    var: group_names
-
-# Build security and distribution lists from group_names in role defaults
+# Build security and distribution lists from ad_groups in role defaults
 - name: Build security group list from categories
   set_fact:
     security_groups: >-
       {{
-        (group_names.departments | default([])) +
-        (group_names.access | default([])) +
-        (group_names.applications | default([])) +
-        (group_names.legacy | default([]))
+        (ad_groups.departments | default([])) +
+        (ad_groups.access | default([])) +
+        (ad_groups.applications | default([])) +
+        (ad_groups.legacy | default([]))
       }}
 
 - name: Build distribution group list from categories
   set_fact:
-    distribution_groups: "{{ group_names.distribution | default([]) }}"
-
-- name: Debug - Show security groups to create
-  debug:
-    msg: "Security groups ({{ security_groups | length }}): {{ security_groups | join(', ') }}"
-
-- name: Debug - Show distribution groups to create
-  debug:
-    msg: "Distribution groups ({{ distribution_groups | length }}): {{ distribution_groups | join(', ') }}"
-
-- name: Verify Security Groups OU exists
-  ansible.windows.win_shell: |
-    try {
-      Get-ADOrganizationalUnit -Identity "{{ security_groups_ou }}" -ErrorAction Stop | Out-Null
-      Write-Output "EXISTS"
-    } catch {
-      Write-Output "NOT_EXISTS: {{ security_groups_ou }}"
-    }
-  register: security_ou_check
-  changed_when: false
-
-- name: Debug - Security Groups OU check
-  debug:
-    var: security_ou_check.stdout
-
-- name: Verify Distribution Groups OU exists
-  ansible.windows.win_shell: |
-    try {
-      Get-ADOrganizationalUnit -Identity "{{ distribution_groups_ou }}" -ErrorAction Stop | Out-Null
-      Write-Output "EXISTS"
-    } catch {
-      Write-Output "NOT_EXISTS: {{ distribution_groups_ou }}"
-    }
-  register: distribution_ou_check
-  changed_when: false
-
-- name: Debug - Distribution Groups OU check
-  debug:
-    var: distribution_ou_check.stdout
+    distribution_groups: "{{ ad_groups.distribution | default([]) }}"
 
 # Create security groups
 - name: Create security groups
@@ -79,30 +37,19 @@
     $ouPath = "{{ security_groups_ou }}"
     try {
       Get-ADGroup -Identity $groupName -ErrorAction Stop | Out-Null
-      Write-Output "EXISTS: $groupName"
+      Write-Output "EXISTS"
     } catch {
-      try {
-        New-ADGroup -Name $groupName `
-          -GroupScope Global `
-          -GroupCategory Security `
-          -Description "$groupName" `
-          -Path $ouPath `
-          -ErrorAction Stop | Out-Null
-        Write-Output "CREATED: $groupName"
-      } catch {
-        Write-Output "ERROR: $groupName - $($_.Exception.Message)"
-      }
+      New-ADGroup -Name $groupName `
+        -GroupScope Global `
+        -GroupCategory Security `
+        -Description "$groupName" `
+        -Path $ouPath `
+        -ErrorAction Stop | Out-Null
+      Write-Output "CREATED"
     }
   loop: "{{ security_groups }}"
   register: security_group_creation
-  changed_when: "'CREATED:' in (security_group_creation.stdout | default(''))"
-
-- name: Debug - Security group creation results
-  debug:
-    msg: "{{ item.item }}: {{ item.stdout | trim }}"
-  loop: "{{ security_group_creation.results }}"
-  loop_control:
-    label: "{{ item.item }}"
+  changed_when: "'CREATED' in (security_group_creation.stdout | default(''))"
 
 # Create distribution groups
 - name: Create distribution groups
@@ -112,30 +59,19 @@
     $ouPath = "{{ distribution_groups_ou }}"
     try {
       Get-ADGroup -Identity $groupName -ErrorAction Stop | Out-Null
-      Write-Output "EXISTS: $groupName"
+      Write-Output "EXISTS"
     } catch {
-      try {
-        New-ADGroup -Name $groupName `
-          -GroupScope Universal `
-          -GroupCategory Distribution `
-          -Description "$groupName" `
-          -Path $ouPath `
-          -ErrorAction Stop | Out-Null
-        Write-Output "CREATED: $groupName"
-      } catch {
-        Write-Output "ERROR: $groupName - $($_.Exception.Message)"
-      }
+      New-ADGroup -Name $groupName `
+        -GroupScope Universal `
+        -GroupCategory Distribution `
+        -Description "$groupName" `
+        -Path $ouPath `
+        -ErrorAction Stop | Out-Null
+      Write-Output "CREATED"
     }
   loop: "{{ distribution_groups }}"
   register: distribution_group_creation
-  changed_when: "'CREATED:' in (distribution_group_creation.stdout | default(''))"
-
-- name: Debug - Distribution group creation results
-  debug:
-    msg: "{{ item.item }}: {{ item.stdout | trim }}"
-  loop: "{{ distribution_group_creation.results }}"
-  loop_control:
-    label: "{{ item.item }}"
+  changed_when: "'CREATED' in (distribution_group_creation.stdout | default(''))"
 
 - name: Count created groups
   set_fact:
