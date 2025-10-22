@@ -19,10 +19,10 @@
           - "For EACH domain (arbor, alpine, mauna, rainier):"
           - "  • Delete existing OU structure (clean slate)"
           - "  • Create tiered OU hierarchy"
-          - "  • Create/link GPOs"
           - "  • Generate users, groups, computers"
           - "  • Assign memberships and security issues"
           - "  • Disable some users/computers"
+          - "  • Create/link GPOs"
           - "  • Snapshot changed VMs"
           - ""
           - "Estimated time: 20-30 minutes"
@@ -76,43 +76,7 @@
         vm_changed: "{{ vm_changed or (ou_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 4: Create GPOs
-# =============================================================================
-- name: Create Group Policy Objects
-  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
-  gather_facts: no
-  serial: 0
-  tasks:
-    - name: Create GPOs
-      include_role:
-        name: activeDirectory
-        tasks_from: create_gpos.yml
-      register: gpo_result
-
-    - name: Mark VM as changed if GPOs were created
-      set_fact:
-        vm_changed: "{{ vm_changed or (gpo_result.changed | default(false)) }}"
-
-# =============================================================================
-# PHASE 5: Link GPOs to OUs
-# =============================================================================
-- name: Link GPOs to OUs
-  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
-  gather_facts: no
-  serial: 0
-  tasks:
-    - name: Link GPOs
-      include_role:
-        name: activeDirectory
-        tasks_from: link_gpos.yml
-      register: link_result
-
-    - name: Mark VM as changed if GPOs were linked
-      set_fact:
-        vm_changed: "{{ vm_changed or (link_result.changed | default(false)) }}"
-
-# =============================================================================
-# PHASE 6: Create Users
+# PHASE 4: Create Users
 # =============================================================================
 - name: Create Standard Users
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -130,7 +94,7 @@
         vm_changed: "{{ vm_changed or (user_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 7: Create Groups
+# PHASE 5: Create Groups
 # =============================================================================
 - name: Create Security and Distribution Groups
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -148,7 +112,7 @@
         vm_changed: "{{ vm_changed or (group_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 8: Create Computer Objects
+# PHASE 6: Create Computer Objects
 # =============================================================================
 - name: Create Computer Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -166,7 +130,7 @@
         vm_changed: "{{ vm_changed or (computer_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 9: Create Test Accounts (for attack simulations)
+# PHASE 7: Create Test Accounts (for attack simulations)
 # =============================================================================
 - name: Create Test Accounts
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -184,7 +148,7 @@
         vm_changed: "{{ vm_changed or (test_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 10: Assign Group Memberships
+# PHASE 8: Assign Group Memberships
 # =============================================================================
 - name: Assign Group Memberships
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -202,7 +166,7 @@
         vm_changed: "{{ vm_changed or (membership_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 11: Create Security Issues (for DSP demos)
+# PHASE 9: Create Security Issues (for DSP demos)
 # =============================================================================
 - name: Create Intentional Security Issues
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -220,7 +184,7 @@
         vm_changed: "{{ vm_changed or (security_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 12: Disable Some Objects (realistic environment)
+# PHASE 10: Disable Some Objects (realistic environment)
 # =============================================================================
 - name: Disable Some Users and Computers
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -237,6 +201,42 @@
     - name: Mark VM as changed if objects were disabled
       set_fact:
         vm_changed: "{{ vm_changed or (disable_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 11: Create GPOs (MOVED TO END)
+# =============================================================================
+- name: Create Group Policy Objects
+  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Create GPOs
+      include_role:
+        name: activeDirectory
+        tasks_from: create_gpos.yml
+      register: gpo_result
+
+    - name: Mark VM as changed if GPOs were created
+      set_fact:
+        vm_changed: "{{ vm_changed or (gpo_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 12: Link GPOs to OUs
+# =============================================================================
+- name: Link GPOs to OUs
+  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Link GPOs
+      include_role:
+        name: activeDirectory
+        tasks_from: link_gpos.yml
+      register: link_result
+
+    - name: Mark VM as changed if GPOs were linked
+      set_fact:
+        vm_changed: "{{ vm_changed or (link_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 13: Validation

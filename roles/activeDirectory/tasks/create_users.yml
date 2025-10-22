@@ -88,13 +88,11 @@
     Write-Output "CREATED=$($createdUsers.Count);EXISTS=$existingCount"
   register: user_creation
   changed_when: >
-    {{
-      'CREATED=' in (user_creation.stdout | default('')) and
-      (
-        (user_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
+    'CREATED=' in (user_creation.stdout | default('')) and
+    (
+      (user_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+      | split('=') | last | int
+    ) > 0
 
 - name: Parse user creation results
   set_fact:

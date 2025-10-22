@@ -60,13 +60,11 @@
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: workstation_creation
   changed_when: >
-    {{
-      'CREATED=' in (workstation_creation.stdout | default('')) and
-      (
-        (workstation_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
+    'CREATED=' in (workstation_creation.stdout | default('')) and
+    (
+      (workstation_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+      | split('=') | last | int
+    ) > 0
 
 # Servers (derive names from role list)
 - name: Create server computer accounts
@@ -107,13 +105,11 @@
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: server_creation
   changed_when: >
-    {{
-      'CREATED=' in (server_creation.stdout | default('')) and
-      (
-        (server_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
+    'CREATED=' in (server_creation.stdout | default('')) and
+    (
+      (server_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+      | split('=') | last | int
+    ) > 0
 
 - name: Parse computer creation results
   set_fact:
