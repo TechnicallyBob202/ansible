@@ -42,11 +42,6 @@
         description: "Service accounts for applications and services"
         protected: yes
 
-      - name: "Administrators"
-        path: "OU={{ top_level_ou_name }},{{ domain_dn }}"
-        description: "Administrative accounts"
-        protected: yes
-
       # Users sub-OUs
       - name: "Standard Users"
         path: "OU=Users,OU={{ top_level_ou_name }},{{ domain_dn }}"
@@ -129,5 +124,4 @@
       - "    │   ├── OU=Workstations"
       - "    │   ├── OU=Servers"
       - "    │   └── OU=Disabled Computers"
-      - "    ├── OU=Service Accounts"
-      - "    └── OU=Administrators"
+      - "    └── OU=Service Accounts"

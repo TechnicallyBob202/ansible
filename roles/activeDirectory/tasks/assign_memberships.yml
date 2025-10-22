@@ -91,21 +91,8 @@
 
     $assignedCount = 0
 
-    # Add all privileged users to IT-Admins if it exists
-    try {
-      $itAdminsGroup = Get-ADGroup -Identity "IT-Admins" -ErrorAction Stop
-      foreach ($user in $privUsers) {
-        try {
-          Add-ADGroupMember -Identity $itAdminsGroup -Members $user -ErrorAction SilentlyContinue
-          $assignedCount++
-        } catch {}
-      }
-    } catch {
-      Write-Warning "Could not assign to IT-Admins"
-    }
-
-    # Randomly assign some to other IT groups (clamped)
-    $itGroups = @("IT-HelpDesk", "IT-ServerAdmins", "Security-Team")
+    # Randomly assign some to IT groups (clamped)
+    $itGroups = @("IT-Help-Desk", "IT-Server-Admins", "IT-Network-Admins")
     foreach ($group in $itGroups) {
       try {
         $groupObj = Get-ADGroup -Identity $group -ErrorAction Stop
@@ -131,52 +118,7 @@
       (privileged_assignments.stdout | default('') | split('=') | last | int) > 0
     )
 
-# 3) Admin accounts to admin groups and Privileged-Access
-- name: Assign administrators to admin groups
-  ansible.windows.win_shell: |
-    $ErrorActionPreference = "Stop"
-
-    $adminsOU = "OU=Administrators,OU={{ top_level_ou_name }},{{ domain_dn }}"
-    $adminUsers = Get-ADUser -Filter * -SearchBase $adminsOU
-
-    if (-not $adminUsers -or $adminUsers.Count -eq 0) {
-      Write-Output "NO_USERS"
-      exit 0
-    }
-
-    $assignedCount = 0
-
-    # Add one helpdesk admin if present
-    $helpDeskUser = $adminUsers | Where-Object {$_.SamAccountName -like "*helpdesk*"} | Select-Object -First 1
-    if ($helpDeskUser) {
-      try { Add-ADGroupMember -Identity "IT-HelpDesk" -Members $helpDeskUser -ErrorAction SilentlyContinue; $assignedCount++ } catch {}
-    }
-
-    # Add one server admin if present
-    $serverAdminUser = $adminUsers | Where-Object {$_.SamAccountName -like "*server*"} | Select-Object -First 1
-    if ($serverAdminUser) {
-      try { Add-ADGroupMember -Identity "IT-ServerAdmins" -Members $serverAdminUser -ErrorAction SilentlyContinue; $assignedCount++ } catch {}
-    }
-
-    # Add all admins to Privileged-Access if it exists
-    try {
-      $privAccessGroup = Get-ADGroup -Identity "Privileged-Access" -ErrorAction Stop
-      foreach ($admin in $adminUsers) {
-        try { Add-ADGroupMember -Identity $privAccessGroup -Members $admin -ErrorAction SilentlyContinue; $assignedCount++ } catch {}
-      }
-    } catch {
-      Write-Warning "Could not assign to Privileged-Access"
-    }
-
-    Write-Output "ASSIGNED=$assignedCount"
-  register: admin_assignments
-  changed_when: >
-    'ASSIGNED=' in (admin_assignments.stdout | default('')) and
-    (
-      (admin_assignments.stdout | default('') | split('=') | last | int) > 0
-    )
-
-# 4) Distribution groups across all users under the top OU
+# 3) Distribution groups across all users under the top OU
 - name: Assign random users to distribution groups
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
@@ -191,18 +133,18 @@
 
     $assignedCount = 0
 
-    # Assign everyone to All-Employees if present
+    # Assign everyone to All-Company if present
     try {
-      $allEmployeesGroup = Get-ADGroup -Identity "All-Employees" -ErrorAction Stop
+      $allCompanyGroup = Get-ADGroup -Identity "All-Company" -ErrorAction Stop
       foreach ($user in $allUsers) {
-        try { Add-ADGroupMember -Identity $allEmployeesGroup -Members $user -ErrorAction SilentlyContinue; $assignedCount++ } catch {}
+        try { Add-ADGroupMember -Identity $allCompanyGroup -Members $user -ErrorAction SilentlyContinue; $assignedCount++ } catch {}
       }
     } catch {
-      Write-Warning "Could not assign to All-Employees"
+      Write-Warning "Could not assign to All-Company"
     }
 
-    # Assign ~30% of users to these groups if present
-    $distGroups = @("Company-News", "Social-Events", "Training-Announcements")
+    # Assign ~30% of users to other distribution groups if present
+    $distGroups = @("All-IT", "All-Finance", "All-Sales")
     foreach ($group in $distGroups) {
       try {
         $groupObj = Get-ADGroup -Identity $group -ErrorAction Stop
@@ -230,7 +172,6 @@
   set_fact:
     department_assigned: "{{ (department_assignments.stdout | default('ASSIGNED=0') | split('=') | last) }}"
     privileged_assigned: "{{ (privileged_assignments.stdout | default('ASSIGNED=0') | split('=') | last) }}"
-    admin_assigned: "{{ (admin_assignments.stdout | default('ASSIGNED=0') | split('=') | last) }}"
     distribution_assigned: "{{ (distribution_assignments.stdout | default('ASSIGNED=0') | split('=') | last) }}"
 
 - name: Display membership assignment summary
@@ -239,6 +180,5 @@
       - "Group memberships assigned for {{ domain_name }}:"
       - "  Department groups: {{ department_assigned }} assignments"
       - "  Privileged/IT groups: {{ privileged_assigned }} assignments"
-      - "  Admin groups: {{ admin_assigned }} assignments"
       - "  Distribution groups: {{ distribution_assigned }} assignments"
-      - "  Total: {{ (department_assigned | int) + (privileged_assigned | int) + (admin_assigned | int) + (distribution_assigned | int) }} memberships"
+      - "  Total: {{ (department_assigned | int) + (privileged_assigned | int) + (distribution_assigned | int) }} memberships"

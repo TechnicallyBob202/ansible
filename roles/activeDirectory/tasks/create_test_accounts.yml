@@ -1,5 +1,5 @@
 ---
-# Create privileged users and administrator accounts
+# Create privileged users and service test accounts
 
 - name: Get domain DN
   ansible.windows.win_shell: |
@@ -12,7 +12,6 @@
     domain_dn: "{{ domain_dn_result.stdout | trim }}"
     top_level_ou_name: "{{ netbios_name }}"
     privileged_users_ou: "OU=Privileged Users,OU=Users,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
-    administrators_ou: "OU=Administrators,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
     service_accounts_ou: "OU=Service Accounts,OU={{ netbios_name }},{{ domain_dn_result.stdout | trim }}"
 
 - name: Create privileged users (IT staff, managers)
@@ -23,48 +22,35 @@
     $password = ConvertTo-SecureString "Winter2024!" -AsPlainText -Force
 
     $privilegedUsers = @(
-      @{First="John";     Last="ITManager";    Title="IT Manager";               Dept="IT"},
-      @{First="Sarah";    Last="SecurityLead"; Title="Security Lead";            Dept="Security"},
-      @{First="Michael";  Last="SysAdmin";     Title="Systems Administrator";    Dept="IT"},
-      @{First="Emily";    Last="NetAdmin";     Title="Network Administrator";    Dept="IT"},
-      @{First="David";    Last="DBAdmin";      Title="Database Administrator";   Dept="IT"},
-      @{First="Jessica";  Last="CloudArch";    Title="Cloud Architect";          Dept="IT"},
-      @{First="Robert";   Last="DevOpsLead";   Title="DevOps Lead";              Dept="Engineering"},
-      @{First="Ashley";   Last="HRManager";    Title="HR Manager";               Dept="HR"},
-      @{First="William";  Last="FinanceDir";   Title="Finance Director";         Dept="Finance"},
-      @{First="Jennifer"; Last="SalesDir";     Title="Sales Director";           Dept="Sales"},
-      @{First="James";    Last="MarketingDir"; Title="Marketing Director";       Dept="Marketing"},
-      @{First="Linda";    Last="ProjectMgr";   Title="Project Manager";          Dept="PMO"}
+      @{User="john.admin";      Name="John Admin";      Desc="IT Manager"},
+      @{User="sarah.manager";   Name="Sarah Manager";   Desc="Operations Manager"},
+      @{User="mike.itstaff";    Name="Mike ITStaff";    Desc="Senior IT Technician"},
+      @{User="lisa.support";    Name="Lisa Support";    Desc="IT Support Specialist"},
+      @{User="david.engineer";  Name="David Engineer";  Desc="Systems Engineer"},
+      @{User="amanda.lead";     Name="Amanda Lead";     Desc="Development Lead"},
+      @{User="robert.architect";Name="Robert Architect";Desc="Solutions Architect"},
+      @{User="jennifer.analyst";Name="Jennifer Analyst";Desc="Security Analyst"}
     )
 
     $createdCount = 0
     $existingCount = 0
 
-    foreach ($user in $privilegedUsers) {
-      $samAccountName = "$($user.First.Substring(0,1))$($user.Last)".ToLower()
-
+    foreach ($priv in $privilegedUsers) {
       try {
-        Get-ADUser -Identity $samAccountName -ErrorAction Stop | Out-Null
+        Get-ADUser -Identity $priv.User -ErrorAction Stop | Out-Null
         $existingCount++
       } catch {
-        $displayName = "$($user.First) $($user.Last)"
-        $upn = "$samAccountName@$domain"
-
-        New-ADUser -Name $displayName `
-          -GivenName $user.First `
-          -Surname $user.Last `
-          -SamAccountName $samAccountName `
+        $upn = "$($priv.User)@$domain"
+        New-ADUser -Name $priv.Name `
+          -SamAccountName $priv.User `
           -UserPrincipalName $upn `
           -Path $ouPath `
           -AccountPassword $password `
           -Enabled $true `
           -ChangePasswordAtLogon $false `
           -PasswordNeverExpires $true `
-          -Title $user.Title `
-          -Department $user.Dept `
-          -Description "Privileged User - $($user.Title)" `
+          -Description $priv.Desc `
           -ErrorAction Stop | Out-Null
-
         $createdCount++
       }
     }
@@ -80,59 +66,7 @@
       ) > 0
     }}
 
-- name: Create administrator accounts
-  ansible.windows.win_shell: |
-    $ErrorActionPreference = "Stop"
-    $ouPath = "{{ administrators_ou }}"
-    $domain = "{{ domain_name }}"
-    $password = ConvertTo-SecureString "Admin2024!" -AsPlainText -Force
-
-    $adminUsers = @(
-      @{User="admin.helpdesk";  Name="Help Desk Admin";   Desc="Help Desk Administrator"},
-      @{User="admin.server";    Name="Server Admin";      Desc="Server Administrator"},
-      @{User="admin.network";   Name="Network Admin";     Desc="Network Administrator"},
-      @{User="admin.security";  Name="Security Admin";    Desc="Security Administrator"},
-      @{User="admin.backup";    Name="Backup Admin";      Desc="Backup Administrator"},
-      @{User="admin.sql";       Name="SQL Admin";         Desc="SQL Server Administrator"},
-      @{User="admin.exchange";  Name="Exchange Admin";    Desc="Exchange Administrator"},
-      @{User="admin.test";      Name="Test Admin";        Desc="Testing Administrator"}
-    )
-
-    $createdCount = 0
-    $existingCount = 0
-
-    foreach ($admin in $adminUsers) {
-      try {
-        Get-ADUser -Identity $admin.User -ErrorAction Stop | Out-Null
-        $existingCount++
-      } catch {
-        $upn = "$($admin.User)@$domain"
-        New-ADUser -Name $admin.Name `
-          -SamAccountName $admin.User `
-          -UserPrincipalName $upn `
-          -Path $ouPath `
-          -AccountPassword $password `
-          -Enabled $true `
-          -ChangePasswordAtLogon $false `
-          -PasswordNeverExpires $true `
-          -Description $admin.Desc `
-          -ErrorAction Stop | Out-Null
-        $createdCount++
-      }
-    }
-
-    Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
-  register: admin_creation
-  changed_when: >
-    {{
-      'CREATED=' in (admin_creation.stdout | default('')) and
-      (
-        (admin_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
-
-- name: Create additional service accounts
+- name: Create additional service accounts for testing
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     $ouPath = "{{ service_accounts_ou }}"
@@ -198,20 +132,6 @@
           | split('=') | last
         )
       }}
-    admin_created: >
-      {{
-        (
-          (admin_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-          | split('=') | last
-        )
-      }}
-    admin_existing: >
-      {{
-        (
-          (admin_creation.stdout | default('') | split(';') | select('search', '^EXISTS=') | list | first | default('EXISTS=0'))
-          | split('=') | last
-        )
-      }}
     service_created: >
       {{
         (
@@ -231,7 +151,6 @@
   debug:
     msg:
       - "Test accounts created for {{ domain_name }}:"
-      - "  Privileged Users: {{ privileged_created }} created, {{ privileged_existing }} existed"
-      - "  Administrators: {{ admin_created }} created, {{ admin_existing }} existed"
-      - "  Service Accounts: {{ service_created }} created, {{ service_existing }} existed"
-      - "  Total: {{ (privileged_created | int) + (admin_created | int) + (service_created | int) }} new accounts"
+      - "  Privileged Users: {{ privileged_created }} created, {{ privileged_existing }} already existed"
+      - "  Service Accounts: {{ service_created }} created, {{ service_existing }} already existed"
+      - "  Total new accounts: {{ (privileged_created | int) + (service_created | int) }}"

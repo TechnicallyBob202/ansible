@@ -17,19 +17,6 @@ ad_reboot_timeout: 900
 ad_replication_check_retries: 5
 ad_replication_check_delay: 20
 
-# Service accounts (to be created post-deployment)
-ad_service_accounts:
-  - name: svc-adfr
-    description: "ADFR Agent Service Account"
-    groups:
-      - Domain Admins
-      - Enterprise Admins
-  - name: svc-dsp
-    description: "DSP Monitoring Service Account"
-    groups:
-      - Domain Admins
-      - Enterprise Admins
-
 # Feature names (ensure GroupPolicy tools present for GPO tasks)
 ad_features:
   - AD-Domain-Services
@@ -101,44 +88,42 @@ firstnames:
   - Jason
   - Sharon
   - Jeffrey
-  - Laura
-  - Ryan
   - Cynthia
-  - Jacob
+  - Ryan
   - Kathleen
-  - Gary
+  - Jacob
   - Amy
-  - Nicholas
+  - Gary
   - Shirley
-  - Eric
+  - Nicholas
   - Angela
-  - Jonathan
+  - Eric
   - Helen
-  - Stephen
+  - Jonathan
   - Anna
-  - Larry
+  - Stephen
   - Brenda
-  - Justin
+  - Larry
   - Pamela
-  - Scott
+  - Justin
   - Nicole
-  - Brandon
+  - Scott
   - Emma
-  - Benjamin
+  - Brandon
   - Samantha
-  - Samuel
+  - Benjamin
   - Katherine
-  - Raymond
+  - Samuel
   - Christine
-  - Gregory
+  - Raymond
   - Debra
-  - Frank
+  - Gregory
   - Rachel
   - Alexander
   - Catherine
   - Patrick
   - Carolyn
-  - Raymond
+  - Frank
   - Janet
   - Jack
   - Ruth
@@ -179,69 +164,73 @@ firstnames:
   - Christian
   - Hannah
   - Roger
-  - Jacqueline
-  - Noah
   - Martha
+  - Noah
+  - Jacqueline
   - Gerald
-  - Gloria
+  - Frances
   - Carl
-  - Teresa
+  - Gloria
   - Terry
   - Ann
   - Sean
-  - Sara
+  - Teresa
   - Austin
-  - Madison
-  - Arthur
-  - Frances
-  - Lawrence
   - Kathryn
-  - Jesse
+  - Arthur
+  - Sara
+  - Lawrence
   - Janice
-  - Dylan
+  - Jesse
   - Jean
-  - Bryan
+  - Dylan
   - Alice
+  - Bryan
+  - Madison
   - Joe
-  - Abigail
-  - Jordan
-  - Sophia
-  - Billy
-  - Judy
-  - Bruce
-  - Grace
-  - Albert
-  - Denise
-  - Willie
-  - Amber
-  - Gabriel
   - Doris
+  - Jordan
+  - Abigail
+  - Billy
+  - Julia
+  - Bruce
+  - Judy
+  - Albert
+  - Grace
+  - Willie
+  - Denise
+  - Gabriel
+  - Amber
   - Logan
-  - Marilyn
+  - Doreen
   - Alan
-  - Danielle
+  - Marilyn
   - Juan
   - Beverly
   - Wayne
-  - Isabella
+  - Danielle
   - Roy
   - Theresa
   - Ralph
-  - Diana
+  - Sophia
   - Randy
-  - Natalie
-  - Eugene
-  - Brittany
-  - Vincent
-  - Charlotte
-  - Russell
   - Marie
+  - Eugene
+  - Diana
+  - Vincent
+  - Brittany
+  - Russell
+  - Natalie
   - Elijah
-  - Kayla
+  - Isabella
   - Louis
-  - Alexis
+  - Charlotte
+  - Philip
+  - Rose
   - Bobby
-  - Lori
+  - Alexis
+  - Johnny
+  - Kayla
 
 # Common last names for realistic user generation
 lastnames:
@@ -438,6 +427,245 @@ lastnames:
   - Soto
   - Weaver
   - Ryan
+  - Gardner
+  - Payne
+  - Grant
+  - Dunn
+  - Kelley
+  - Spencer
+  - Hawkins
+  - Arnold
+  - Pierce
+  - Vazquez
+  - Hansen
+  - Peters
+  - Santos
+  - Hart
+  - Bradley
+  - Knight
+  - Elliott
+  - Cunningham
+  - Duncan
+  - Armstrong
+  - Hudson
+  - Carroll
+  - Lane
+  - Riley
+  - Andrews
+  - Alvarado
+  - Ray
+  - Delgado
+  - Berry
+  - Perkins
+  - Hoffman
+  - Johnston
+  - Matthews
+  - Pena
+  - Richards
+  - Contreras
+  - Willis
+  - Carpenter
+  - Lawrence
+  - Sandoval
+  - Guerrero
+  - George
+  - Chapman
+  - Rios
+  - Estrada
+  - Ortega
+  - Watkins
+  - Greene
+  - Nunez
+  - Wheeler
+  - Valdez
+  - Harper
+  - Burke
+  - Larson
+  - Santiago
+  - Maldonado
+  - Morrison
+  - Franklin
+  - Carlson
+  - Austin
+  - Dominguez
+  - Carr
+  - Lawson
+  - Jacobs
+  - Obrien
+  - Lynch
+  - Singh
+  - Vega
+  - Bishop
+  - Montgomery
+  - Oliver
+  - Jensen
+  - Harvey
+  - Williamson
+  - Gilbert
+  - Dean
+  - Sims
+  - Espinoza
+  - Howell
+  - Li
+  - Wong
+  - Reid
+  - Hanson
+  - Le
+  - McCoy
+  - Garrett
+  - Burton
+  - Fuller
+  - Wang
+  - Weber
+  - Welch
+  - Rojas
+  - Lucas
+  - Marquez
+  - Fields
+  - Park
+  - Yang
+  - Little
+  - Banks
+  - Padilla
+  - Day
+  - Walsh
+  - Bowman
+  - Schultz
+  - Luna
+  - Fowler
+  - Mejia
+  - Davidson
+  - Acosta
+  - Brewer
+  - May
+  - Holland
+  - Juarez
+  - Newman
+  - Pearson
+  - Curtis
+  - Cortez
+  - Douglas
+  - Schneider
+  - Joseph
+  - Barrett
+  - Navarro
+  - Figueroa
+  - Keller
+  - Avila
+  - Wade
+  - Molina
+  - Stanley
+  - Hopkins
+  - Campos
+  - Barnett
+  - Bates
+  - Chambers
+  - Caldwell
+  - Beck
+  - Lambert
+  - Miranda
+  - Byrd
+  - Craig
+  - Ayala
+  - Lowe
+  - Frazier
+  - Powers
+  - Neal
+  - Leonard
+  - Gregory
+  - Carrillo
+  - Sutton
+  - Fleming
+  - Rhodes
+  - Shelton
+  - Schwartz
+  - Norris
+  - Jennings
+  - Watts
+  - Duran
+  - Walters
+  - Cohen
+  - McDaniel
+  - Moran
+  - Parks
+  - Steele
+  - Vaughn
+  - Becker
+  - Holt
+  - DeLeon
+  - Barker
+  - Terry
+  - Hale
+  - Leon
+  - Hail
+  - Benson
+  - Haynes
+  - Horton
+  - Miles
+  - Lyons
+  - Pham
+  - Graves
+  - Bush
+  - Thornton
+  - Wolfe
+  - Warner
+  - Cabrera
+  - McKinney
+  - Mann
+  - Zimmerman
+  - Dawson
+  - Lara
+  - Fletcher
+  - Page
+  - McCarthy
+  - Love
+  - Robles
+  - Cervantes
+  - Solis
+  - Erickson
+  - Reeves
+  - Chang
+  - Klein
+  - Salinas
+  - Fuentes
+  - Baldwin
+  - Daniel
+  - Simon
+  - Velasquez
+  - Hardy
+  - Higgins
+  - Aguirre
+  - Lin
+  - Cummings
+  - Chandler
+  - Sharp
+  - Barber
+  - Bowen
+  - Ochoa
+  - Dennis
+  - Robbins
+  - Liu
+  - Ramsey
+  - Francis
+  - Griffith
+  - Paul
+  - Blair
+  - OConnor
+  - Cardenas
+  - Pacheco
+  - Cross
+  - Calderon
+  - Quinn
+  - Moss
+  - Swanson
+  - Chan
+  - Ritter
+  - Skinner
+  - McKenzie
+  - Lawrence
+  - Summers
+  - Mullins
+  - Meyer
 
 # ---------------------------------------------------------------------------
 # Group and computer profiles (merged from role vars files)

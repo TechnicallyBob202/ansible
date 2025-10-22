@@ -7,9 +7,6 @@
 # ============================================================================
 ad_service_accounts:
   - name: svc-adfr
-    username: svc-adfr
-    firstname: ADFR
-    surname: Service Account
     password: "{{ lookup('env', 'svc-adfr') }}"
     description: "ADFR Agent Service Account - Domain/Enterprise Admin with replication rights"
     groups:
@@ -17,9 +14,6 @@ ad_service_accounts:
       - Enterprise Admins
 
   - name: svc-dsp
-    username: svc-dsp
-    firstname: DSP
-    surname: Service Account
     password: "{{ lookup('env', 'svc-dsp') }}"
     description: "DSP Monitoring Service Account - Domain/Enterprise Admin"
     groups:
