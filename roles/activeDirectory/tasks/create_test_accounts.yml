@@ -71,13 +71,11 @@
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: privileged_creation
   changed_when: >
-    {{
-      'CREATED=' in (privileged_creation.stdout | default('')) and
-      (
-        (privileged_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
+    'CREATED=' in (privileged_creation.stdout | default('')) and
+    (
+      (privileged_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+      | split('=') | last | int
+    ) > 0
 
 - name: Create additional service accounts for testing
   ansible.windows.win_shell: |
@@ -121,13 +119,11 @@
     Write-Output "CREATED=$createdCount;EXISTS=$existingCount"
   register: service_creation
   changed_when: >
-    {{
-      'CREATED=' in (service_creation.stdout | default('')) and
-      (
-        (service_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
-        | split('=') | last | int
-      ) > 0
-    }}
+    'CREATED=' in (service_creation.stdout | default('')) and
+    (
+      (service_creation.stdout | default('') | split(';') | select('search', '^CREATED=') | list | first | default('CREATED=0'))
+      | split('=') | last | int
+    ) > 0
 
 - name: Parse test account creation results
   set_fact:

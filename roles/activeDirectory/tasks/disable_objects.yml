@@ -31,7 +31,6 @@
       exit 0
     }
 
-    # Don't disable more than exist
     if ($disableCount -gt $allUsers.Count) { $disableCount = $allUsers.Count }
     if ($disableCount -le 0) { Write-Output "DISABLED=0"; exit 0 }
 
@@ -40,12 +39,8 @@
 
     foreach ($user in $usersToDisable) {
       try {
-        # Disable the account
         Disable-ADAccount -Identity $user -ErrorAction Stop
-
-        # Move to Disabled OU
         Move-ADObject -Identity $user.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
-
         $disabledCount++
       } catch {
         Write-Warning "Failed to disable/move $($user.SamAccountName): $_"
@@ -80,12 +75,8 @@
 
     foreach ($computer in $computersToDisable) {
       try {
-        # Disable the account
         Disable-ADAccount -Identity $computer -ErrorAction Stop
-
-        # Move to Disabled OU
         Move-ADObject -Identity $computer.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
-
         $disabledCount++
       } catch {
         Write-Warning "Failed to disable/move $($computer.Name): $_"
@@ -120,12 +111,8 @@
 
     foreach ($server in $serversToDisable) {
       try {
-        # Disable the account
         Disable-ADAccount -Identity $server -ErrorAction Stop
-
-        # Move to Disabled OU
         Move-ADObject -Identity $server.DistinguishedName -TargetPath $targetOU -ErrorAction Stop
-
         $disabledCount++
       } catch {
         Write-Warning "Failed to disable/move $($server.Name): $_"
