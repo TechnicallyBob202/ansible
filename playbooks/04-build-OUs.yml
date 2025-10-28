@@ -130,7 +130,26 @@
         vm_changed: "{{ vm_changed or (computer_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 7: Create Test Accounts (for attack simulations)
+# PHASE 7: Create Real Service Accounts (svc-adfr, svc-dsp)
+# =============================================================================
+- name: Create Service Accounts
+  hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
+  gather_facts: no
+  serial: 0
+  tasks:
+    - name: Create service accounts (svc-adfr, svc-dsp)
+      include_role:
+        name: activeDirectory
+      vars:
+        ad_operation: create_service_accounts
+      register: service_account_result
+
+    - name: Mark VM as changed if service accounts were created
+      set_fact:
+        vm_changed: "{{ vm_changed or (service_account_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 8: Create Test Accounts (for attack simulations)
 # =============================================================================
 - name: Create Test Accounts
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -148,7 +167,7 @@
         vm_changed: "{{ vm_changed or (test_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 8: Assign Group Memberships
+# PHASE 9: Assign Group Memberships
 # =============================================================================
 - name: Assign Group Memberships
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -166,7 +185,7 @@
         vm_changed: "{{ vm_changed or (membership_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 9: Create Security Issues (for DSP demos)
+# PHASE 10: Create Security Issues (for DSP demos)
 # =============================================================================
 - name: Create Intentional Security Issues
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -184,7 +203,7 @@
         vm_changed: "{{ vm_changed or (security_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 10: Disable Some Objects (realistic environment)
+# PHASE 11: Disable Some Objects (realistic environment)
 # =============================================================================
 - name: Disable Some Users and Computers
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -203,7 +222,7 @@
         vm_changed: "{{ vm_changed or (disable_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 11: Create GPOs (MOVED TO END)
+# PHASE 12: Create GPOs (MOVED TO END)
 # =============================================================================
 - name: Create Group Policy Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -221,7 +240,7 @@
         vm_changed: "{{ vm_changed or (gpo_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 12: Link GPOs to OUs
+# PHASE 13: Link GPOs to OUs
 # =============================================================================
 - name: Link GPOs to OUs
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -239,7 +258,7 @@
         vm_changed: "{{ vm_changed or (link_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 13: Validation
+# PHASE 14: Validation
 # =============================================================================
 - name: Validate OU Structure and Objects
   hosts: arbor_pdc:alpine_pdc:alpine_mauna_pdc:alpine_rainier_pdc
@@ -272,7 +291,7 @@
           - "  GPOs: {{ (object_counts.stdout | from_json).GPOs }}"
 
 # =============================================================================
-# PHASE 14: Snapshot Changed VMs
+# PHASE 15: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot After OU Build
   hosts: all
@@ -294,7 +313,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 15: Final Summary
+# PHASE 16: Final Summary
 # =============================================================================
 - name: Build Summary
   hosts: localhost
@@ -319,6 +338,9 @@
           - "  ✓ 70+ User accounts (themed names)"
           - "  ✓ 50+ Security/Distribution groups"
           - "  ✓ 47 Computer objects"
+          - "  ✓ 2 Real service accounts (svc-adfr, svc-dsp)"
+          - "  ✓ 12 Privileged users"
+          - "  ✓ 6 Test service accounts"
           - "  ✓ 11 Group Policy Objects"
           - "  ✓ 7 Security vulnerabilities (DSP demos)"
           - "  ✓ 5-10 Disabled users/computers"
