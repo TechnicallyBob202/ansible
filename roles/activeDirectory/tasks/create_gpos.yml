@@ -28,7 +28,7 @@
       - name: "Firewall Rules"
         comment: "Windows Firewall rules for servers"
       - name: "Windows Update Settings"
-        comment: "Windows Update configuration"
+        comment: "Windows Update configuration with automatic overnight reboots"
       - name: "Screen Saver Policy"
         comment: "Screen saver lock settings"
       - name: "Audit Policy"
@@ -68,6 +68,82 @@
   changed_when: "'CREATED:' in gpo_creation.stdout"
   failed_when: "'ERROR:' in gpo_creation.stdout"
 
+# =============================================================================
+# Configure Windows Update Settings GPO with Real Policies
+# =============================================================================
+- name: Check if Windows Update GPO exists
+  ansible.windows.win_shell: |
+    try {
+      Get-GPO -Name "Windows Update Settings" -ErrorAction Stop | Out-Null
+      Write-Output "EXISTS"
+    } catch {
+      Write-Output "NOT_EXISTS"
+    }
+  register: wu_gpo_check
+  changed_when: false
+
+- name: Configure Windows Update Settings GPO
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $gpoName = "Windows Update Settings"
+
+    try {
+      # Verify GPO exists
+      $gpo = Get-GPO -Name $gpoName -ErrorAction Stop
+
+      # Registry key paths for Windows Update policies
+      $wuKeyPath = "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate"
+      $auKeyPath = "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU"
+
+      # Configure Automatic Updates
+      # Option 4 = Auto download and schedule install
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "NoAutoUpdate" -Type DWord -Value 0 | Out-Null
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "AUOptions" -Type DWord -Value 4 | Out-Null
+
+      # Schedule installation for 3 AM (overnight)
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "ScheduledInstallDay" -Type DWord -Value 0 | Out-Null  # 0 = Every day
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "ScheduledInstallTime" -Type DWord -Value 3 | Out-Null  # 3 AM
+
+      # Enable automatic reboot after installation
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "NoAutoRebootWithLoggedOnUsers" -Type DWord -Value 0 | Out-Null
+
+      # Set reboot warning times (15 minutes warning)
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "RebootWarningTimeout" -Type DWord -Value 15 | Out-Null
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "RebootRelaunchTimeout" -Type DWord -Value 10 | Out-Null
+
+      # Configure to use Windows Update (not WSUS)
+      Set-GPRegistryValue -Name $gpoName -Key $wuKeyPath -ValueName "DoNotConnectToWindowsUpdateInternetLocations" -Type DWord -Value 0 | Out-Null
+
+      # Allow driver updates through Windows Update
+      Set-GPRegistryValue -Name $gpoName -Key $wuKeyPath -ValueName "ExcludeWUDriversInQualityUpdate" -Type DWord -Value 0 | Out-Null
+
+      # Enable recommended updates
+      Set-GPRegistryValue -Name $gpoName -Key $auKeyPath -ValueName "IncludeRecommendedUpdates" -Type DWord -Value 1 | Out-Null
+
+      Write-Output "CONFIGURED: Windows Update Settings GPO"
+      Write-Output "  • Automatic updates enabled"
+      Write-Output "  • Scheduled for 3 AM daily"
+      Write-Output "  • Automatic reboot enabled (even with logged on users)"
+      Write-Output "  • 15 minute reboot warning"
+      Write-Output "  • Driver updates enabled"
+      Write-Output "  • Recommended updates enabled"
+    } catch {
+      Write-Output "ERROR: $($_.Exception.Message)"
+      exit 1
+    }
+  when: "'EXISTS' in wu_gpo_check.stdout"
+  register: gpo_config
+  changed_when: "'CONFIGURED:' in gpo_config.stdout"
+  failed_when: "'ERROR:' in gpo_config.stdout"
+
+- name: Display Windows Update GPO configuration
+  debug:
+    msg: "{{ gpo_config.stdout_lines }}"
+  when: gpo_config.changed
+
+# =============================================================================
+# Summary
+# =============================================================================
 - name: Count created and existing GPOs
   set_fact:
     created_gpos: "{{ gpo_creation.results | selectattr('changed', 'equalto', true) | list | length | default(0) }}"
@@ -80,3 +156,6 @@
       - "  Created: {{ created_gpos }}"
       - "  Already existed: {{ existing_gpos }}"
       - "  Total (tracked): {{ gpos_to_create | length }}"
+      - ""
+      - "Configured GPOs:"
+      - "  • Windows Update Settings - Automatic updates at 3 AM with auto-reboot"
