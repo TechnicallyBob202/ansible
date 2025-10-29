@@ -60,6 +60,12 @@
         enforced: no
         order: 3
 
+      - gpo_name: "Windows Update Settings"
+        ou_path: "OU=Workstations,OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
+        link_enabled: yes
+        enforced: no
+        order: 4
+
       # Server policies
       - gpo_name: "Firewall Rules"
         ou_path: "OU=Servers,OU=Computers,OU={{ top_level_ou_name }},{{ domain_dn }}"
@@ -72,6 +78,13 @@
         link_enabled: yes
         enforced: no
         order: 2
+
+      # Domain Controllers OU (built-in) - Windows Update Settings
+      - gpo_name: "Windows Update Settings"
+        ou_path: "OU=Domain Controllers,{{ domain_dn }}"
+        link_enabled: yes
+        enforced: no
+        order: 1
 
       # Note: "Orphaned GPO 1" and "Orphaned GPO 2" are intentionally NOT linked
 
@@ -161,8 +174,11 @@
       - "    • Desktop Lockdown"
       - "    • Printer Deployment"
       - "    • Screen Saver Policy"
+      - "    • Windows Update Settings"
       - "  OU=Servers:"
       - "    • Firewall Rules"
+      - "    • Windows Update Settings"
+      - "  OU=Domain Controllers:"
       - "    • Windows Update Settings"
       - ""
       - "Orphaned GPOs (intentionally unlinked):"
