@@ -1,0 +1,78 @@
+---
+# Linux base configuration role - main tasks
+# Handles RHEL/CentOS base configuration similar to windows role
+
+- name: Set hostname
+  hostname:
+    name: "{{ inventory_hostname }}"
+  when: linux_operation == 'set_hostname' or linux_operation == 'configure_network'
+
+- name: Configure static IP
+  nmcli:
+    conn_name: "System eth0"
+    ifname: eth0
+    type: ethernet
+    ip4: "{{ ansible_host }}/{{ linux_ip_prefix | default(24) }}"
+    gw4: "{{ linux_gateway | default('192.168.35.1') }}"
+    dns4: "{{ linux_dns_servers | default(['1.1.1.1', '1.0.0.1']) }}"
+    state: present
+  when: linux_operation == 'set_static_ip' or linux_operation == 'configure_network'
+  register: network_config
+
+- name: Reboot after network changes
+  reboot:
+    reboot_timeout: 600
+  when:
+    - linux_operation == 'configure_network'
+    - network_config.changed
+  register: reboot_result
+
+- name: Wait for system to come back
+  wait_for_connection:
+    delay: 30
+    timeout: 300
+  when:
+    - linux_operation == 'configure_network'
+    - reboot_result is defined
+    - reboot_result.changed
+
+- name: Update system packages
+  yum:
+    name: '*'
+    state: latest
+    update_cache: yes
+  when: linux_operation == 'update_packages'
+  register: update_result
+
+- name: Install base packages
+  yum:
+    name:
+      - vim
+      - wget
+      - curl
+      - net-tools
+      - firewalld
+    state: present
+  when: linux_operation == 'install_base_packages' or linux_operation == 'configure_network'
+
+- name: Validate configuration
+  block:
+    - name: Get network configuration
+      shell: |
+        ip addr show eth0 | grep "inet " | awk '{print $2}' | cut -d/ -f1
+      register: current_ip
+      changed_when: false
+
+    - name: Get hostname
+      command: hostname
+      register: current_hostname
+      changed_when: false
+
+    - name: Display validation results
+      debug:
+        msg:
+          - "Hostname: {{ current_hostname.stdout }}"
+          - "IP Address: {{ current_ip.stdout }}"
+          - "Expected IP: {{ ansible_host }}"
+          - "Match: {{ current_ip.stdout == ansible_host }}"
+  when: linux_operation == 'validate'

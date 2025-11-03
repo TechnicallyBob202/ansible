@@ -1,0 +1,118 @@
+---
+# SQL Server installation and configuration for PEAK
+# This prepares PEAK for both ADFR and DSP databases
+
+- name: Check if SQL Server is already installed
+  ansible.windows.win_service:
+    name: MSSQLSERVER
+  register: sql_service
+  failed_when: false
+  changed_when: false
+
+- name: Display SQL Server status
+  debug:
+    msg: "SQL Server {{ 'is already installed' if sql_service.exists else 'needs to be installed' }}"
+
+- name: Check for uninitialized disk
+  ansible.windows.win_shell: Get-Disk | Where-Object PartitionStyle -eq 'RAW' | Select-Object -First 1 -ExpandProperty Number
+  register: raw_disk
+  failed_when: false
+  changed_when: false
+  when: not sql_service.exists
+
+- name: Initialize and format D drive for SQL data
+  ansible.windows.win_shell: "Initialize-Disk -Number {{ raw_disk.stdout | trim }} -PartitionStyle GPT -PassThru | New-Partition -DriveLetter D -UseMaximumSize | Format-Volume -FileSystem NTFS -NewFileSystemLabel 'SQL_Data' -Confirm:$false"
+  when:
+    - not sql_service.exists
+    - raw_disk.stdout | trim | length > 0
+  ignore_errors: yes
+  register: disk_init
+
+- name: Create SQL directories
+  ansible.windows.win_file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - D:\SQL\Data
+    - D:\SQL\Logs
+    - D:\SQL\Backup
+    - D:\SQL\TempDB
+  when: not sql_service.exists
+
+- name: Install .NET Framework 4.8 (SQL prerequisite)
+  ansible.windows.win_feature:
+    name: NET-Framework-45-Features
+    state: present
+    include_sub_features: yes
+  register: dotnet_install
+  when: not sql_service.exists
+
+- name: Reboot after .NET install
+  ansible.windows.win_reboot:
+    reboot_timeout: 600
+  when:
+    - not sql_service.exists
+    - dotnet_install.reboot_required
+
+- name: Configure Windows Firewall for SQL Server
+  community.windows.win_firewall_rule:
+    name: "SQL Server"
+    localport: 1433
+    action: allow
+    direction: in
+    protocol: tcp
+    state: present
+    enabled: yes
+
+- name: Display installation instructions
+  debug:
+    msg:
+      - "==========================================="
+      - "SQL Server Installation Required"
+      - "==========================================="
+      - ""
+      - "PEAK is ready for SQL Server installation."
+      - ""
+      - "Manual installation steps:"
+      - "1. RDP to PEAK (192.168.35.12)"
+      - "2. Download SQL Server 2022 installer"
+      - "3. Run installer with these settings:"
+      - "   - Instance: MSSQLSERVER (default)"
+      - "   - Authentication: Mixed Mode"
+      - "   - SA Password: {{ lookup('env', 'SQL_SA_PASSWORD') | default('Use a strong password!') }}"
+      - "   - Data Directory: D:\\SQL\\Data"
+      - "   - Log Directory: D:\\SQL\\Logs"
+      - "   - Backup Directory: D:\\SQL\\Backup"
+      - "   - TempDB: D:\\SQL\\TempDB"
+      - "4. Enable TCP/IP protocol"
+      - "5. Create databases:"
+      - "   - ADFR_DB"
+      - "   - DSP_DB"
+      - "6. Create SQL logins:"
+      - "   - svc-adfr-sql (for ADFR)"
+      - "   - svc-dsp-sql (for DSP)"
+      - ""
+      - "Note: PEAK remains in WORKGROUP (not domain-joined)"
+  when: not sql_service.exists
+
+- name: Validate SQL Server installation
+  block:
+    - name: Check SQL Server service
+      ansible.windows.win_service:
+        name: MSSQLSERVER
+      register: sql_validation
+      failed_when: false
+
+    - name: Check SQL Browser service
+      ansible.windows.win_service:
+        name: SQLBrowser
+      register: browser_validation
+      failed_when: false
+
+    - name: Display validation results
+      debug:
+        msg:
+          - "SQL Server Service: {{ sql_validation.state if sql_validation.exists else 'Not installed' }}"
+          - "SQL Browser Service: {{ browser_validation.state if browser_validation.exists else 'Not installed' }}"
+          - "Firewall Rule: Configured for port 1433"
+  when: sql_service.exists

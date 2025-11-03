@@ -54,6 +54,17 @@ all:
           vm_disk: 100G
           role: "Secondary DP"
 
+        PEAK:
+          ansible_host: 192.168.35.12
+          vmid: 3512
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9012  # Windows template
+          vm_cores: 4
+          vm_memory: 8192
+          vm_disk: 100G
+          role: "SQL Server"
+
     arbor_forest:
       children:
         arbor_pdc:
@@ -182,6 +193,23 @@ all:
               parent_domain: alpine.lab
               role: "Child Domain Replica"
 
+    linux_infrastructure:
+      vars:
+        ansible_connection: ssh
+        ansible_user: root
+        ansible_python_interpreter: /usr/bin/python3
+      hosts:
+        DSP-IAS:
+          ansible_host: 192.168.35.15
+          vmid: 3515
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9020  # RHEL template (need to create this)
+          vm_cores: 4
+          vm_memory: 8192
+          vm_disk: 100G
+          role: "DSP Identity Analytics Server"
+          
     recovery_vms:
       hosts:
         MESA:
