@@ -101,7 +101,7 @@
 - name: Generate mRemoteNG config (template)
   template:
     src: "{{ playbook_dir }}/../templates/mremoteng.xml.j2"
-    dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+    dest: "{{ playbook_dir }}/../files/semperis-lab-mremoteng.xml"
     mode: '0644'
 
 # Optional: Git commit/push if repo present
@@ -113,7 +113,7 @@
 - name: Add mRemoteNG file to git
   shell: |
     cd {{ playbook_dir }}/..
-    git add files/adfr-lab-mremoteng.xml
+    git add files/semperis-lab-mremoteng.xml
   when: git_repo.stat.exists
 
 - name: Commit mRemoteNG file
@@ -121,7 +121,7 @@
     cd {{ playbook_dir }}/..
     git config user.email "ansible@semperis.lab" || true
     git config user.name "Ansible Automation" || true
-    git commit -m "Update mRemoteNG configuration - {{ ansible_date_time.iso8601 }}" files/adfr-lab-mremoteng.xml || echo "No changes to commit"
+    git commit -m "Update mRemoteNG configuration - {{ ansible_date_time.iso8601 }}" files/semperis-lab-mremoteng.xml || echo "No changes to commit"
   when: git_repo.stat.exists
   register: git_commit
   changed_when: "'No changes to commit' not in git_commit.stdout"
@@ -139,6 +139,6 @@
 - name: Display git status
   debug:
     msg:
-      - "mRemoteNG file generated: files/adfr-lab-mremoteng.xml"
+      - "mRemoteNG file generated: files/semperis-lab-mremoteng.xml"
       - "Git commit: {{ 'Updated' if git_commit.changed else 'No changes' }}"
       - "Git push: {{ 'Success' if git_push is succeeded else 'Failed or skipped' }}"
