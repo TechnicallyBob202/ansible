@@ -1,4 +1,7 @@
 ---
+# =============================================================================
+# PHASE 1: Deploy VMs (clone + configure + start)
+# =============================================================================
 - name: Deploy Lab VMs from Inventory
   hosts: all
   gather_facts: no
@@ -44,7 +47,39 @@
       delegate_to: localhost
 
 # =============================================================================
-# PHASE 2: Snapshot after deployment (only VMs that were deployed)
+# PHASE 2: Update VM Tags (ALL VMs - new and existing)
+# =============================================================================
+- name: Update VM Tags
+  hosts: all
+  gather_facts: no
+  serial: 0
+
+  tasks:
+    - name: Display tag update plan
+      debug:
+        msg: "{{ inventory_hostname }} - Setting tags to: {{ proxmox_vm_tags | default('none') }}"
+
+    - name: Update VM tags
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs | default(false) }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        tags: "{{ proxmox_vm_tags }}"
+        update: yes
+      register: tag_result
+      delegate_to: localhost
+      when: proxmox_vm_tags is defined
+
+    - name: Display tag result
+      debug:
+        msg: "{{ inventory_hostname }} - Tags {{ 'updated' if (tag_result.changed | default(false)) else 'already set' }}"
+      when: proxmox_vm_tags is defined
+
+# =============================================================================
+# PHASE 3: Snapshot after deployment (only VMs that were deployed)
 # =============================================================================
 - name: Snapshot after deploy
   hosts: all
@@ -67,7 +102,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 3: Completion message
+# PHASE 4: Completion message
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost
@@ -78,6 +113,10 @@
       set_fact:
         changed_count: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
 
+    - name: Count tagged VMs
+      set_fact:
+        tagged_count: "{{ groups['all'] | map('extract', hostvars, 'tag_result') | selectattr('changed', 'defined') | selectattr('changed', 'equalto', true) | list | length }}"
+
     - name: Display detailed breakdown
       debug:
         msg: "{{ item }} - {{ 'NEWLY DEPLOYED' if hostvars[item].vm_changed | default(false) else 'ALREADY EXISTED' }}"
@@ -86,6 +125,9 @@
     - name: Deployment complete
       debug:
         msg:
-          - "Deployment complete: {{ changed_count }}/{{ groups['all'] | length }} VMs were newly deployed"
-          - "Snapshots created for {{ changed_count }} VMs"
+          - "Deployment complete:"
+          - "  {{ changed_count }}/{{ groups['all'] | length }} VMs were newly deployed"
+          - "  {{ tagged_count }}/{{ groups['all'] | length }} VMs had tags updated"
+          - "  Snapshots created for {{ changed_count }} newly deployed VMs"
+          - ""
           - "Next: Run playbook 02-configure-base-os.yml to set static IPs"
