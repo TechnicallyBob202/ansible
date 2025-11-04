@@ -21,17 +21,6 @@ all:
           vm_disk: 100G
           role: "ADFR Management"
 
-        SUMMIT:
-          ansible_host: 192.168.35.12
-          vmid: 3512
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9011
-          vm_cores: 2
-          vm_memory: 4096
-          vm_disk: 100G
-          role: "DSP Management"
-
         RIDGE:
           ansible_host: 192.168.35.13
           vmid: 3513
@@ -54,9 +43,20 @@ all:
           vm_disk: 100G
           role: "Secondary DP"
 
+        SUMMIT:
+          ansible_host: 192.168.35.60
+          vmid: 3560
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
+          vm_cores: 2
+          vm_memory: 4096
+          vm_disk: 100G
+          role: "DSP Management"
+
         PEAK:
-          ansible_host: 192.168.35.11
-          vmid: 3511
+          ansible_host: 192.168.35.61
+          vmid: 3561
           proxmox_host: 192.168.33.22
           proxmox_node: semperis-nuc-2
           template_id: 9012  # Windows template
@@ -200,11 +200,11 @@ all:
         ansible_python_interpreter: /usr/bin/python3
       hosts:
         DSP-IAS:
-          ansible_host: 192.168.35.15
-          vmid: 3515
-          proxmox_host: 192.168.33.22
-          proxmox_node: semperis-nuc-2
-          template_id: 9022  # RHEL template (need to create this)
+          ansible_host: 192.168.35.62
+          vmid: 3562
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9021  # RHEL template (need to create this)
           vm_cores: 4
           vm_memory: 8192
           vm_disk: 100G
