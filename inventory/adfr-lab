@@ -22,11 +22,11 @@ all:
           role: "ADFR Management"
 
         SUMMIT:
-          ansible_host: 192.168.35.11
-          vmid: 3511
-          proxmox_host: 192.168.33.22
-          proxmox_node: semperis-nuc-2
-          template_id: 9012
+          ansible_host: 192.168.35.12
+          vmid: 3512
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 100G
@@ -35,9 +35,9 @@ all:
         RIDGE:
           ansible_host: 192.168.35.13
           vmid: 3513
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9011
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9012
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 100G
@@ -46,17 +46,17 @@ all:
         CREST:
           ansible_host: 192.168.35.14
           vmid: 3514
-          proxmox_host: 192.168.33.22
-          proxmox_node: semperis-nuc-2
-          template_id: 9012
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 100G
           role: "Secondary DP"
 
         PEAK:
-          ansible_host: 192.168.35.12
-          vmid: 3512
+          ansible_host: 192.168.35.11
+          vmid: 3511
           proxmox_host: 192.168.33.22
           proxmox_node: semperis-nuc-2
           template_id: 9012  # Windows template
@@ -202,14 +202,14 @@ all:
         DSP-IAS:
           ansible_host: 192.168.35.15
           vmid: 3515
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9020  # RHEL template (need to create this)
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9022  # RHEL template (need to create this)
           vm_cores: 4
           vm_memory: 8192
           vm_disk: 100G
           role: "DSP Identity Analytics Server"
-          
+
     recovery_vms:
       hosts:
         MESA:
