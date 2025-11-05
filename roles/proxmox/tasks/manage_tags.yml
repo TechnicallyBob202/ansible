@@ -44,7 +44,14 @@
 
 - name: Build final tag-style string
   set_fact:
-    final_tag_style: "{{ existing_tag_style }}{{ ',' if (existing_tag_style and new_tags) else '' }}{{ tag_style_prefix }}{{ new_tags | join(',') }}"
+    final_tag_style: >-
+      {% if not existing_tag_style %}
+      color-map:{{ new_tags | join(',') }}
+      {% elif existing_tag_style and not existing_tag_style.startswith('color-map:') %}
+      color-map:{{ existing_tag_style }},{{ new_tags | join(',') }}
+      {% else %}
+      {{ existing_tag_style }},{{ new_tags | join(',') }}
+      {% endif %}
   when: new_tags | length > 0
   delegate_facts: false
 
