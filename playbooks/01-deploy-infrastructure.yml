@@ -47,7 +47,22 @@
       delegate_to: localhost
 
 # =============================================================================
-# PHASE 2: Update VM Tags (ALL VMs - new and existing)
+# PHASE 2: Ensure Proxmox Tags Exist
+# =============================================================================
+- name: Manage Proxmox Tags
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+    - name: Ensure required tags exist in Proxmox
+      include_role:
+        name: proxmox
+        tasks_from: manage_tags.yml
+      vars:
+        proxmox_host: "{{ hostvars[groups['all'][0]].proxmox_host }}"
+
+# =============================================================================
+# PHASE 3: Update VM Tags (ALL VMs - new and existing)
 # =============================================================================
 - name: Update VM Tags
   hosts: all
@@ -79,7 +94,7 @@
       when: proxmox_vm_tags is defined
 
 # =============================================================================
-# PHASE 3: Snapshot after deployment (only VMs that were deployed)
+# PHASE 4: Snapshot after deployment (only VMs that were deployed)
 # =============================================================================
 - name: Snapshot after deploy
   hosts: all
@@ -102,7 +117,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 4: Completion message
+# PHASE 5: Completion message
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost

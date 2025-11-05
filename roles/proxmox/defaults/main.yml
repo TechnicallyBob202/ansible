@@ -1,7 +1,7 @@
 ---
 # Proxmox connection defaults
 proxmox_user: root@pam
-proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
 proxmox_validate_certs: no
 snapshot_name: "post-deploy-{{ lookup('pipe','date -u +%Y%m%dT%H%M%SZ') }}"
 proxmox_snapshot_vmstate: false  # set true to include RAM state
@@ -16,3 +16,10 @@ proxmox_vm_tags: "adfr-dsp"
 proxmox_clone_timeout: 600
 proxmox_boot_wait_seconds: 60
 proxmox_stop_timeout: 300
+
+# Tag management
+proxmox_tags:
+  - name: ADFR
+    color: "#00ff00"  # green
+  - name: DSP
+    color: "#0000ff"  # blue

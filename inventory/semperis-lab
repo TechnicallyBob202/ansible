@@ -213,7 +213,7 @@ all:
         ansible_user: root
         ansible_python_interpreter: /usr/bin/python3
       hosts:
-        DSP-IAS:
+        SLOPE:
           ansible_host: 192.168.35.62
           vmid: 3562
           proxmox_host: 192.168.33.21
@@ -251,6 +251,30 @@ all:
           proxmox_vm_tags: "ADFR"
           role: "Recovery VM"
 
+        CLIFF:
+          ansible_host: 192.168.35.52
+          vmid: 3552
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
+          vm_cores: 2
+          vm_memory: 2048
+          vm_disk: 80G
+          proxmox_vm_tags: "ADFR"
+          role: "Recovery VM"
+
+        BUTTE:
+          ansible_host: 192.168.35.53
+          vmid: 3553
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9012
+          vm_cores: 2
+          vm_memory: 2048
+          vm_disk: 80G
+          proxmox_vm_tags: "ADFR"
+          role: "Recovery VM"
+          
     domain_controllers:
       children:
         arbor_forest:

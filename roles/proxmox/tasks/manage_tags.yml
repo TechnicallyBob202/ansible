@@ -1,0 +1,74 @@
+---
+# roles/proxmox/tasks/manage_tags.yml
+# Create/manage Proxmox cluster tags
+
+- name: Get Proxmox authentication ticket
+  uri:
+    url: "https://{{ proxmox_host }}:8006/api2/json/access/ticket"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      username: "{{ proxmox_user }}"
+      password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+  register: proxmox_auth
+  delegate_to: localhost
+
+- name: Get current cluster tags
+  uri:
+    url: "https://{{ proxmox_host }}:8006/api2/json/cluster/options"
+    method: GET
+    headers:
+      Cookie: "PVEAuthCookie={{ proxmox_auth.json.data.ticket }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+  register: cluster_options
+  delegate_to: localhost
+
+- name: Parse existing tag-style
+  set_fact:
+    existing_tag_style: "{{ cluster_options.json.data['tag-style'] | default('') }}"
+  delegate_facts: false
+
+- name: Build new tag-style string
+  set_fact:
+    new_tags: []
+    tag_style_prefix: "{{ 'color-map:' if not existing_tag_style else '' }}"
+  delegate_facts: false
+
+- name: Check and add missing tags
+  set_fact:
+    new_tags: "{{ new_tags + [item.name + '=' + item.color] }}"
+  loop: "{{ proxmox_tags }}"
+  when: item.name not in existing_tag_style
+  delegate_facts: false
+
+- name: Build final tag-style string
+  set_fact:
+    final_tag_style: "{{ existing_tag_style }}{{ ',' if (existing_tag_style and new_tags) else '' }}{{ tag_style_prefix }}{{ new_tags | join(',') }}"
+  when: new_tags | length > 0
+  delegate_facts: false
+
+- name: Display tag status
+  debug:
+    msg:
+      - "Existing tags: {{ existing_tag_style }}"
+      - "Tags to create: {{ new_tags | join(', ') if new_tags else 'none' }}"
+
+- name: Update cluster tags
+  uri:
+    url: "https://{{ proxmox_host }}:8006/api2/json/cluster/options"
+    method: PUT
+    headers:
+      Cookie: "PVEAuthCookie={{ proxmox_auth.json.data.ticket }}"
+    body_format: form-urlencoded
+    body:
+      tag-style: "{{ final_tag_style }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+  when: new_tags | length > 0
+  register: tag_update
+  delegate_to: localhost
+
+- name: Display tag update result
+  debug:
+    msg: "{{ new_tags | length }} tag(s) {{ 'created' if tag_update.changed else 'verified' }}: {{ new_tags | join(', ') }}"
+  when: new_tags | length > 0
