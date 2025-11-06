@@ -148,7 +148,7 @@
 # =============================================================================
 - name: Configure Linux VMs
   hosts: linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 1
   vars:
     ansible_connection: ssh
