@@ -58,6 +58,17 @@
     - reboot_result is defined
     - reboot_result.changed
 
+- name: Switch future SSH to the new static IP
+  ansible.builtin.set_fact:
+    ansible_ssh_host: "{{ ansible_host }}"
+  when:
+    - linux_operation == 'configure_network'
+
+- name: Reset SSH connection to use new IP
+  ansible.builtin.meta: reset_connection
+  when:
+    - linux_operation == 'configure_network'
+    
 # Optional: validation
 - name: Validate configuration
   block:

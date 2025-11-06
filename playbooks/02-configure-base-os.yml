@@ -148,14 +148,15 @@
 # =============================================================================
 - name: Configure Linux VMs
   hosts: linux_infrastructure
-  gather_facts: false
+  gather_facts: no
   serial: 1
   vars:
-    # Force SSH + key auth (Semaphore will inject the key)
     ansible_connection: ssh
     ansible_user: blyons
     ansible_python_interpreter: /usr/bin/python3
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+    # become to root if blyons is non-root with sudo
+    ansible_become: true
+    ansible_become_method: sudo
 
     linux_operation: configure_network
     linux_gateway: "{{ windows_gateway | default('192.168.35.1') }}"
@@ -164,7 +165,7 @@
   tasks:
     - name: Display Linux VM configuration
       debug:
-        msg: "Configuring Linux VM: {{ inventory_hostname }} at {{ ansible_host }}"
+        msg: "Configuring Linux VM: {{ inventory_hostname }} at {{ ansible_ssh_host }} -> {{ ansible_host }}"
 
     - name: Configure Linux network
       include_role:
