@@ -20,7 +20,7 @@ all:
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 100G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "ADFR Management"
 
         RIDGE:
@@ -32,7 +32,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 100G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Primary DP"
 
         CREST:
@@ -44,7 +44,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 100G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Secondary DP"
 
         SUMMIT:
@@ -56,7 +56,7 @@ all:
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 100G
-          proxmox_vm_tags: "DSP"
+          proxmox_vm_tags: "dsp"
           role: "DSP Management"
 
         PEAK:
@@ -68,7 +68,7 @@ all:
           vm_cores: 4
           vm_memory: 8192
           vm_disk: 100G
-          proxmox_vm_tags: "DSP"
+          proxmox_vm_tags: "dsp"
           role: "SQL Server"
 
     arbor_forest:
@@ -84,7 +84,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: arbor.lab
               netbios_name: ARBOR
               role: "Forest Root PDC"
@@ -100,7 +100,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: arbor.lab
               netbios_name: ARBOR
               role: "Forest Root Replica"
@@ -118,7 +118,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: alpine.lab
               netbios_name: ALPINE
               role: "Forest Root PDC"
@@ -134,7 +134,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: alpine.lab
               netbios_name: ALPINE
               role: "Forest Root Replica"
@@ -150,7 +150,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
               parent_domain: alpine.lab
@@ -167,7 +167,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
               parent_domain: alpine.lab
@@ -184,7 +184,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
               parent_domain: alpine.lab
@@ -201,7 +201,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "ADFR,DSP"
+              proxmox_vm_tags: "adfr,dsp"
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
               parent_domain: alpine.lab
@@ -222,7 +222,7 @@ all:
           vm_cores: 4
           vm_memory: 8192
           vm_disk: 100G
-          proxmox_vm_tags: "DSP"
+          proxmox_vm_tags: "dsp"
           role: "DSP Identity Analytics Server"
 
     recovery_vms:
@@ -236,7 +236,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 80G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Recovery VM"
 
         BLUFF:
@@ -248,7 +248,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 80G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Recovery VM"
 
         CLIFF:
@@ -272,7 +272,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 80G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Recovery VM"
 
     domain_controllers:
