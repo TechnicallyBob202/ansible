@@ -13,10 +13,11 @@
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
+    name: "{{ inventory_hostname }}"
     pool: "{{ derived_pool }}"
     update: yes
   delegate_to: localhost
-  
+
 - name: Configure VM CPU and memory
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
