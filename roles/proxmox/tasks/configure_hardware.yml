@@ -44,6 +44,18 @@
     update: true
   register: tag_config_first
 
+- name: Ensure VM is set to start on host boot
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    onboot: true
+    update: true
+  register: onboot_result
+
 - name: Display hardware configuration result
   debug:
     msg:
