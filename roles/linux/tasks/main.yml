@@ -15,12 +15,20 @@
   when: linux_operation in ['configure_network', 'set_static_ip']
         and (linux_conn_name is not defined or linux_ifname is not defined)
 
-- name: Pick primary ethernet connection
-  ansible.builtin.set_fact:
-    linux_conn_name: "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'equalto', 'ethernet') | list | first)[0] }}"
-    linux_ifname:   "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'equalto', 'ethernet') | list | first)[2] }}"
+- name: Debug active connections
+  ansible.builtin.debug:
+    msg: "Active connections: {{ nmcli_active.stdout_lines }}"
   when: linux_operation in ['configure_network', 'set_static_ip']
         and (linux_conn_name is not defined or linux_ifname is not defined)
+
+- name: Pick primary ethernet connection
+  ansible.builtin.set_fact:
+    linux_conn_name: "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | first)[0] }}"
+    linux_ifname:   "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | first)[2] }}"
+  when:
+    - linux_operation in ['configure_network', 'set_static_ip']
+    - (linux_conn_name is not defined or linux_ifname is not defined)
+    - nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | length > 0
 
 - name: Set hostname
   ansible.builtin.hostname:
@@ -68,7 +76,7 @@
   ansible.builtin.meta: reset_connection
   when:
     - linux_operation == 'configure_network'
-    
+
 # Optional: validation
 - name: Validate configuration
   block:
