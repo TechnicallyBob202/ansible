@@ -57,6 +57,19 @@
     - network_config.changed
   register: reboot_result
 
+- name: Switch future SSH to the new static IP
+  ansible.builtin.set_fact:
+    ansible_ssh_host: "{{ ansible_host }}"
+  when:
+    - linux_operation == 'configure_network'
+    - reboot_result.changed
+
+- name: Reset SSH connection to use new IP
+  ansible.builtin.meta: reset_connection
+  when:
+    - linux_operation == 'configure_network'
+    - reboot_result.changed
+
 - name: Wait for system to come back
   ansible.builtin.wait_for_connection:
     delay: 30
@@ -65,17 +78,6 @@
     - linux_operation == 'configure_network'
     - reboot_result is defined
     - reboot_result.changed
-
-- name: Switch future SSH to the new static IP
-  ansible.builtin.set_fact:
-    ansible_ssh_host: "{{ ansible_host }}"
-  when:
-    - linux_operation == 'configure_network'
-
-- name: Reset SSH connection to use new IP
-  ansible.builtin.meta: reset_connection
-  when:
-    - linux_operation == 'configure_network'
 
 # Optional: validation
 - name: Validate configuration
