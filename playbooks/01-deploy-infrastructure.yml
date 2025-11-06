@@ -12,7 +12,6 @@
         tasks_from: configure_tag_styles.yml
       vars:
         proxmox_host: "{{ proxmox_hosts | first }}"
-      delegate_to: localhost
 
 # =============================================================================
 # PHASE 1: Deploy VMs (clone + configure + start)
