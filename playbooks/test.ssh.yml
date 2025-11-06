@@ -1,0 +1,22 @@
+---
+- name: Test SSH connectivity via Semaphore key
+  hosts: SLOPE            # or a group like linux_infrastructure
+  gather_facts: false
+  vars:
+    ansible_connection: ssh
+    ansible_user: blyons
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+
+  tasks:
+    - name: Ping over SSH
+      ansible.builtin.ping:
+
+    - name: Who am I
+      ansible.builtin.command: whoami
+      register: who
+      changed_when: false
+
+    - name: Show result
+      ansible.builtin.debug:
+        msg: "Connected to {{ inventory_hostname }} as {{ who.stdout }}"
