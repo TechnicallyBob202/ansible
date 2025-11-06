@@ -1,6 +1,25 @@
 ---
 # =============================================================================
-# PHASE 1: Deploy VMs (clone + configure + start)
+# PHASE 1: Configure Proxmox Tag Styles
+# =============================================================================
+- name: Configure Proxmox Tag Styles
+  hosts: localhost
+  gather_facts: false
+
+  vars:
+    proxmox_host: "{{ groups['semperis_proxmox'][0] }}"
+    proxmox_user: "{{ lookup('env', 'proxmox_user') | default('root@pam') }}"
+    proxmox_password: "{{ lookup('env', 'proxmox_password') }}"
+    proxmox_validate_certs: false
+
+  tasks:
+    - name: Configure tag styles
+      include_role:
+        name: proxmox
+        tasks_from: configure_tag_styles.yml
+
+# =============================================================================
+# PHASE 2: Deploy VMs (clone + configure + start)
 # =============================================================================
 - name: Deploy Lab VMs from Inventory
   hosts: all
@@ -47,7 +66,7 @@
       delegate_to: localhost
 
 # =============================================================================
-# PHASE 2: Snapshot after deployment (only VMs that were deployed)
+# PHASE 3: Snapshot after deployment (only VMs that were deployed)
 # =============================================================================
 - name: Snapshot after deploy
   hosts: all
@@ -67,31 +86,3 @@
           delegate_to: localhost
       vars:
         snapshot_name: post-deploy
-      when: vm_changed | default(false)
-
-# =============================================================================
-# PHASE 3: Completion message
-# =============================================================================
-- name: Deployment Summary
-  hosts: localhost
-  gather_facts: false
-
-  tasks:
-    - name: Count changed VMs
-      set_fact:
-        changed_count: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-
-    - name: Display detailed breakdown
-      debug:
-        msg: "{{ item }} - {{ 'NEWLY DEPLOYED' if hostvars[item].vm_changed | default(false) else 'ALREADY EXISTED' }}"
-      loop: "{{ groups['all'] }}"
-
-    - name: Deployment complete
-      debug:
-        msg:
-          - "Deployment complete:"
-          - "  {{ changed_count }}/{{ groups['all'] | length }} VMs were newly deployed"
-          - "  Snapshots created for {{ changed_count }} newly deployed VMs"
-          - "  Tags applied per inventory (ADFR/DSP)"
-          - ""
-          - "Next: Run playbook 02-configure-base-os.yml to set static IPs"

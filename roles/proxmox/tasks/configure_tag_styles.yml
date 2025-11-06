@@ -1,0 +1,41 @@
+---
+# roles/proxmox/tasks/configure_tag_styles.yml
+# Configure Proxmox tag colors via datacenter config
+
+- name: Configure Proxmox tag styles
+  block:
+    - name: Get current datacenter config
+      community.general.proxmox_vm_info:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        type: nodes
+      register: pve_nodes
+
+    # Tag style format: tagname:background:foreground
+    # e.g., adfr:2ecc71:ffffff (green), dsp:3498db:ffffff (blue)
+
+    - name: Configure tag styles via API
+      uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/cluster/options"
+        method: PUT
+        user: "{{ proxmox_user }}"
+        password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        body_format: form-urlencoded
+        body:
+          tagstyle: |
+            adfr:2ecc71:ffffff
+            dsp:3498db:ffffff
+      register: tag_config_result
+      changed_when: tag_config_result.status == 200
+
+    - name: Display tag configuration
+      debug:
+        msg:
+          - "✓ Proxmox tag styles configured"
+          - "  adfr tag: Green (#2ecc71)"
+          - "  dsp tag: Blue (#3498db)"
+
+  delegate_to: localhost
