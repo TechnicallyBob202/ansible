@@ -1,134 +1,58 @@
 ---
-# Test playbook for Proxmox tag application with fallback to qm set
-# Usage:
-#   export PROXMOX_ROOT_PASSWORD="..."   # if you need CLI auth for pvesh/qm on controller
-#   ansible-playbook test-tags-fallback.yml
-
-- name: Test Proxmox tag application with fallback
+- name: Test dynamic tag creation in Proxmox
   hosts: localhost
-  gather_facts: no
-  collections:
-    - community.general
+  gather_facts: false
 
   vars:
-    test_vmid: 3510
-    test_node: semperis-nuc-1
-    test_proxmox_host: 192.168.33.21
-    # You can supply a single string or list; either way the playbook will join them as comma-separated
-    test_tags_input: "TEST"
-    proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') | default(omit) }}"
+    proxmox_host: "your.proxmox.host"
+    proxmox_user: "root@pam"
+    proxmox_password: "your_password"
     proxmox_validate_certs: false
-    # Path to qm/pvesh on the controller (adjust if not on PATH)
-    qm_path: /usr/sbin/qm
-    pvesh_path: /usr/bin/pvesh
+    proxmox_node: "pve"
+    vmid: 101
+    proxmox_vm_tags: "ADFR,DSP,TEST"  # comma-separated list for Proxmox
 
   tasks:
-
-    - name: Normalize tags into comma-separated string
-      set_fact:
-        test_tags: "{{ test_tags_input if test_tags_input is string else (test_tags_input | join(',')) }}"
-
-    - name: Read current cluster tags via pvesh (if available)
-      ansible.builtin.command:
-        cmd: "{{ pvesh_path }} get /cluster/tags"
-      register: cluster_tags_cmd
-      failed_when: false
-      changed_when: false
-
-    - name: Show cluster tags raw output (if any)
-      debug:
-        msg:
-          - "pvesh output rc={{ cluster_tags_cmd.rc }}"
-          - "{{ cluster_tags_cmd.stdout | default('(no output)') }}"
-      when: cluster_tags_cmd is defined
-
-    - name: Get current VM info before tagging
-      community.general.proxmox_vm_info:
-        api_host: "{{ test_proxmox_host }}"
+    - name: Get current VM info
+      community.general.proxmox_kvm_info:
+        api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-      register: vm_info_before
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+      register: vm_info
 
-    - name: Extract current tags before
-      set_fact:
-        tags_before: >
-          {{ (vm_info_before.proxmox_vms
-              | selectattr('vmid', 'equalto', test_vmid)
-              | list
-              | first | default({})).tags | default('(none)') }}
-
-    - name: Display current tags
+    - name: Show current tags
       debug:
-        msg: "Current tags: {{ tags_before }}"
+        msg: "Current tags: {{ vm_info.proxmox_kvm_info[0].tags | default('none') }}"
 
-    - name: Attempt to apply tags using module 'tags' parameter
+    - name: Apply tags directly via API (bypasses tag validation)
       community.general.proxmox_kvm:
-        api_host: "{{ test_proxmox_host }}"
+        api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ test_vmid }}"
-        node: "{{ test_node }}"
-        tags: "{{ test_tags }}"
-        update: yes
-      register: tag_module_result
-      failed_when: false
-      changed_when: "{{ tag_module_result.changed | default(false) }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        api_update_vm:
+          tags: "{{ proxmox_vm_tags }}"
+      register: tag_update
+      changed_when: "'update pending' in (tag_update.msg | default('')) or tag_update.changed"
 
-    - name: Show result of module-tags attempt
-      debug:
-        msg:
-          - "module attempt rc: {{ tag_module_result.rc | default('N/A') }}"
-          - "module attempt changed: {{ tag_module_result.changed | default(false) }}"
-          - "module attempt msg: {{ tag_module_result.msg | default('(no msg)') }}"
-      when: tag_module_result is defined
-
-    - name: Fallback - call qm set if module attempt failed with invalid tag
-      ansible.builtin.command:
-        cmd: "{{ qm_path }} {{ test_vmid }} --tags {{ test_tags }}"
-      register: qm_result
-      when:
-        - tag_module_result is defined
-        - tag_module_result.failed | default(false)
-      failed_when: qm_result.rc != 0
-      changed_when: true
-
-    - name: Show qm set output (if run)
-      debug:
-        msg:
-          - "qm rc: {{ qm_result.rc | default('not run') }}"
-          - "qm stdout: {{ qm_result.stdout | default('') }}"
-          - "qm stderr: {{ qm_result.stderr | default('') }}"
-      when: qm_result is defined
-
-    - name: Wait briefly for API to persist changes
-      pause:
-        seconds: 2
-
-    - name: Get updated VM info after tagging
-      community.general.proxmox_vm_info:
-        api_host: "{{ test_proxmox_host }}"
+    - name: Get updated VM info
+      community.general.proxmox_kvm_info:
+        api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
       register: vm_info_after
 
-    - name: Extract tags after
-      set_fact:
-        tags_after: >
-          {{ (vm_info_after.proxmox_vms
-              | selectattr('vmid', 'equalto', test_vmid)
-              | list
-              | first | default({})).tags | default('(none)') }}
-
-    - name: Display result
+    - name: Show updated tags
       debug:
         msg:
-          - "Tag application test complete:"
-          - "  Before: {{ tags_before }}"
-          - "  After:  {{ tags_after }}"
-          - "  Expected: {{ test_tags }}"
-          - "  Module attempt failed: {{ tag_module_result.failed | default(false) }}"
-          - "  Fallback qm run: {{ (qm_result is defined) }}"
+          - "Before: {{ vm_info.proxmox_kvm_info[0].tags | default('none') }}"
+          - "After:  {{ vm_info_after.proxmox_kvm_info[0].tags | default('none') }}"
+          - "Expected: {{ proxmox_vm_tags }}"
