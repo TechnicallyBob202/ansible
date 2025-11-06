@@ -1,66 +1,102 @@
 ---
-# Configure VM hardware (CPU, RAM, Disk)
+# Test playbook for Proxmox tag application
+# Run with: ansible-playbook test-tags.yml
+# Requires environment variable: proxmox-root-password
 
-- name: Configure VM CPU and memory
-  community.general.proxmox_kvm:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    name: "{{ inventory_hostname }}"
-    cores: "{{ vm_cores }}"
-    memory: "{{ vm_memory }}"
-    pool: "{{ proxmox_pool }}"
-    update: yes
-  register: cpu_mem_config
-  when: needs_cpu_mem_update
-  delegate_to: localhost
+- name: Test Proxmox VM Tag Application
+  hosts: localhost
+  gather_facts: false
+  collections:
+    - community.general
 
-- name: Resize VM disk
-  community.general.proxmox_disk:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    disk: scsi0
-    size: "{{ vm_disk }}"
-    state: resized
-  register: disk_resize
-  when: needs_disk_resize | default(false)
-  delegate_to: localhost
+  vars:
+    # Test target - change these to test a specific VM
+    test_vmid: 3510  # ATLAS
+    test_node: semperis-nuc-1
+    test_proxmox_host: 192.168.33.21
+    test_tags: "TEST;VERIFY"
 
-- name: Apply VM tags (first pass)
-  community.general.proxmox_kvm:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    tags: "{{ proxmox_vm_tags }}"
-    update: yes
-  register: tag_config_first
+    # Use defaults from role
+    proxmox_user: root@pam
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    proxmox_validate_certs: false
 
-- name: Apply VM tags (second pass - Proxmox workaround for tag persistence)
-  community.general.proxmox_kvm:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    tags: "{{ proxmox_vm_tags }}"
-    update: yes
-  register: tag_config_second
+  tasks:
+    - name: Validate required environment variables
+      assert:
+        that:
+          - lookup('env', 'proxmox-root-password') | length > 0
+        fail_msg: "Required environment variable not set: proxmox-root-password"
 
-- name: Display hardware configuration result
-  debug:
-    msg:
-      - "VM {{ inventory_hostname }} - Hardware configured"
-      - "  CPU: {{ vm_cores }} cores"
-      - "  RAM: {{ vm_memory }} MB"
-      - "  Disk: {{ vm_disk }}"
-      - "  Tags: {{ proxmox_vm_tags }}"
+    - name: Get current VM info before tagging
+      community.general.proxmox_vm_info:
+        api_host: "{{ test_proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+      register: vm_info_before
+
+    - name: Extract current tags before
+      set_fact:
+        tags_before: "{{ (vm_info_before.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+
+    - name: Display current tags
+      debug:
+        msg: "Current tags: {{ tags_before }}"
+
+    - name: Apply tags (first pass)
+      community.general.proxmox_kvm:
+        api_host: "{{ test_proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ test_vmid }}"
+        node: "{{ test_node }}"
+        tags: "{{ test_tags }}"
+        update: yes
+      register: tag_pass_1
+
+    - name: Display first pass result
+      debug:
+        msg: "First pass - Changed: {{ tag_pass_1.changed }}"
+
+    - name: Apply tags (second pass - workaround)
+      community.general.proxmox_kvm:
+        api_host: "{{ test_proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ test_vmid }}"
+        node: "{{ test_node }}"
+        tags: "{{ test_tags }}"
+        update: yes
+      register: tag_pass_2
+
+    - name: Display second pass result
+      debug:
+        msg: "Second pass - Changed: {{ tag_pass_2.changed }}"
+
+    - name: Wait briefly for API to persist changes
+      pause:
+        seconds: 2
+
+    - name: Get updated VM info after tagging
+      community.general.proxmox_vm_info:
+        api_host: "{{ test_proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+      register: vm_info_after
+
+    - name: Extract tags after
+      set_fact:
+        tags_after: "{{ (vm_info_after.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+
+    - name: Display result
+      debug:
+        msg:
+          - "Tag application test complete:"
+          - "  Before: {{ tags_before }}"
+          - "  After: {{ tags_after }}"
+          - "  Expected: {{ test_tags }}"
+          - "  Success: {{ (tags_after | string) == (test_tags | string) }}"
