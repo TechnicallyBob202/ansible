@@ -3,28 +3,29 @@
   hosts: localhost
   gather_facts: false
   vars:
-    target_ip: "192.168.35.248"              # hard-coded DHCP IP
+    target_ip: "192.168.35.248"           # your DHCP IP
     ssh_user: "blyons"
-    key_path: "~/.ssh/ansible_key"           # adjust to the real path on the Semaphore runner
+    key_path: "~/.ssh/ansible_key"  # adjust to the real path on the Semaphore runner
 
   tasks:
-    - name: Define ad-hoc target host with key-only SSH
+    - name: Define ad-hoc target host using Paramiko and key
       add_host:
         name: adhoc_target
-        ansible_host: "{{ target_ip }}"
         groups: ["adhoc_group"]
-        ansible_connection: ssh
+        ansible_host: "{{ target_ip }}"
+        ansible_connection: paramiko
         ansible_user: "{{ ssh_user }}"
         ansible_python_interpreter: /usr/bin/python3
         ansible_ssh_private_key_file: "{{ key_path }}"
-        ansible_ssh_common_args: "-o PreferredAuthentications=publickey -o PasswordAuthentication=no -o StrictHostKeyChecking=no"
-        ansible_ssh_password_mechanism: disable  # if your ansible-core supports it (2.19+)
+        # Explicitly null-out any inherited password variables
+        ansible_password: null
+        ansible_ssh_password: null
 
-- name: Test SSH using the key
+- name: Test SSH using the key (Paramiko)
   hosts: adhoc_target
   gather_facts: false
   tasks:
-    - name: Ping over SSH
+    - name: Ping
       ansible.builtin.ping:
 
     - name: Who am I
@@ -32,6 +33,6 @@
       register: who
       changed_when: false
 
-    - name: Show result
+    - name: Show
       ansible.builtin.debug:
         msg: "Connected to {{ inventory_hostname }} as {{ who.stdout }}"
