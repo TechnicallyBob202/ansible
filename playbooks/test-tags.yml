@@ -12,7 +12,7 @@
     test_vmid: 3510        # ATLAS
     test_node: semperis-nuc-1
     test_proxmox_host: 192.168.33.21
-    test_tags: "ADFR"      # e.g., "ADFR,DSP"
+    test_tags: "adfr"      # e.g., "ADFR,DSP"
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     proxmox_validate_certs: false
