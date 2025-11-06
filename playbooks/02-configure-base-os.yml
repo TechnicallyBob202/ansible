@@ -153,7 +153,7 @@
   vars:
     # Force SSH + key auth (Semaphore will inject the key)
     ansible_connection: ssh
-    ansible_user: root
+    ansible_user: blyons
     ansible_python_interpreter: /usr/bin/python3
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 
