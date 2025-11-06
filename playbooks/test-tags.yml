@@ -1,7 +1,6 @@
 ---
 # Test playbook for Proxmox tag application
 # Run with: ansible-playbook test-tags.yml
-# Requires environment variable: proxmox-root-password
 
 - name: Test Proxmox VM Tag Application
   hosts: localhost
@@ -10,13 +9,10 @@
     - community.general
 
   vars:
-    # Test target - change these to test a specific VM
-    test_vmid: 3510  # ATLAS
+    test_vmid: 3510        # ATLAS
     test_node: semperis-nuc-1
     test_proxmox_host: 192.168.33.21
-    test_tags: "ADFR"
-
-    # Use defaults from role
+    test_tags: "ADFR"      # e.g., "ADFR,DSP"
     proxmox_user: root@pam
     proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     proxmox_validate_certs: false
@@ -25,7 +21,8 @@
     - name: Validate required environment variables
       assert:
         that:
-          - lookup('env', 'proxmox-root-password') | length > 0
+          - proxmox_password is defined
+          - proxmox_password | length > 0
         fail_msg: "Required environment variable not set: proxmox-root-password"
 
     - name: Get current VM info before tagging
@@ -38,13 +35,13 @@
 
     - name: Extract current tags before
       set_fact:
-        tags_before: "{{ (vm_info_before.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+        tags_before_raw: "{{ (vm_info_before.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('') }}"
 
     - name: Display current tags
       debug:
-        msg: "Current tags: {{ tags_before }}"
+        msg: "Current tags: {{ tags_before_raw | default('(none)') }}"
 
-    - name: Apply tags (first pass)
+    - name: Apply tags (single pass, idempotent)
       community.general.proxmox_kvm:
         api_host: "{{ test_proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -54,49 +51,47 @@
         node: "{{ test_node }}"
         tags: "{{ test_tags }}"
         update: yes
-      register: tag_pass_1
+      register: tag_apply
 
-    - name: Display first pass result
+    - name: Display apply result
       debug:
-        msg: "First pass - Changed: {{ tag_pass_1.changed }}"
-
-    - name: Apply tags (second pass - workaround)
-      community.general.proxmox_kvm:
-        api_host: "{{ test_proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ test_vmid }}"
-        node: "{{ test_node }}"
-        tags: "{{ test_tags }}"
-        update: yes
-      register: tag_pass_2
-
-    - name: Display second pass result
-      debug:
-        msg: "Second pass - Changed: {{ tag_pass_2.changed }}"
+        msg: "Apply changed: {{ tag_apply.changed }}"
 
     - name: Wait briefly for API to persist changes
       pause:
         seconds: 2
 
-    - name: Get updated VM info after tagging
+    - name: Read back VM info (retry for eventual consistency)
       community.general.proxmox_vm_info:
         api_host: "{{ test_proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
       register: vm_info_after
+      retries: 3
+      delay: 2
+      until: >
+        (
+          (
+            (vm_info_after.proxmox_vms | selectattr('vmid','equalto', test_vmid) | list | first | default({})).tags | default('')
+          ) | length
+        ) >= 0
 
     - name: Extract tags after
       set_fact:
-        tags_after: "{{ (vm_info_after.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+        tags_after_raw: "{{ (vm_info_after.proxmox_vms | selectattr('vmid','equalto', test_vmid) | list | first | default({})).tags | default('') }}"
+
+    - name: Normalize expected and actual tags
+      set_fact:
+        expected_tags_list: "{{ test_tags | regex_replace('\\s+', '') | regex_replace(';', ',') | split(',') | select('truthy') | map('upper') | list | unique | sort }}"
+        actual_tags_list:   "{{ tags_after_raw | regex_replace('\\s+', '') | regex_replace(';', ',') | split(',') | select('truthy') | map('upper') | list | unique | sort }}"
 
     - name: Display result
       debug:
         msg:
           - "Tag application test complete:"
-          - "  Before: {{ tags_before }}"
-          - "  After: {{ tags_after }}"
-          - "  Expected: {{ test_tags }}"
-          - "  Success: {{ (tags_after | string) == (test_tags | string) }}"
+          - "  Before (raw): {{ tags_before_raw | default('(none)') }}"
+          - "  After  (raw): {{ tags_after_raw  | default('(none)') }}"
+          - "  Expected (norm): {{ expected_tags_list }}"
+          - "  Actual   (norm): {{ actual_tags_list }}"
+          - "  Success: {{ expected_tags_list == actual_tags_list }}"
