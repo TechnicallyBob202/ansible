@@ -4,7 +4,7 @@
 # =============================================================================
 - name: Deploy Lab VMs from Inventory
   hosts: all
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   vars:
@@ -16,7 +16,7 @@
         msg:
           - "Deploying {{ ansible_play_hosts | length }} VMs"
           - "VMs will boot with DHCP - run playbook 02 next to configure static IPs"
-      run_once: yes
+      run_once: true
       delegate_to: localhost
 
     - name: Deploy VM (clone + configure + start)
@@ -35,7 +35,7 @@
                           | map('extract', hostvars, 'vm_changed')
                           | select('equalto', true)
                           | list | length) > 0 }}"
-      run_once: yes
+      run_once: true
       delegate_to: localhost
       delegate_facts: true
 
@@ -43,7 +43,7 @@
       pause:
         seconds: 60
       when: hostvars['localhost']['any_new_vms'] | default(false)
-      run_once: yes
+      run_once: true
       delegate_to: localhost
 
 # =============================================================================
@@ -51,22 +51,23 @@
 # =============================================================================
 - name: Manage Proxmox Tags
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
+
+  vars:
+    proxmox_host: "{{ hostvars[groups['all'][0]].proxmox_host }}"
 
   tasks:
     - name: Ensure required tags exist in Proxmox
       include_role:
         name: proxmox
         tasks_from: manage_tags.yml
-      vars:
-        proxmox_host: "{{ hostvars[groups['all'][0]].proxmox_host }}"
 
 # =============================================================================
 # PHASE 3: Update VM Tags (ALL VMs - new and existing)
 # =============================================================================
 - name: Update VM Tags
   hosts: all
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   tasks:
@@ -98,7 +99,7 @@
 # =============================================================================
 - name: Snapshot after deploy
   hosts: all
-  gather_facts: no
+  gather_facts: false
   serial: 2
 
   tasks:
@@ -121,7 +122,7 @@
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Count changed VMs
