@@ -40,9 +40,9 @@
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
-    tags: "{{ proxmox_vm_tags.split(';') }}"
-    update: yes
-  register: tag_config
+    tags: "{{ proxmox_vm_tags }}"
+    update: true
+  register: tag_config_first
 
 - name: Display hardware configuration result
   debug:
@@ -51,3 +51,4 @@
       - "  CPU: {{ vm_cores }} cores"
       - "  RAM: {{ vm_memory }} MB"
       - "  Disk: {{ vm_disk }}"
+      - "  Tags: {{ proxmox_vm_tags }}"
