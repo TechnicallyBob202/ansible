@@ -20,6 +20,6 @@ proxmox_stop_timeout: 300
 # Tag management
 proxmox_tags:
   - name: ADFR
-    color: "#00ff00"  # green
+    color: "#2ecc71"  # green
   - name: DSP
-    color: "#0000ff"  # blue
+    color: "#3498db"  # blue
