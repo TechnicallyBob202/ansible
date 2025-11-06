@@ -1,32 +1,47 @@
 ---
-# Test playbook for Proxmox tag application
-# Run with: ansible-playbook test-tags.yml
-# Requires environment variable: proxmox-root-password
+# Test playbook for Proxmox tag application with fallback to qm set
+# Usage:
+#   export PROXMOX_ROOT_PASSWORD="..."   # if you need CLI auth for pvesh/qm on controller
+#   ansible-playbook test-tags-fallback.yml
 
-- name: Test Proxmox VM Tag Application
+- name: Test Proxmox tag application with fallback
   hosts: localhost
-  gather_facts: false
+  gather_facts: no
   collections:
     - community.general
 
   vars:
-    # Test target - change these to test a specific VM
-    test_vmid: 3510  # ATLAS
+    test_vmid: 3510
     test_node: semperis-nuc-1
     test_proxmox_host: 192.168.33.21
-    test_tags: "TEST"
-
-    # Use defaults from role
+    # You can supply a single string or list; either way the playbook will join them as comma-separated
+    test_tags_input: "TEST"
     proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') | default(omit) }}"
     proxmox_validate_certs: false
+    # Path to qm/pvesh on the controller (adjust if not on PATH)
+    qm_path: /usr/sbin/qm
+    pvesh_path: /usr/bin/pvesh
 
   tasks:
-    - name: Validate required environment variables
-      assert:
-        that:
-          - lookup('env', 'proxmox-root-password') | length > 0
-        fail_msg: "Required environment variable not set: proxmox-root-password"
+
+    - name: Normalize tags into comma-separated string
+      set_fact:
+        test_tags: "{{ test_tags_input if test_tags_input is string else (test_tags_input | join(',')) }}"
+
+    - name: Read current cluster tags via pvesh (if available)
+      ansible.builtin.command:
+        cmd: "{{ pvesh_path }} get /cluster/tags"
+      register: cluster_tags_cmd
+      failed_when: false
+      changed_when: false
+
+    - name: Show cluster tags raw output (if any)
+      debug:
+        msg:
+          - "pvesh output rc={{ cluster_tags_cmd.rc }}"
+          - "{{ cluster_tags_cmd.stdout | default('(no output)') }}"
+      when: cluster_tags_cmd is defined
 
     - name: Get current VM info before tagging
       community.general.proxmox_vm_info:
@@ -38,13 +53,17 @@
 
     - name: Extract current tags before
       set_fact:
-        tags_before: "{{ (vm_info_before.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+        tags_before: >
+          {{ (vm_info_before.proxmox_vms
+              | selectattr('vmid', 'equalto', test_vmid)
+              | list
+              | first | default({})).tags | default('(none)') }}
 
     - name: Display current tags
       debug:
         msg: "Current tags: {{ tags_before }}"
 
-    - name: Apply tags (first pass)
+    - name: Attempt to apply tags using module 'tags' parameter
       community.general.proxmox_kvm:
         api_host: "{{ test_proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -54,27 +73,35 @@
         node: "{{ test_node }}"
         tags: "{{ test_tags }}"
         update: yes
-      register: tag_pass_1
+      register: tag_module_result
+      failed_when: false
+      changed_when: "{{ tag_module_result.changed | default(false) }}"
 
-    - name: Display first pass result
+    - name: Show result of module-tags attempt
       debug:
-        msg: "First pass - Changed: {{ tag_pass_1.changed }}"
+        msg:
+          - "module attempt rc: {{ tag_module_result.rc | default('N/A') }}"
+          - "module attempt changed: {{ tag_module_result.changed | default(false) }}"
+          - "module attempt msg: {{ tag_module_result.msg | default('(no msg)') }}"
+      when: tag_module_result is defined
 
-    - name: Apply tags (second pass - workaround)
-      community.general.proxmox_kvm:
-        api_host: "{{ test_proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ test_vmid }}"
-        node: "{{ test_node }}"
-        tags: "{{ test_tags }}"
-        update: yes
-      register: tag_pass_2
+    - name: Fallback - call qm set if module attempt failed with invalid tag
+      ansible.builtin.command:
+        cmd: "{{ qm_path }} {{ test_vmid }} --tags {{ test_tags }}"
+      register: qm_result
+      when:
+        - tag_module_result is defined
+        - tag_module_result.failed | default(false)
+      failed_when: qm_result.rc != 0
+      changed_when: true
 
-    - name: Display second pass result
+    - name: Show qm set output (if run)
       debug:
-        msg: "Second pass - Changed: {{ tag_pass_2.changed }}"
+        msg:
+          - "qm rc: {{ qm_result.rc | default('not run') }}"
+          - "qm stdout: {{ qm_result.stdout | default('') }}"
+          - "qm stderr: {{ qm_result.stderr | default('') }}"
+      when: qm_result is defined
 
     - name: Wait briefly for API to persist changes
       pause:
@@ -90,13 +117,18 @@
 
     - name: Extract tags after
       set_fact:
-        tags_after: "{{ (vm_info_after.proxmox_vms | selectattr('vmid', 'equalto', test_vmid) | list | first | default({})).tags | default('(none)') }}"
+        tags_after: >
+          {{ (vm_info_after.proxmox_vms
+              | selectattr('vmid', 'equalto', test_vmid)
+              | list
+              | first | default({})).tags | default('(none)') }}
 
     - name: Display result
       debug:
         msg:
           - "Tag application test complete:"
           - "  Before: {{ tags_before }}"
-          - "  After: {{ tags_after }}"
+          - "  After:  {{ tags_after }}"
           - "  Expected: {{ test_tags }}"
-          - "  Success: {{ (tags_after | string) == (test_tags | string) }}"
+          - "  Module attempt failed: {{ tag_module_result.failed | default(false) }}"
+          - "  Fallback qm run: {{ (qm_result is defined) }}"
