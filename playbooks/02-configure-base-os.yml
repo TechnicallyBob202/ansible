@@ -4,13 +4,13 @@
 # =============================================================================
 - name: Discover IPs and Configure Static Network (Windows)
   hosts: all
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Display configuration plan
       debug:
         msg: "Configuring network for {{ groups['all'] | length }} VMs (Windows + Linux)"
-      run_once: yes
+      run_once: true
 
     - name: Initialize change tracking
       set_fact:
@@ -21,7 +21,7 @@
 # =============================================================================
 - name: Discover Current IPs (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   tasks:
@@ -56,7 +56,7 @@
 # =============================================================================
 - name: Configure Static IP Addresses (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   tasks:
@@ -84,7 +84,7 @@
     - name: Wait for all IPs to settle
       pause:
         seconds: 10
-      run_once: yes
+      run_once: true
       when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
 
 # =============================================================================
@@ -92,7 +92,7 @@
 # =============================================================================
 - name: Configure DNS and Hostname (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   tasks:
@@ -125,7 +125,7 @@
 # =============================================================================
 - name: Reboot hosts that changed hostname (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 0
 
   tasks:
@@ -148,15 +148,18 @@
 # =============================================================================
 - name: Configure Linux VMs
   hosts: linux_infrastructure
-  gather_facts: no
+  gather_facts: false
   serial: 1
-
   vars:
+    # Force SSH on Linux, regardless of global Windows defaults
+    ansible_connection: ssh
+    ansible_user: root
+    ansible_python_interpreter: /usr/bin/python3
+
     linux_operation: configure_network
     linux_gateway: "{{ windows_gateway | default('192.168.35.1') }}"
     linux_dns_servers: "{{ windows_dns_servers | default(['1.1.1.1', '1.0.0.1']) }}"
     linux_ip_prefix: "{{ windows_ip_prefix | default(24) }}"
-
   tasks:
     - name: Display Linux VM configuration
       debug:
@@ -176,7 +179,7 @@
 # =============================================================================
 - name: Validate Configuration (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Get network configuration
@@ -221,14 +224,14 @@
     - name: Summary
       debug:
         msg: "All {{ groups['all'] | length }} VMs configured successfully"
-      run_once: yes
+      run_once: true
 
 # =============================================================================
 # PHASE 7: Snapshot (only changed VMs)
 # =============================================================================
 - name: Snapshot after base OS configuration
   hosts: all
-  gather_facts: no
+  gather_facts: false
   serial: 2
 
   tasks:
@@ -247,7 +250,7 @@
 # =============================================================================
 - name: Configuration Summary
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Count changed VMs by type
