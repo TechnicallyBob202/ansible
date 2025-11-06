@@ -84,7 +84,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: arbor.lab
               netbios_name: ARBOR
               role: "Forest Root PDC"
@@ -100,7 +100,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: arbor.lab
               netbios_name: ARBOR
               role: "Forest Root Replica"
@@ -118,7 +118,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: alpine.lab
               netbios_name: ALPINE
               role: "Forest Root PDC"
@@ -134,7 +134,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: alpine.lab
               netbios_name: ALPINE
               role: "Forest Root Replica"
@@ -150,7 +150,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
               parent_domain: alpine.lab
@@ -167,7 +167,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: mauna.alpine.lab
               netbios_name: MAUNA
               parent_domain: alpine.lab
@@ -184,7 +184,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
               parent_domain: alpine.lab
@@ -201,7 +201,7 @@ all:
               vm_cores: 2
               vm_memory: 2048
               vm_disk: 80G
-              proxmox_vm_tags: "adfr,dsp"
+              proxmox_vm_tags: "ad"
               domain_name: rainier.alpine.lab
               netbios_name: RAINIER
               parent_domain: alpine.lab

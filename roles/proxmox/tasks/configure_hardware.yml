@@ -1,6 +1,10 @@
 ---
 # Configure VM hardware (CPU, RAM, Disk)
 
+- name: Derive resource pool from first tag
+  set_fact:
+    derived_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
+
 - name: Configure VM CPU and memory
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
@@ -12,7 +16,7 @@
     name: "{{ inventory_hostname }}"
     cores: "{{ vm_cores }}"
     memory: "{{ vm_memory }}"
-    pool: "{{ proxmox_pool }}"
+    pool: "{{ derived_pool }}"
     update: yes
   register: cpu_mem_config
   when: needs_cpu_mem_update
