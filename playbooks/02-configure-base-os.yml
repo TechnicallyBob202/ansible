@@ -144,12 +144,35 @@
       when: ansible_connection == 'winrm'
 
 # =============================================================================
-# PHASE 5: Configure Linux VMs
+# PHASE 5: Discover current Linux IPs from Proxmox
+# =============================================================================
+- name: Discover current Linux IPs
+  hosts: linux_infrastructure
+  gather_facts: false
+  serial: 1
+
+  tasks:
+    - name: Discover IP from Proxmox guest agent
+      include_role:
+        name: windows
+        tasks_from: discover_ip.yml
+
+    - name: Set ansible_ssh_host to discovered IP
+      set_fact:
+        ansible_ssh_host: "{{ discovered_ip }}"
+        cacheable: true
+
+    - name: Display connection info
+      debug:
+        msg: "Will connect to {{ inventory_hostname }} at {{ ansible_ssh_host }} (target: {{ ansible_host }})"
+
+# =============================================================================
+# PHASE 6: Configure Linux VMs
 # =============================================================================
 - name: Configure Linux VMs
   hosts: linux_infrastructure
   gather_facts: false
-  serial: 1
+  serial: 0
   vars:
     ansible_connection: ssh
     ansible_user: blyons
@@ -177,7 +200,7 @@
         vm_changed: "{{ linux_result.changed | default(true) }}"
 
 # =============================================================================
-# PHASE 6: Validation (Windows)
+# PHASE 7: Validation (Windows)
 # =============================================================================
 - name: Validate Configuration (Windows)
   hosts: all:!linux_infrastructure
@@ -229,7 +252,7 @@
       run_once: true
 
 # =============================================================================
-# PHASE 7: Snapshot (only changed VMs)
+# PHASE 8: Snapshot (only changed VMs)
 # =============================================================================
 - name: Snapshot after base OS configuration
   hosts: all
@@ -248,7 +271,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 8: Final Summary
+# PHASE 9: Final Summary
 # =============================================================================
 - name: Configuration Summary
   hosts: localhost
