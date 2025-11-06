@@ -1,31 +1,27 @@
 ---
-- name: Seed ad-hoc host (no inventory needed)
-  hosts: localhost
+- name: Test SSH using a specific key file (no passwords)
+  hosts: "192.168.35.248"
   gather_facts: false
   vars:
-    target_ip: "192.168.35.248"           # your DHCP IP
-    ssh_user: "blyons"
-    key_path: "~/.ssh/ansible_key"  # adjust to the real path on the Semaphore runner
+    ansible_connection: ssh
+    ansible_user: blyons
+    ansible_python_interpreter: /usr/bin/python3
+
+    # EDIT this to the real absolute path on the Semaphore runner
+    ansible_ssh_private_key_file: "~/.ssh/ansible_key"
+
+    # Force publickey-only so Ansible never tries password mode
+    ansible_ssh_common_args: "-o PreferredAuthentications=publickey -o PasswordAuthentication=no -o StrictHostKeyChecking=no"
+
+    # If your ansible-core is 2.19+, hard-disable password prompts in the ssh plugin
+    ansible_ssh_password_mechanism: disable
+
+    # Neutralize any leaked password vars from inventory (e.g., Windows defaults)
+    ansible_password: ""
+    ansible_ssh_password: ""
 
   tasks:
-    - name: Define ad-hoc target host using Paramiko and key
-      add_host:
-        name: adhoc_target
-        groups: ["adhoc_group"]
-        ansible_host: "{{ target_ip }}"
-        ansible_connection: paramiko
-        ansible_user: "{{ ssh_user }}"
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_ssh_private_key_file: "{{ key_path }}"
-        # Explicitly null-out any inherited password variables
-        ansible_password: null
-        ansible_ssh_password: null
-
-- name: Test SSH using the key (Paramiko)
-  hosts: adhoc_target
-  gather_facts: false
-  tasks:
-    - name: Ping
+    - name: Ping over SSH
       ansible.builtin.ping:
 
     - name: Who am I
@@ -33,6 +29,6 @@
       register: who
       changed_when: false
 
-    - name: Show
+    - name: Show result
       ansible.builtin.debug:
         msg: "Connected to {{ inventory_hostname }} as {{ who.stdout }}"
