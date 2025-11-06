@@ -4,30 +4,34 @@
   gather_facts: false
 
   vars:
-    proxmox_host: "your.proxmox.host"
+    proxmox_host: "192.168.33.21"
     proxmox_user: "root@pam"
-    proxmox_password: "your_password"
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
     proxmox_validate_certs: false
-    proxmox_node: "pve"
-    vmid: 101
-    proxmox_vm_tags: "ADFR,DSP,TEST"  # comma-separated list for Proxmox
+    proxmox_node: "semperis-nuc-1"
+    vmid: 3510
+    proxmox_vm_tags: "ADFR,DSP,TEST"
 
   tasks:
+    - name: Check required env var
+      assert:
+        that:
+          - proxmox_password | length > 0
+        fail_msg: "Required env var proxmox-root-password is not set"
+
     - name: Get current VM info
-      community.general.proxmox_kvm_info:
+      community.general.proxmox_vm_info:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
       register: vm_info
 
     - name: Show current tags
       debug:
-        msg: "Current tags: {{ vm_info.proxmox_kvm_info[0].tags | default('none') }}"
+        msg: "Current tags: {{ (vm_info.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
 
-    - name: Apply tags directly via API (bypasses tag validation)
+    - name: Apply tags directly (will create dynamically)
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -35,24 +39,29 @@
         validate_certs: "{{ proxmox_validate_certs }}"
         vmid: "{{ vmid }}"
         node: "{{ proxmox_node }}"
-        api_update_vm:
-          tags: "{{ proxmox_vm_tags }}"
-      register: tag_update
-      changed_when: "'update pending' in (tag_update.msg | default('')) or tag_update.changed"
+        tags: "{{ proxmox_vm_tags }}"
+        update: true
+      register: tag_result
+
+    - name: Show change result
+      debug:
+        msg: "Tag change result: {{ tag_result }}"
+
+    - name: Wait briefly for Proxmox API to commit
+      pause:
+        seconds: 2
 
     - name: Get updated VM info
-      community.general.proxmox_kvm_info:
+      community.general.proxmox_vm_info:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
         api_password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
       register: vm_info_after
 
     - name: Show updated tags
       debug:
         msg:
-          - "Before: {{ vm_info.proxmox_kvm_info[0].tags | default('none') }}"
-          - "After:  {{ vm_info_after.proxmox_kvm_info[0].tags | default('none') }}"
+          - "Before: {{ (vm_info.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
+          - "After:  {{ (vm_info_after.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
           - "Expected: {{ proxmox_vm_tags }}"
