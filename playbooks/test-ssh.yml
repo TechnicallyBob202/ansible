@@ -1,19 +1,28 @@
 ---
-- name: Test SSH using Semaphore-attached key
-  hosts: "192.168.35.248"     # hard-coded current IP you gave
+- name: Seed ad-hoc host (no inventory needed)
+  hosts: localhost
   gather_facts: false
   vars:
-    ansible_connection: ssh
-    ansible_user: blyons
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_ssh_private_key_file: "~/.ssh/ansible_key"
+    target_ip: "192.168.35.248"              # hard-coded DHCP IP
+    ssh_user: "blyons"
+    key_path: "~/.ssh/ansible_key"           # adjust to the real path on the Semaphore runner
 
-    # Force key-only auth so Ansible does NOT try password/sshpass
-    ansible_ssh_common_args: "-o PreferredAuthentications=publickey -o PasswordAuthentication=no -o StrictHostKeyChecking=no"
+  tasks:
+    - name: Define ad-hoc target host with key-only SSH
+      add_host:
+        name: adhoc_target
+        ansible_host: "{{ target_ip }}"
+        groups: ["adhoc_group"]
+        ansible_connection: ssh
+        ansible_user: "{{ ssh_user }}"
+        ansible_python_interpreter: /usr/bin/python3
+        ansible_ssh_private_key_file: "{{ key_path }}"
+        ansible_ssh_common_args: "-o PreferredAuthentications=publickey -o PasswordAuthentication=no -o StrictHostKeyChecking=no"
+        ansible_ssh_password_mechanism: disable  # if your ansible-core supports it (2.19+)
 
-    # If your Ansible is 2.19+, hard-disable password handling in the ssh plugin
-    ansible_ssh_password_mechanism: disable
-
+- name: Test SSH using the key
+  hosts: adhoc_target
+  gather_facts: false
   tasks:
     - name: Ping over SSH
       ansible.builtin.ping:
