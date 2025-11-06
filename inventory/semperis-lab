@@ -260,7 +260,7 @@ all:
           vm_cores: 2
           vm_memory: 2048
           vm_disk: 80G
-          proxmox_vm_tags: "ADFR"
+          proxmox_vm_tags: "adfr"
           role: "Recovery VM"
 
         BUTTE:
