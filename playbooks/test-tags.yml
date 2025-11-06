@@ -14,7 +14,9 @@
     test_vmid: 3510  # ATLAS
     test_node: semperis-nuc-1
     test_proxmox_host: 192.168.33.21
-    test_tags: "TEST;VERIFY"
+    test_tags:
+      - TEST
+      - VERIFY
 
     # Use defaults from role
     proxmox_user: root@pam
