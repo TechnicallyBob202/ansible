@@ -1,0 +1,66 @@
+---
+# Configure VM hardware (CPU, RAM, Disk)
+
+- name: Configure VM CPU and memory
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    name: "{{ inventory_hostname }}"
+    cores: "{{ vm_cores }}"
+    memory: "{{ vm_memory }}"
+    pool: "{{ proxmox_pool }}"
+    update: yes
+  register: cpu_mem_config
+  when: needs_cpu_mem_update
+  delegate_to: localhost
+
+- name: Resize VM disk
+  community.general.proxmox_disk:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    disk: scsi0
+    size: "{{ vm_disk }}"
+    state: resized
+  register: disk_resize
+  when: needs_disk_resize | default(false)
+  delegate_to: localhost
+
+- name: Apply VM tags (first pass)
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    tags: "{{ proxmox_vm_tags }}"
+    update: yes
+  register: tag_config_first
+
+- name: Apply VM tags (second pass - Proxmox workaround for tag persistence)
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    tags: "{{ proxmox_vm_tags }}"
+    update: yes
+  register: tag_config_second
+
+- name: Display hardware configuration result
+  debug:
+    msg:
+      - "VM {{ inventory_hostname }} - Hardware configured"
+      - "  CPU: {{ vm_cores }} cores"
+      - "  RAM: {{ vm_memory }} MB"
+      - "  Disk: {{ vm_disk }}"
+      - "  Tags: {{ proxmox_vm_tags }}"
