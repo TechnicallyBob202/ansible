@@ -1,5 +1,5 @@
 ---
-- name: Test dynamic tag creation in Proxmox
+- name: Test dynamic tag creation via direct API call
   hosts: localhost
   gather_facts: false
 
@@ -13,55 +13,25 @@
     proxmox_vm_tags: "ADFR,DSP,TEST"
 
   tasks:
-    - name: Check required env var
+    - name: Ensure required env var is set
       assert:
         that:
           - proxmox_password | length > 0
-        fail_msg: "Required env var proxmox-root-password is not set"
+        fail_msg: "Missing env var proxmox-root-password"
 
-    - name: Get current VM info
-      community.general.proxmox_vm_info:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
+    - name: Apply tags directly via REST API
+      ansible.builtin.uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/config"
+        method: PUT
+        user: "{{ proxmox_user }}"
+        password: "{{ proxmox_password }}"
+        body_format: form-urlencoded
+        body:
+          tags: "{{ proxmox_vm_tags }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-      register: vm_info
+        status_code: 200
+      register: proxmox_tag_response
 
-    - name: Show current tags
+    - name: Show response
       debug:
-        msg: "Current tags: {{ (vm_info.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
-
-    - name: Apply tags directly (will create dynamically)
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        tags: "{{ proxmox_vm_tags }}"
-        update: true
-      register: tag_result
-
-    - name: Show change result
-      debug:
-        msg: "Tag change result: {{ tag_result }}"
-
-    - name: Wait briefly for Proxmox API to commit
-      pause:
-        seconds: 2
-
-    - name: Get updated VM info
-      community.general.proxmox_vm_info:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-      register: vm_info_after
-
-    - name: Show updated tags
-      debug:
-        msg:
-          - "Before: {{ (vm_info.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
-          - "After:  {{ (vm_info_after.proxmox_vms | selectattr('vmid', 'equalto', vmid) | list | first | default({})).tags | default('none') }}"
-          - "Expected: {{ proxmox_vm_tags }}"
+        var: proxmox_tag_response.json
