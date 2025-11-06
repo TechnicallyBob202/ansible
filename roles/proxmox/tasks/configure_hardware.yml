@@ -5,17 +5,15 @@
   set_fact:
     derived_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
 
-- name: Assign VM to resource pool
-  community.general.proxmox_kvm:
+- name: Add VM to resource pool
+  community.general.proxmox_pool:
     api_host: "{{ proxmox_host }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    name: "{{ inventory_hostname }}"
-    pool: "{{ derived_pool }}"
-    update: yes
+    poolid: "{{ derived_pool }}"
+    vms: "{{ vmid }}"
+    state: present
   delegate_to: localhost
 
 - name: Configure VM CPU and memory
