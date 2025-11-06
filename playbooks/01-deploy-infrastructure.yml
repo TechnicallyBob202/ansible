@@ -5,17 +5,15 @@
 - name: Configure Proxmox tag styles
   hosts: localhost
   gather_facts: false
-  vars:
-    target_pve_host: "{{ proxmox_hosts | first }}"
   tasks:
     - name: Configure tag styles once (via first API endpoint)
       include_role:
         name: proxmox
         tasks_from: configure_tag_styles.yml
       vars:
-        proxmox_host: "{{ target_pve_host }}"
+        proxmox_host: "{{ proxmox_hosts | first }}"
       delegate_to: localhost
-      
+
 # =============================================================================
 # PHASE 1: Deploy VMs (clone + configure + start)
 # =============================================================================
