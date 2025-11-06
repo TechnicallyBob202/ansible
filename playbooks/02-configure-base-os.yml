@@ -151,14 +151,15 @@
   gather_facts: false
   serial: 1
   vars:
-    # Force SSH on Linux, regardless of global Windows defaults
+    # Force SSH + key auth (Semaphore will inject the key)
     ansible_connection: ssh
     ansible_user: root
     ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
 
     linux_operation: configure_network
     linux_gateway: "{{ windows_gateway | default('192.168.35.1') }}"
-    linux_dns_servers: "{{ windows_dns_servers | default(['1.1.1.1', '1.0.0.1']) }}"
+    linux_dns_servers: "{{ windows_dns_servers | default(['1.1.1.1','1.0.0.1']) }}"
     linux_ip_prefix: "{{ windows_ip_prefix | default(24) }}"
   tasks:
     - name: Display Linux VM configuration
