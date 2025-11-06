@@ -20,7 +20,7 @@
 # PHASE 1: Discover Current IPs (Windows only)
 # =============================================================================
 - name: Discover Current IPs (Windows)
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
   serial: 0
 
@@ -55,7 +55,7 @@
 # PHASE 2: Configure Static IPs (Windows)
 # =============================================================================
 - name: Configure Static IP Addresses (Windows)
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
   serial: 0
 
@@ -91,7 +91,7 @@
 # PHASE 3: Configure DNS and Hostname (Windows)
 # =============================================================================
 - name: Configure DNS and Hostname (Windows)
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
   serial: 0
 
@@ -124,7 +124,7 @@
 # PHASE 4: Reboot Windows hosts that need it
 # =============================================================================
 - name: Reboot hosts that changed hostname (Windows)
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
   serial: 0
 
@@ -175,7 +175,7 @@
 # PHASE 6: Validation (Windows)
 # =============================================================================
 - name: Validate Configuration (Windows)
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
 
   tasks:
