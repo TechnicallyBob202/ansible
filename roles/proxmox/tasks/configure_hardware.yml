@@ -40,7 +40,7 @@
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
-    tags: "{{ proxmox_vm_tags }}"
+    tags: "{{ role | regex_replace(' ', '-') }}"
     update: yes
   register: tag_config
 
