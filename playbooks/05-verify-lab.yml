@@ -87,7 +87,7 @@
     - name: Validate network configuration
       set_fact:
         hostname_matches: "{{ network_config.Hostname | lower == inventory_hostname_short | lower }}"
-        ip_matches: "{{ network_config.IPAddress == hostvars[inventory_hostname].ip }}"
+        ip_matches: "{{ network_config.IPAddress == ansible_host }}"
         dns_configured: "{{ network_config.DNS | length > 0 }}"
 
     - name: Display validation results
