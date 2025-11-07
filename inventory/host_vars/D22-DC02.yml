@@ -1,5 +1,5 @@
 ---
-vmid: 2110
+vmid: 2211
 proxmox_host: 192.168.33.22
 proxmox_node: semperis-nuc-2
 template_id: 9002
@@ -7,7 +7,7 @@ vm_cores: 2
 vm_memory: 4096
 vm_disk: 80G
 proxmox_vm_tags: "adfr"
-domain_name: D21.D2.lab
-netbios_name: D21
+domain_name: D22.D2.lab
+netbios_name: D22
 parent_domain: D2.lab
-role: "Child Domain PDC"
+role: "Child Domain Replica"

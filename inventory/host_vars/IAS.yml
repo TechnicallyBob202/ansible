@@ -1,5 +1,5 @@
 ---
-vmid: 5030
+vmid: 5011
 proxmox_host: 192.168.33.22
 proxmox_node: semperis-nuc-2
 template_id: 9022

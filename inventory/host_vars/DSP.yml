@@ -1,8 +1,8 @@
 ---
 vmid: 5010
-proxmox_host: 192.168.33.22
-proxmox_node: semperis-nuc-2
-template_id: 9012
+proxmox_host: 192.168.33.21
+proxmox_node: semperis-nuc-1
+template_id: 9011
 vm_cores: 4
 vm_memory: 8192
 vm_disk: 100G
