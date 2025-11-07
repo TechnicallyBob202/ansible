@@ -1,0 +1,12 @@
+---
+vmid: 4010
+proxmox_host: 192.168.33.21
+proxmox_node: semperis-nuc-1
+template_id: 9001
+vm_cores: 2
+vm_memory: 4096
+vm_disk: 80G
+proxmox_vm_tags: "dsp"
+domain_name: D3.lab
+netbios_name: D3
+role: "Forest Root PDC"

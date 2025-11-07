@@ -1,0 +1,10 @@
+---
+vmid: 5020
+proxmox_host: 192.168.33.21
+proxmox_node: semperis-nuc-1
+template_id: 9011
+vm_cores: 4
+vm_memory: 16384
+vm_disk: 200G
+proxmox_vm_tags: "dsp"
+role: "SQL Server"

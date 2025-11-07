@@ -1,0 +1,81 @@
+---
+# Global variables for all hosts in ADFR/DSP Lab
+# Service Accounts and Admin Users
+
+# ============================================================================
+# Service Accounts - Domain/Enterprise Admin privileges with replication rights
+# ============================================================================
+ad_service_accounts:
+  - name: svc-adfr
+    password: "{{ lookup('env', 'svc-adfr') }}"
+    description: "ADFR Agent Service Account - Domain/Enterprise Admin with replication rights"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+
+  - name: svc-dsp
+    password: "{{ lookup('env', 'svc-dsp') }}"
+    description: "DSP Monitoring Service Account - Domain/Enterprise Admin"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+
+# ============================================================================
+# Administrative Users
+# ============================================================================
+admin_users:
+  - username: blyons
+    firstname: Bob
+    surname: Lyons
+    password: "{{ lookup('env', 'blyons') }}"
+    description: "Bob Lyons - Federal SA"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+    email: "blyons@semperis.com"
+    enabled: yes
+    password_never_expires: yes
+
+# ============================================================================
+# Connection Settings (inherited by all hosts unless overridden)
+# ============================================================================
+ansible_connection: winrm
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+ansible_port: 5985
+ansible_user: Administrator
+ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+# ============================================================================
+# Domain Configuration Defaults
+# ============================================================================
+ad_safe_mode_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+ad_database_path: C:\Windows\NTDS
+ad_sysvol_path: C:\Windows\SYSVOL
+ad_log_path: C:\Windows\NTDS
+ad_install_dns: yes
+ad_promotion_timeout: 1200
+ad_reboot_timeout: 900
+
+# ============================================================================
+# Network Defaults
+# ============================================================================
+windows_gateway: 192.168.35.1
+windows_dns_suffix: lab
+windows_ip_prefix: 24
+lab_network: 192.168.35.0/24
+lab_vlan: 35
+
+# ============================================================================
+# Proxmox Hosts - used for API calls to configure tag styles
+# ============================================================================
+proxmox_hosts:
+  - 192.168.33.21
+  - 192.168.33.22
+
+# ============================================================================
+# Default DNS for all VMs during Stage 02 (configure-base-os)
+# ============================================================================
+windows_dns_servers:
+  - 1.1.1.1  # Cloudflare DNS (primary)
+  - 1.0.0.1  # Cloudflare DNS (secondary)
