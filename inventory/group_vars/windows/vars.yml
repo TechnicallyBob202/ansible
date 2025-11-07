@@ -1,0 +1,23 @@
+---
+# ============================================================================
+# Windows Base Configuration
+# ============================================================================
+
+# Network defaults
+windows_gateway: 172.16.0.1
+windows_dns_suffix: lab
+windows_ip_prefix: 20
+
+# DNS servers - Stage 02 uses Cloudflare, Stage 03+ uses DCs
+# These are the Stage 02 defaults (overridden in Stage 03+)
+windows_dns_servers:
+  - 1.1.1.1  # Cloudflare DNS
+  - 1.0.0.1  # Cloudflare DNS
+
+# Reboot and timeout settings
+windows_reboot_timeout: 600
+windows_connection_timeout: 30
+windows_post_reboot_delay: 30
+
+# DHCP discovery settings (if used)
+windows_dhcp_discovery_timeout: 60

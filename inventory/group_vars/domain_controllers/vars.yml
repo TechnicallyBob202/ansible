@@ -1,0 +1,58 @@
+---
+# ============================================================================
+# Domain Controller Configuration
+# ============================================================================
+
+# Active Directory installation defaults
+ad_install_dns: yes
+ad_database_path: C:\Windows\NTDS
+ad_sysvol_path: C:\Windows\SYSVOL
+ad_log_path: C:\Windows\NTDS
+
+# Domain functional level
+ad_functional_level: WinThreshold
+
+# Safe mode password
+ad_safe_mode_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+# Promotion and reboot timeouts
+ad_promotion_timeout: 1200
+ad_reboot_timeout: 900
+
+# Replication settings
+ad_replication_check_retries: 10
+ad_replication_check_delay: 30
+
+# ============================================================================
+# Service Accounts
+# ============================================================================
+ad_service_accounts:
+  - name: svc-adfr
+    password: "{{ lookup('env', 'svc-adfr') }}"
+    description: "ADFR Agent Service Account - Domain/Enterprise Admin with replication rights"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+
+  - name: svc-dsp
+    password: "{{ lookup('env', 'svc-dsp') }}"
+    description: "DSP Monitoring Service Account - Domain/Enterprise Admin"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+
+# ============================================================================
+# Administrative Users
+# ============================================================================
+admin_users:
+  - username: blyons
+    firstname: Bob
+    surname: Lyons
+    password: "{{ lookup('env', 'blyons') }}"
+    description: "Bob Lyons - Federal SA"
+    groups:
+      - Domain Admins
+      - Enterprise Admins
+    email: "blyons@semperis.com"
+    enabled: yes
+    password_never_expires: yes

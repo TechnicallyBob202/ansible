@@ -1,0 +1,42 @@
+---
+# ============================================================================
+# Global Variables - Shared by ALL Hosts (ADFR + DSP)
+# ============================================================================
+
+# ============================================================================
+# Connection Settings (inherited by all hosts unless overridden)
+# ============================================================================
+
+# Windows connection defaults
+ansible_connection: winrm
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+ansible_port: 5985
+ansible_user: Administrator
+ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+# Linux connection defaults
+linux_user: blyons
+linux_password: "{{ lookup('env', 'LINUX_PASSWORD') }}"
+linux_port: 22
+
+# ============================================================================
+# Proxmox API Credentials
+# ============================================================================
+proxmox_user: root@pam
+proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
+proxmox_validate_certs: false
+
+# ============================================================================
+# Lab Network Defaults
+# ============================================================================
+lab_network: 172.16.0.0/20
+lab_vlan: 10
+lab_gateway: 172.16.0.1
+
+# ============================================================================
+# SMB Share Credentials (for software distribution)
+# ============================================================================
+smb_share_host: 192.168.33.13
+smb_share_username: semperis
+smb_share_password: "{{ lookup('env', 'SMB_PASSWORD') }}"
