@@ -1,4 +1,102 @@
 ---
+# Build lab_design from inventory
+- name: Seed lists
+  set_fact:
+    infrastructure_list: []
+    arbor_list: []
+    alpine_list: []
+    recovery_list: []
+
+- name: Collect Infrastructure VMs
+  set_fact:
+    infrastructure_list: >-
+      {{ infrastructure_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': '' }
+        ] }}
+  loop: "{{ groups['infrastructure'] | default([]) }}"
+
+- name: Collect Arbor Forest root DCs
+  set_fact:
+    arbor_list: >-
+      {{ arbor_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': 'arbor.lab' }
+        ] }}
+  loop: >-
+    {{
+      (groups['arbor_forest_root_pdc'] | default([]))
+      + (groups['arbor_forest_root_replica'] | default([]))
+    }}
+
+- name: Collect Alpine Forest root DCs
+  set_fact:
+    alpine_list: >-
+      {{ alpine_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': 'alpine.lab' }
+        ] }}
+  loop: >-
+    {{
+      (groups['alpine_forest_root_pdc'] | default([]))
+      + (groups['alpine_forest_root_replica'] | default([]))
+    }}
+
+- name: Collect MAUNA child DCs
+  set_fact:
+    alpine_list: >-
+      {{ alpine_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': 'mauna.alpine.lab' }
+        ] }}
+  loop: >-
+    {{
+      (groups['mauna_child_pdc'] | default([]))
+      + (groups['mauna_child_replica'] | default([]))
+    }}
+
+- name: Collect RAINIER child DCs
+  set_fact:
+    alpine_list: >-
+      {{ alpine_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': 'rainier.alpine.lab' }
+        ] }}
+  loop: >-
+    {{
+      (groups['rainier_child_pdc'] | default([]))
+      + (groups['rainier_child_replica'] | default([]))
+    }}
+
+- name: Collect Recovery VMs
+  set_fact:
+    recovery_list: >-
+      {{ recovery_list + [
+          { 'hostname': item,
+            'ip': (hostvars[item].ansible_host | default(item)),
+            'role': (hostvars[item].role | default('')),
+            'domain': '' }
+        ] }}
+  loop: "{{ groups['recovery_vms'] | default([]) }}"
+
+- name: Build lab_design dict
+  set_fact:
+    lab_design:
+      infrastructure: "{{ infrastructure_list | sort(attribute='hostname') }}"
+      arbor_forest:   "{{ arbor_list | sort(attribute='hostname') }}"
+      alpine_forest:  "{{ alpine_list | sort(attribute='hostname') }}"
+      recovery_vms:   "{{ recovery_list | sort(attribute='hostname') }}"
+
 # Generate mRemoteNG XML configuration
 - name: Generate mRemoteNG config (template)
   template:
