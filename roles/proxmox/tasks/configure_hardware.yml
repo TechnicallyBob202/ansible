@@ -10,22 +10,25 @@
     ssh -i /root/.ssh/ansible_key \
       -o StrictHostKeyChecking=no \
       root@{{ proxmox_host }} \
-      "pvesh get /cluster/resources --type vm --output-format json" | \
-      jq -r '.[] | select(.vmid=={{ vmid }}) | .pool // "none"'
+      "pvesh get /cluster/resources --type vm --output-format json"
   delegate_to: localhost
-  register: current_pool
+  register: vm_resources
   changed_when: false
+
+- name: Parse current pool from JSON
+  set_fact:
+    current_pool: "{{ (vm_resources.stdout | from_json | selectattr('vmid', 'equalto', vmid) | map(attribute='pool') | list | first) | default('none') }}"
 
 - name: Remove from current pool if different
   shell: |
     ssh -i /root/.ssh/ansible_key \
       -o StrictHostKeyChecking=no \
       root@{{ proxmox_host }} \
-      "pvesh set /pools/{{ current_pool.stdout }} --delete --vms {{ vmid }}"
+      "pvesh set /pools/{{ current_pool }} --delete --vms {{ vmid }}"
   delegate_to: localhost
   when:
-    - current_pool.stdout != "none"
-    - current_pool.stdout != derived_pool
+    - current_pool != "none"
+    - current_pool != derived_pool
 
 - name: Add to new resource pool
   shell: |
