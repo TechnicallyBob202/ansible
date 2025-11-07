@@ -5,19 +5,16 @@
   set_fact:
     derived_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
 
-- name: Add VM to resource pool via API
-  uri:
-    url: "https://{{ proxmox_host }}:8006/api2/json/pools/{{ derived_pool }}"
-    method: PUT
-    user: "{{ proxmox_user }}"
-    password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    body_format: form-urlencoded
-    body:
-      vms: "{{ vmid }}"
-    status_code: [200]
+- name: Add VM to resource pool via pvesh
+  shell: |
+    ssh -i /root/.ssh/ansible_key \
+      -o StrictHostKeyChecking=no \
+      root@{{ proxmox_host }} \
+      "pvesh set /pools/{{ derived_pool }} --vms {{ vmid }}"
   delegate_to: localhost
   register: pool_result
+  changed_when: pool_result.rc == 0
+  failed_when: pool_result.rc != 0 and 'already in pool' not in pool_result.stderr
 
 - name: Configure VM CPU and memory
   community.general.proxmox_kvm:
