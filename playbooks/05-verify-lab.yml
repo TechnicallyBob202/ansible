@@ -1,19 +1,39 @@
 ---
-- name: Verify Lab Environment and Generate Documentation
-  hosts: all
-  gather_facts: no
+# =============================================================================
+# Stage 5: Verify Lab Environment
+# =============================================================================
 
+- name: Lab Verification - Introduction
+  hosts: localhost
+  gather_facts: yes
   tasks:
     - name: Display verification plan
       debug:
-        msg: "Verifying {{ ansible_play_hosts | length }} systems"
-      run_once: yes
+        msg:
+          - "========================================="
+          - "  Stage 5: Verify Lab Environment"
+          - "========================================="
+          - ""
+          - "Verification steps:"
+          - "  1. Test connectivity (Windows & Linux)"
+          - "  2. Validate Windows configuration"
+          - "  3. Validate Linux configuration"
+          - "  4. Check AD health and replication"
+          - "  5. Collect forest domain SIDs"
+          - "  6. Generate mRemoteNG configuration"
+          - "  7. Commit documentation to git"
+          - "  8. Create ready-to-rock snapshots"
+          - ""
+          - "All systems validated and operational"
+          - "Documentation generated in files/"
+          - "  - forest-domain-sids.txt"
+          - "  - adfr-lab-mremoteng.xml"
 
 # =============================================================================
 # PHASE 1: Connectivity Tests
 # =============================================================================
-- name: Test Basic Connectivity
-  hosts: all
+- name: Test Basic Connectivity (Windows)
+  hosts: all:!linux_infrastructure
   gather_facts: no
 
   tasks:
@@ -25,11 +45,24 @@
       debug:
         msg: "{{ inventory_hostname }} - {{ 'ONLINE' if connectivity_test is succeeded else 'OFFLINE' }}"
 
+- name: Test Basic Connectivity (Linux)
+  hosts: linux_infrastructure
+  gather_facts: no
+
+  tasks:
+    - name: Test SSH connectivity
+      ansible.builtin.ping:
+      register: connectivity_test
+
+    - name: Display connectivity results
+      debug:
+        msg: "{{ inventory_hostname }} - {{ 'ONLINE' if connectivity_test is succeeded else 'OFFLINE' }}"
+
 # =============================================================================
 # PHASE 2: Validate Windows Configuration
 # =============================================================================
 - name: Validate Windows Configuration
-  hosts: all
+  hosts: all:!linux_infrastructure
   gather_facts: no
 
   tasks:
@@ -60,7 +93,39 @@
           - "  DNS: {{ network_config.DNS }}"
 
 # =============================================================================
-# PHASE 3: Validate Active Directory
+# PHASE 3: Validate Linux Configuration
+# =============================================================================
+- name: Validate Linux Configuration
+  hosts: linux_infrastructure
+  gather_facts: yes
+
+  tasks:
+    - name: Get hostname
+      ansible.builtin.command: hostname
+      register: linux_hostname
+      changed_when: false
+
+    - name: Get IP configuration
+      ansible.builtin.shell: |
+        ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1
+      register: linux_ip
+      changed_when: false
+
+    - name: Get DNS configuration
+      ansible.builtin.command: cat /etc/resolv.conf
+      register: linux_dns
+      changed_when: false
+
+    - name: Display configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ linux_ip.stdout }}"
+          - "  Hostname: {{ linux_hostname.stdout }}"
+          - "  DNS Servers: {{ linux_dns.stdout_lines | select('search', 'nameserver') | list }}"
+
+# =============================================================================
+# PHASE 4: Validate Active Directory Health
 # =============================================================================
 - name: Validate Active Directory Health
   hosts: domain_controllers
@@ -83,7 +148,7 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 4: Collect Forest Domain SIDs
+# PHASE 5: Collect Forest Domain SIDs
 # =============================================================================
 - name: Collect Forest Root Domain SIDs
   hosts: arbor_pdc:alpine_pdc
@@ -115,175 +180,92 @@
           - "  SID: {{ domain_sid_data.DomainSID }}"
           - "  Forest: {{ domain_sid_data.ForestName }}"
 
-# =============================================================================
-# PHASE 4.5: Collect Child Domain SIDs
-# =============================================================================
-- name: Collect Child Domain SIDs
-  hosts: alpine_mauna_pdc:alpine_rainier_pdc
-  gather_facts: no
-
-  tasks:
-    - name: Get child domain SID
-      ansible.windows.win_shell: |
-        $domain = Get-ADDomain
-        [PSCustomObject]@{
-          DomainName = $domain.DNSRoot
-          NetBIOSName = $domain.NetBIOSName
-          DomainSID = $domain.DomainSID.Value
-          ParentDomain = $domain.ParentDomain
-        } | ConvertTo-Json
-      register: child_sid_info
-      changed_when: false
-
-    - name: Parse child domain SID information
-      set_fact:
-        domain_sid_data: "{{ child_sid_info.stdout | from_json }}"
-
-    - name: Display child domain SID
-      debug:
-        msg:
-          - "{{ inventory_hostname }} Child Domain Information:"
-          - "  Domain: {{ domain_sid_data.DomainName }}"
-          - "  NetBIOS: {{ domain_sid_data.NetBIOSName }}"
-          - "  SID: {{ domain_sid_data.DomainSID }}"
-          - "  Parent: {{ domain_sid_data.ParentDomain }}"
-
-# =============================================================================
-# PHASE 5: Generate Documentation
-# =============================================================================
-- name: Generate Lab Documentation
+- name: Save Forest SIDs to File
   hosts: localhost
   gather_facts: yes
 
   tasks:
-    - name: Create documentation directory
-      file:
-        path: "{{ playbook_dir }}/../files"
-        state: directory
-        mode: '0755'
-
-    - name: Build forest SID content
+    - name: Collect SID data from all forest roots
       set_fact:
-        forest_sid_content: |
-          # ADFR Lab - Forest Domain SIDs
-          # Generated: {{ ansible_date_time.iso8601 }}
+        all_forest_sids: "{{ groups['arbor_pdc'] | union(groups['alpine_pdc']) | map('extract', hostvars) | selectattr('domain_sid_data', 'defined') | map(attribute='domain_sid_data') | list }}"
 
-          This file contains the Domain SIDs for all domains in the lab environment.
-          These SIDs are used for trust relationships, security principals, and AD operations.
-
-
-    - name: Add arbor.lab forest SID to content
-      set_fact:
-        forest_sid_content: |
-          {{ forest_sid_content }}
-          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest (Root Domain)
-          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
-          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
-          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
-          DC: {{ item }} ({{ hostvars[item].ansible_host }})
-
-      loop: "{{ groups['arbor_pdc'] | default([]) }}"
-      when: hostvars[item].domain_sid_data is defined
-
-    - name: Add alpine.lab forest SID to content
-      set_fact:
-        forest_sid_content: |
-          {{ forest_sid_content }}
-          ## {{ hostvars[item].domain_sid_data.ForestName }} Forest (Root Domain)
-          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
-          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
-          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
-          DC: {{ item }} ({{ hostvars[item].ansible_host }})
-
-      loop: "{{ groups['alpine_pdc'] | default([]) }}"
-      when: hostvars[item].domain_sid_data is defined
-
-    - name: Add mauna.alpine.lab child domain SID to content
-      set_fact:
-        forest_sid_content: |
-          {{ forest_sid_content }}
-          ### {{ hostvars[item].domain_sid_data.DomainName }} (Child Domain)
-          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
-          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
-          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
-          Parent: {{ hostvars[item].domain_sid_data.ParentDomain }}
-          DC: {{ item }} ({{ hostvars[item].ansible_host }})
-
-      loop: "{{ groups['alpine_mauna_pdc'] | default([]) }}"
-      when: hostvars[item].domain_sid_data is defined
-
-    - name: Add rainier.alpine.lab child domain SID to content
-      set_fact:
-        forest_sid_content: |
-          {{ forest_sid_content }}
-          ### {{ hostvars[item].domain_sid_data.DomainName }} (Child Domain)
-          Domain: {{ hostvars[item].domain_sid_data.DomainName }}
-          NetBIOS: {{ hostvars[item].domain_sid_data.NetBIOSName }}
-          SID: {{ hostvars[item].domain_sid_data.DomainSID }}
-          Parent: {{ hostvars[item].domain_sid_data.ParentDomain }}
-          DC: {{ item }} ({{ hostvars[item].ansible_host }})
-
-      loop: "{{ groups['alpine_rainier_pdc'] | default([]) }}"
-      when: hostvars[item].domain_sid_data is defined
-
-    - name: Write forest domain SIDs to file
+    - name: Generate forest SID file
       copy:
-        content: "{{ forest_sid_content }}"
+        content: |
+          # Forest Domain SIDs - {{ ansible_date_time.iso8601 }}
+          # Generated by: playbooks/05-verify-lab.yml
+
+          {% for sid in all_forest_sids %}
+          Forest: {{ sid.ForestName }}
+          Domain: {{ sid.DomainName }}
+          NetBIOS: {{ sid.NetBIOSName }}
+          SID: {{ sid.DomainSID }}
+
+          {% endfor %}
         dest: "{{ playbook_dir }}/../files/forest-domain-sids.txt"
         mode: '0644'
 
-    - name: Generate and push mRemoteNG configuration
+# =============================================================================
+# PHASE 6: Generate mRemoteNG Configuration
+# =============================================================================
+- name: Generate mRemoteNG Configuration
+  hosts: localhost
+  gather_facts: yes
+
+  tasks:
+    - name: Generate mRemoteNG config file
       include_tasks: ../tasks/generate_mremoteng.yml
 
+# =============================================================================
+# PHASE 7: Commit Documentation to Git
+# =============================================================================
+- name: Commit Documentation to Git
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
     - name: Check if git repository exists
       stat:
         path: "{{ playbook_dir }}/../.git"
       register: git_repo
 
-    - name: Add forest-domain-sids.txt to git
+    - name: Add all documentation files to git
       shell: |
         cd {{ playbook_dir }}/..
-        git add files/forest-domain-sids.txt
+        git add files/forest-domain-sids.txt files/semperis-lab-mremoteng.xml
       when: git_repo.stat.exists
 
-    - name: Commit forest-domain-sids.txt
+    - name: Commit documentation files
       shell: |
         cd {{ playbook_dir }}/..
         git config user.email "ansible@semperis.lab" || true
         git config user.name "Ansible Automation" || true
-        git commit -m "Update forest domain SIDs - {{ ansible_date_time.iso8601 }}" files/forest-domain-sids.txt || echo "No changes to commit"
+        git commit -m "Update lab documentation - {{ ansible_date_time.iso8601 }}" files/ || echo "No changes to commit"
       when: git_repo.stat.exists
-      register: git_commit_sids
-      changed_when: "'No changes to commit' not in git_commit_sids.stdout"
+      register: git_commit
+      changed_when: "'No changes to commit' not in git_commit.stdout"
 
-    - name: Push SIDs to git
+    - name: Push documentation to git
       shell: |
         cd {{ playbook_dir }}/..
         git push origin main || git push origin master || echo "Push failed - check remote configuration"
       when:
         - git_repo.stat.exists
-        - git_commit_sids.changed
-      register: git_push_sids
+        - git_commit.changed
+      register: git_push
       ignore_errors: yes
 
-    - name: Display git status for SIDs
+    - name: Display git status
       debug:
         msg:
-          - "Forest domain SIDs file: files/forest-domain-sids.txt"
-          - "Git commit: {{ 'Updated' if git_commit_sids.changed else 'No changes' }}"
-          - "Git push: {{ 'Success' if git_push_sids is succeeded else 'Failed or skipped' }}"
-
-    - name: Display verification summary
-      debug:
-        msg:
-          - "Lab verification complete!"
-          - "All systems validated and operational"
-          - "Documentation generated in files/"
-          - "  - forest-domain-sids.txt"
-          - "  - adfr-lab-mremoteng.xml"
+          - "Documentation files committed to git:"
+          - "  - files/forest-domain-sids.txt"
+          - "  - files/semperis-lab-mremoteng.xml"
+          - "Git commit: {{ 'Updated' if git_commit.changed else 'No changes' }}"
+          - "Git push: {{ 'Success' if git_push is succeeded else 'Failed or skipped' }}"
 
 # =============================================================================
-# PHASE 6: Create "Ready to Rock" Snapshots for ALL VMs
+# PHASE 8: Create "Ready to Rock" Snapshots for ALL VMs
 # =============================================================================
 - name: Create Ready-to-Rock Snapshots
   hosts: all
@@ -309,7 +291,7 @@
         snapshot_name: ready-to-rock
 
 # =============================================================================
-# PHASE 7: Final Summary
+# PHASE 9: Final Summary
 # =============================================================================
 - name: Final Summary
   hosts: localhost
@@ -320,6 +302,7 @@
       set_fact:
         total_dcs: "{{ groups['domain_controllers'] | length }}"
         total_infra: "{{ groups['infrastructure'] | default([]) | length }}"
+        total_linux: "{{ groups['linux_infrastructure'] | default([]) | length }}"
         total_recovery: "{{ groups['recovery_vms'] | default([]) | length }}"
         total_vms: "{{ groups['all'] | length }}"
 
@@ -333,6 +316,7 @@
           - "Ready-to-Rock Snapshots Created:"
           - "  Domain Controllers: {{ total_dcs }}"
           - "  Infrastructure VMs: {{ total_infra }}"
+          - "  Linux Infrastructure: {{ total_linux }}"
           - "  Recovery VMs: {{ total_recovery }}"
           - "  ─────────────────────────────────"
           - "  Total: {{ total_vms }} VMs"
