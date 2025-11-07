@@ -37,7 +37,9 @@
       root@{{ proxmox_host }} \
       "pvesh set /pools/{{ derived_pool }} --vms {{ vmid }}"
   delegate_to: localhost
-  changed_when: true
+  register: pool_add
+  changed_when: pool_add.rc == 0
+  failed_when: pool_add.rc != 0 and 'already a pool member' not in pool_add.stderr
 
 - name: Configure VM CPU and memory
   community.general.proxmox_kvm:
