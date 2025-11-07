@@ -5,6 +5,17 @@
   set_fact:
     derived_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
 
+- name: Remove VM from any existing pool
+  shell: |
+    ssh -i /root/.ssh/ansible_key \
+      -o StrictHostKeyChecking=no \
+      root@{{ proxmox_host }} \
+      "pvesh get /cluster/resources --type vm --output-format json | jq -r '.[] | select(.vmid=={{ vmid }}) | .pool // empty' | xargs -r -I {} pvesh set /pools/{} --delete --vms {{ vmid }}"
+  delegate_to: localhost
+  register: pool_remove
+  changed_when: pool_remove.stdout != ''
+  failed_when: false
+
 - name: Add VM to resource pool via pvesh
   shell: |
     ssh -i /root/.ssh/ansible_key \
