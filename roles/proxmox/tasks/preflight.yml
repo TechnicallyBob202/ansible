@@ -10,6 +10,9 @@
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
     state: current
+  when:
+    - vm_preexisted | default(false)
+      or (clone_result is defined and (clone_result.changed | default(false)))
   register: vm_config
 
 - name: Determine what needs updating
