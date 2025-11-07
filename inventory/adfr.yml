@@ -1,0 +1,60 @@
+---
+all:
+  children:
+    # ============================================
+    # D1.lab Forest - Single Domain
+    # ============================================
+    d1_forest:
+      children:
+        d1_dcs:
+          hosts:
+            D1-DC01:
+              ansible_host: 172.16.10.10
+            D1-DC02:
+              ansible_host: 172.16.10.11
+
+    # ============================================
+    # D2.lab Forest - Parent + 2 Children
+    # ============================================
+    d2_forest:
+      children:
+        d2_parent_dcs:
+          hosts:
+            D2-DC01:
+              ansible_host: 172.16.20.10
+            D2-DC02:
+              ansible_host: 172.16.20.11
+
+        d21_child_dcs:
+          hosts:
+            D21-DC01:
+              ansible_host: 172.16.21.10
+            D21-DC02:
+              ansible_host: 172.16.21.11
+
+        d22_child_dcs:
+          hosts:
+            D22-DC01:
+              ansible_host: 172.16.22.10
+            D22-DC02:
+              ansible_host: 172.16.22.11
+
+    # ============================================
+    # ADFR Infrastructure
+    # ============================================
+    adfr_infrastructure:
+      hosts:
+        ADFR:
+          ansible_host: 172.16.30.10
+        DP1:
+          ansible_host: 172.16.30.11
+        DP2:
+          ansible_host: 172.16.30.12
+        REC01:
+          ansible_host: 172.16.11.10
+        REC02:
+          ansible_host: 172.16.11.11
+        REC03:
+          ansible_host: 172.16.23.10
+        REC04:
+          ansible_host: 172.16.23.11

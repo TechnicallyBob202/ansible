@@ -1,0 +1,38 @@
+---
+all:
+  children:
+    # ============================================
+    # D3.lab Forest - Single Domain
+    # ============================================
+    d3_forest:
+      children:
+        d3_dcs:
+          hosts:
+            D3-DC01:
+              ansible_host: 172.16.40.10
+            D3-DC02:
+              ansible_host: 172.16.40.11
+
+    # ============================================
+    # DSP Infrastructure
+    # ============================================
+    dsp_infrastructure:
+      hosts:
+        DSP:
+          ansible_host: 172.16.50.10
+        SQL:
+          ansible_host: 172.16.50.20
+
+    # ============================================
+    # DSP Linux Systems
+    # ============================================
+    dsp_linux:
+      vars:
+        ansible_connection: ssh
+        ansible_user: "{{ linux_user }}"
+        ansible_password: "{{ linux_password }}"
+        ansible_port: "{{ linux_port }}"
+        ansible_ssh_common_args: '-o StrictHostKeyChecking=no'
+      hosts:
+        IAS:
+          ansible_host: 172.16.50.30
