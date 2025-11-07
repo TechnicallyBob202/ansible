@@ -5,7 +5,7 @@
 
 - name: Lab Verification - Introduction
   hosts: localhost
-  gather_facts: true
+  gather_facts: yes
   tasks:
     - name: Display verification plan
       debug:
@@ -34,7 +34,7 @@
 # =============================================================================
 - name: Test Basic Connectivity (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Test WinRM connectivity
@@ -47,7 +47,7 @@
 
 - name: Test Basic Connectivity (Linux)
   hosts: linux_infrastructure
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Test SSH connectivity
@@ -63,7 +63,7 @@
 # =============================================================================
 - name: Validate Windows Configuration
   hosts: all:!linux_infrastructure
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Get network configuration
@@ -97,7 +97,7 @@
 # =============================================================================
 - name: Validate Linux Configuration
   hosts: linux_infrastructure
-  gather_facts: true
+  gather_facts: yes
 
   tasks:
     - name: Get hostname
@@ -129,7 +129,7 @@
 # =============================================================================
 - name: Validate Active Directory Health
   hosts: domain_controllers
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Check domain status
@@ -152,7 +152,7 @@
 # =============================================================================
 - name: Collect Forest Root Domain SIDs
   hosts: arbor_pdc:alpine_pdc
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Get forest domain SID
@@ -182,7 +182,7 @@
 
 - name: Save Forest SIDs to File
   hosts: localhost
-  gather_facts: true
+  gather_facts: yes
 
   tasks:
     - name: Collect SID data from all forest roots
@@ -210,7 +210,7 @@
 # =============================================================================
 - name: Generate mRemoteNG Configuration
   hosts: localhost
-  gather_facts: true
+  gather_facts: yes
 
   tasks:
     - name: Generate mRemoteNG config file
@@ -221,7 +221,7 @@
 # =============================================================================
 - name: Commit Documentation to Git
   hosts: localhost
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Check if git repository exists
@@ -253,7 +253,7 @@
         - git_repo.stat.exists
         - git_commit.changed
       register: git_push
-      ignore_errors: true
+      ignore_errors: yes
 
     - name: Display git status
       debug:
@@ -269,7 +269,7 @@
 # =============================================================================
 - name: Create Ready-to-Rock Snapshots
   hosts: all
-  gather_facts: false
+  gather_facts: no
   serial: 2
 
   tasks:
@@ -285,6 +285,8 @@
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
       vars:
         snapshot_name: ready-to-rock
 
@@ -293,7 +295,7 @@
 # =============================================================================
 - name: Final Summary
   hosts: localhost
-  gather_facts: false
+  gather_facts: no
 
   tasks:
     - name: Calculate VM counts
