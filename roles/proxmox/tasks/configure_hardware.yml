@@ -5,16 +5,19 @@
   set_fact:
     derived_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
 
-- name: Add VM to resource pool
-  community.general.proxmox_pool:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
+- name: Add VM to resource pool via API
+  uri:
+    url: "https://{{ proxmox_host }}:8006/api2/json/pools/{{ derived_pool }}"
+    method: PUT
+    user: "{{ proxmox_user }}"
+    password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
-    poolid: "{{ derived_pool }}"
-    vms: "{{ vmid }}"
-    state: present
+    body_format: form-urlencoded
+    body:
+      vms: "{{ vmid }}"
+    status_code: [200]
   delegate_to: localhost
+  register: pool_result
 
 - name: Configure VM CPU and memory
   community.general.proxmox_kvm:
