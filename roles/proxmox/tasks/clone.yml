@@ -1,6 +1,65 @@
 ---
-# Clone a VM from template (cluster-aware existence check)
+# Ensure required connection vars exist or can be derived
+- name: Assert Proxmox auth vars
+  assert:
+    that:
+      - proxmox_user is defined
+      - proxmox_password is defined
+    fail_msg: "Missing Proxmox credentials (proxmox_user/proxmox_password)."
 
+# Derive API host from the selected node (prefer per-node host; fallback to first in list)
+- name: Derive proxmox_host from proxmox_node
+  set_fact:
+    proxmox_host: "{{ proxmox_api_hosts_by_node[proxmox_node] | default(proxmox_node | default(proxmox_hosts[0])) }}"
+  when: proxmox_host is not defined
+
+# Determine node index (1 or 2) for template selection; adjust logic if you have different node names
+- name: Determine node index from proxmox_node
+  set_fact:
+    proxmox_node_index: >-
+      {{ '1' if proxmox_node in ['192.168.33.21', 'pve1'] else '2' }}
+  when: template_id is not defined
+
+# Derive template_id if not already provided
+# Windows DCs
+- name: Select template_id for Domain Controllers
+  set_fact:
+    template_id: "{{ proxmox_template_dc_node1 if proxmox_node_index == '1' else proxmox_template_dc_node2 }}"
+  when:
+    - template_id is not defined
+    - "'-DC' in inventory_hostname"
+
+# Windows member servers
+- name: Select template_id for Windows member servers
+  set_fact:
+    template_id: "{{ proxmox_template_server_node1 if proxmox_node_index == '1' else proxmox_template_server_node2 }}"
+  when:
+    - template_id is not defined
+    - "'-DC' not in inventory_hostname"
+    - ansible_connection == 'winrm'
+
+# Linux
+- name: Select template_id for Linux
+  set_fact:
+    template_id: "{{ proxmox_template_linux_node1 if proxmox_node_index == '1' else proxmox_template_linux_node2 }}"
+  when:
+    - template_id is not defined
+    - ansible_connection != 'winrm'
+
+- name: Assert template_id and vmid present
+  assert:
+    that:
+      - template_id is defined
+      - vmid is defined
+    fail_msg: "template_id and/or vmid not set for {{ inventory_hostname }}."
+
+# Optional: Derive pool from tags (kept from your current task)
+- name: Determine pool from tags
+  set_fact:
+    proxmox_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
+  when: proxmox_vm_tags is defined
+
+# Cluster-aware check for existing VMID
 - name: List VMs cluster-wide
   community.general.proxmox_vm_info:
     api_host: "{{ proxmox_host }}"
@@ -19,11 +78,7 @@
       }}
   delegate_facts: false
 
-- name: Determine pool from tags
-  set_fact:
-    proxmox_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
-  when: proxmox_vm_tags is defined
-
+# Clone on the node that holds the template (no shared storage)
 - name: Clone VM from template
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
