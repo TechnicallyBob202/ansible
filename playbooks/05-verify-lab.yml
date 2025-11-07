@@ -5,7 +5,7 @@
 
 - name: Lab Verification - Introduction
   hosts: localhost
-  gather_facts: yes
+  gather_facts: true
   tasks:
     - name: Display verification plan
       debug:
@@ -27,14 +27,14 @@
           - "All systems validated and operational"
           - "Documentation generated in files/"
           - "  - forest-domain-sids.txt"
-          - "  - adfr-lab-mremoteng.xml"
+          - "  - semperis-lab-mremoteng.xml"
 
 # =============================================================================
 # PHASE 1: Connectivity Tests
 # =============================================================================
 - name: Test Basic Connectivity (Windows)
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Test WinRM connectivity
@@ -47,7 +47,7 @@
 
 - name: Test Basic Connectivity (Linux)
   hosts: linux_infrastructure
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Test SSH connectivity
@@ -63,7 +63,7 @@
 # =============================================================================
 - name: Validate Windows Configuration
   hosts: all:!linux_infrastructure
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Get network configuration
@@ -80,64 +80,70 @@
       register: network_info
       changed_when: false
 
-    - name: Parse network information
+    - name: Parse network configuration
       set_fact:
         network_config: "{{ network_info.stdout | from_json }}"
 
-    - name: Display configuration
+    - name: Validate network configuration
+      set_fact:
+        hostname_matches: "{{ network_config.Hostname | lower == inventory_hostname_short | lower }}"
+        ip_matches: "{{ network_config.IPAddress == ip }}"
+        dns_configured: "{{ network_config.DNS | length > 0 }}"
+
+    - name: Display validation results
       debug:
         msg:
-          - "{{ inventory_hostname }}:"
-          - "  IP: {{ network_config.IPAddress }}"
-          - "  Hostname: {{ network_config.Hostname }}"
-          - "  DNS: {{ network_config.DNS }}"
+          - "{{ inventory_hostname }} validation:"
+          - "  Hostname: {{ 'OK' if hostname_matches else 'MISMATCH' }}"
+          - "  IP Address: {{ 'OK' if ip_matches else 'MISMATCH' }}"
+          - "  DNS: {{ 'OK' if dns_configured else 'NOT CONFIGURED' }}"
+
+    - name: Set VM as unchanged (default state)
+      set_fact:
+        vm_changed: false
 
 # =============================================================================
 # PHASE 3: Validate Linux Configuration
 # =============================================================================
 - name: Validate Linux Configuration
   hosts: linux_infrastructure
-  gather_facts: yes
+  gather_facts: true
 
   tasks:
-    - name: Get hostname
-      ansible.builtin.command: hostname
-      register: linux_hostname
-      changed_when: false
+    - name: Get network configuration
+      set_fact:
+        network_config:
+          Hostname: "{{ ansible_hostname }}"
+          IPAddress: "{{ ansible_default_ipv4.address }}"
+          DNS: "{{ ansible_dns.nameservers | join(',') }}"
 
-    - name: Get IP configuration
-      ansible.builtin.shell: |
-        ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v 127.0.0.1 | head -1
-      register: linux_ip
-      changed_when: false
+    - name: Validate network configuration
+      set_fact:
+        hostname_matches: "{{ ansible_hostname | lower == inventory_hostname_short | lower }}"
+        ip_matches: "{{ ansible_default_ipv4.address == ip }}"
+        dns_configured: "{{ ansible_dns.nameservers | length > 0 }}"
 
-    - name: Get DNS configuration
-      ansible.builtin.command: cat /etc/resolv.conf
-      register: linux_dns
-      changed_when: false
-
-    - name: Display configuration
+    - name: Display validation results
       debug:
         msg:
-          - "{{ inventory_hostname }}:"
-          - "  IP: {{ linux_ip.stdout }}"
-          - "  Hostname: {{ linux_hostname.stdout }}"
-          - "  DNS Servers: {{ linux_dns.stdout_lines | select('search', 'nameserver') | list }}"
+          - "{{ inventory_hostname }} validation:"
+          - "  Hostname: {{ 'OK' if hostname_matches else 'MISMATCH' }}"
+          - "  IP Address: {{ 'OK' if ip_matches else 'MISMATCH' }}"
+          - "  DNS: {{ 'OK' if dns_configured else 'NOT CONFIGURED' }}"
+
+    - name: Set VM as unchanged (default state)
+      set_fact:
+        vm_changed: false
 
 # =============================================================================
-# PHASE 4: Validate Active Directory Health
+# PHASE 4: Validate Active Directory
 # =============================================================================
-- name: Validate Active Directory Health
+- name: Validate AD Health and Replication
   hosts: domain_controllers
-  gather_facts: no
+  gather_facts: false
 
   tasks:
-    - name: Check domain status
-      include_role:
-        name: activeDirectory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify replication
+    - name: Check AD replication
       include_role:
         name: activeDirectory
         tasks_from: verify_replication.yml
@@ -152,7 +158,7 @@
 # =============================================================================
 - name: Collect Forest Root Domain SIDs
   hosts: arbor_pdc:alpine_pdc
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Get forest domain SID
@@ -182,7 +188,7 @@
 
 - name: Save Forest SIDs to File
   hosts: localhost
-  gather_facts: yes
+  gather_facts: true
 
   tasks:
     - name: Collect SID data from all forest roots
@@ -210,7 +216,7 @@
 # =============================================================================
 - name: Generate mRemoteNG Configuration
   hosts: localhost
-  gather_facts: yes
+  gather_facts: true
 
   tasks:
     - name: Generate mRemoteNG config file
@@ -221,55 +227,18 @@
 # =============================================================================
 - name: Commit Documentation to Git
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
 
   tasks:
-    - name: Check if git repository exists
-      stat:
-        path: "{{ playbook_dir }}/../.git"
-      register: git_repo
-
-    - name: Add all documentation files to git
-      shell: |
-        cd {{ playbook_dir }}/..
-        git add files/forest-domain-sids.txt files/semperis-lab-mremoteng.xml
-      when: git_repo.stat.exists
-
-    - name: Commit documentation files
-      shell: |
-        cd {{ playbook_dir }}/..
-        git config user.email "ansible@semperis.lab" || true
-        git config user.name "Ansible Automation" || true
-        git commit -m "Update lab documentation - {{ ansible_date_time.iso8601 }}" files/ || echo "No changes to commit"
-      when: git_repo.stat.exists
-      register: git_commit
-      changed_when: "'No changes to commit' not in git_commit.stdout"
-
-    - name: Push documentation to git
-      shell: |
-        cd {{ playbook_dir }}/..
-        git push origin main || git push origin master || echo "Push failed - check remote configuration"
-      when:
-        - git_repo.stat.exists
-        - git_commit.changed
-      register: git_push
-      ignore_errors: yes
-
-    - name: Display git status
-      debug:
-        msg:
-          - "Documentation files committed to git:"
-          - "  - files/forest-domain-sids.txt"
-          - "  - files/semperis-lab-mremoteng.xml"
-          - "Git commit: {{ 'Updated' if git_commit.changed else 'No changes' }}"
-          - "Git push: {{ 'Success' if git_push is succeeded else 'Failed or skipped' }}"
+    - name: Commit and push documentation files
+      include_tasks: ../tasks/git_commit_docs.yml
 
 # =============================================================================
 # PHASE 8: Create "Ready to Rock" Snapshots for ALL VMs
 # =============================================================================
 - name: Create Ready-to-Rock Snapshots
   hosts: all
-  gather_facts: no
+  gather_facts: false
   serial: 2
 
   tasks:
@@ -295,7 +264,7 @@
 # =============================================================================
 - name: Final Summary
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
 
   tasks:
     - name: Calculate VM counts
@@ -326,5 +295,4 @@
           - ""
           - "Documentation files (committed to git):"
           - "  - files/forest-domain-sids.txt"
-          - "  - files/fsmo-roles.txt"
-          - "  - files/adfr-lab-mremoteng.xml"
+          - "  - files/semperis-lab-mremoteng.xml"

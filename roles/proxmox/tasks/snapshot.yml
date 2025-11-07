@@ -39,12 +39,19 @@
         snapname: "{{ snapshot_name }}"
         state: absent
         force: true
-        unbind: true
         timeout: 300
       when:
         - vm_changed | default(false)
         - vm_exists.status is defined
       failed_when: false
+      register: remove_snapshot_result
+
+    - name: Display removal result
+      debug:
+        msg: "{{ inventory_hostname }} - existing snapshot {{ 'removed' if (remove_snapshot_result.changed | default(false)) else 'did not exist' }}"
+      when:
+        - vm_changed | default(false)
+        - vm_exists.status is defined
 
     - name: Create stage snapshot
       community.general.proxmox_snap:
@@ -58,10 +65,14 @@
         state: present
         description: "Stage snapshot: {{ snapshot_name }}"
         vmstate: "{{ proxmox_snapshot_vmstate }}"
+        timeout: 600
       when:
         - vm_changed | default(false)
         - vm_exists.status is defined
       register: snapshot_result
+      retries: 3
+      delay: 10
+      until: snapshot_result is succeeded
 
     - name: Display snapshot result
       debug:
