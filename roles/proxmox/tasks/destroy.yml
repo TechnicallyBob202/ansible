@@ -1,0 +1,49 @@
+---
+# Destroy (delete) a VM
+
+- name: Check if VM exists
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_exists
+  failed_when: false
+  changed_when: false
+
+- name: Stop VM before destruction
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: stopped
+    force: yes
+  when: vm_exists.status is defined
+  ignore_errors: true
+
+- name: Wait for VM to stop
+  pause:
+    seconds: 5
+  when: vm_exists.status is defined
+
+- name: Destroy VM
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: absent
+  when: vm_exists.status is defined
+  register: destroy_result
+
+- name: Display destruction result
+  debug:
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'destroyed' if destroy_result.changed else 'did not exist' }}"

@@ -1,0 +1,18 @@
+---
+# Stop a VM
+
+- name: Stop VM
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: stopped
+    timeout: "{{ proxmox_stop_timeout }}"
+  register: stop_result
+
+- name: Display stop result
+  debug:
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'stopped' if stop_result.changed else 'already stopped' }}"

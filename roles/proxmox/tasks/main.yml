@@ -1,0 +1,30 @@
+---
+# Main task router for proxmox role operations
+
+- name: Include deploy tasks (full deployment)
+  include_tasks: deploy.yml
+  when: proxmox_operation == 'deploy'
+
+- name: Include clone tasks
+  include_tasks: clone.yml
+  when: proxmox_operation == 'clone'
+
+- name: Include start tasks
+  include_tasks: start.yml
+  when: proxmox_operation == 'start'
+
+- name: Include stop tasks
+  include_tasks: stop.yml
+  when: proxmox_operation == 'stop'
+
+- name: Include destroy tasks
+  include_tasks: destroy.yml
+  when: proxmox_operation == 'destroy'
+
+- name: Include configure network tasks
+  include_tasks: configure_network.yml
+  when: proxmox_operation == 'configure_network'
+
+- name: Include configure hardware tasks
+  include_tasks: configure_hardware.yml
+  when: proxmox_operation == 'configure_hardware'

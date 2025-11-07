@@ -1,0 +1,18 @@
+---
+# Preflight checks to determine what needs configuring
+
+- name: Get current VM configuration
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    state: current
+  register: vm_config
+
+- name: Determine what needs updating
+  set_fact:
+    needs_cpu_mem_update: "{{ (vm_config.cores | default(0) != vm_cores) or (vm_config.memory | default(0) != vm_memory) }}"
+    needs_disk_resize: "{{ vm_config.disk is defined and vm_config.disk.scsi0 is defined and vm_config.disk.scsi0.size != vm_disk }}"

@@ -1,0 +1,20 @@
+---
+# Configure VM network settings
+
+- name: Configure VM VLAN tag
+  community.general.proxmox_nic:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    interface: net0
+    bridge: "{{ proxmox_network_bridge }}"
+    tag: "{{ proxmox_network_vlan }}"
+  register: network_config
+  when: not vm_preexisted
+
+- name: Display network configuration result
+  debug:
+    msg: "VM {{ inventory_hostname }} - Network configured (VLAN {{ proxmox_network_vlan }})"
+  when: network_config is defined and network_config.changed

@@ -1,0 +1,15 @@
+---
+# Proxmox role defaults
+
+# Network configuration
+proxmox_network_bridge: vmbr0
+proxmox_network_vlan: 10
+
+# Timing defaults
+proxmox_clone_timeout: 600
+proxmox_boot_wait_seconds: 60
+proxmox_stop_timeout: 300
+
+# Snapshot defaults
+proxmox_snapshot_vmstate: false
+snapshot_name: "post-deploy"
