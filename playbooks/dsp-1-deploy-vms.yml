@@ -54,13 +54,6 @@
       delegate_to: localhost
       delegate_facts: true
 
-    - name: Wait for VMs to boot (DHCP)
-      pause:
-        seconds: 60
-      when: hostvars['localhost']['any_new_vms'] | default(false)
-      run_once: true
-      delegate_to: localhost
-
 # =============================================================================
 # Snapshot newly deployed VMs
 # =============================================================================
