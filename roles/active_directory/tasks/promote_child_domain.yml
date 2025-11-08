@@ -77,10 +77,41 @@
   register: child_promo
   when: not is_domain_controller and not domain_exists
 
-- name: Reboot after child domain promotion
+# Reboot and handle transient WinRM timing reliably
+- name: Request reboot (tolerant)
   ansible.windows.win_reboot:
     reboot_timeout: "{{ ad_reboot_timeout | default(3600) }}"
+    connect_timeout: 120         # give WinRM longer to accept the reboot call
+    post_reboot_delay: 60        # wait a bit after the OS is up before connecting
+  register: _rb
+  failed_when: false             # don't hard-fail here; we have a fallback
   when: not is_domain_controller and not domain_exists
+
+# Fallback: force reboot if the above couldn't trigger it
+- name: Force reboot if needed
+  ansible.windows.win_shell: shutdown /r /t 0 /f
+  when:
+    - not is_domain_controller and not domain_exists
+    - (_rb is failed) or (_rb is unreachable) or (not (_rb.rebooted | default(false)))
+  ignore_errors: true
+
+# Optional: wait for WinRM to go away (helps in-flight sessions drain)
+- name: Wait for WinRM to drop
+  wait_for:
+    host: "{{ ansible_host }}"
+    port: 5985
+    state: drained
+    delay: 5
+    timeout: 180
+  delegate_to: localhost
+  ignore_errors: true
+  when: not is_domain_controller and not domain_exists
+
+# Now wait for the node to come back
+- name: Wait for connection after reboot
+  wait_for_connection:
+    timeout: "{{ ad_reboot_timeout | default(3600) }}"
+    delay: 60
 
 # Readiness checks
 - name: Wait for ADWS on child PDC
