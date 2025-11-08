@@ -59,7 +59,7 @@
 - name: Promote Forest Root PDCs
   hosts: D1-DC01:D2-DC01
   gather_facts: false
-  serial: 1
+  serial: 2
   tasks:
     - name: Check domain status
       include_role:
@@ -94,6 +94,7 @@
 - name: Promote Forest Root Replica DCs
   hosts: D1-DC02:D2-DC02
   gather_facts: false
+  serial: 2
   tasks:
     - name: Check domain status
       include_role:
@@ -128,7 +129,7 @@
 - name: Promote Child Domain PDCs
   hosts: D21-DC01:D22-DC01
   gather_facts: false
-  serial: 1
+  serial: 2
   tasks:
     - name: Check domain status
       include_role:
@@ -163,6 +164,7 @@
 - name: Promote Child Domain Replica DCs
   hosts: D21-DC02:D22-DC02
   gather_facts: false
+  serial: 2
   tasks:
     - name: Check domain status
       include_role:

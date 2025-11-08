@@ -1,4 +1,5 @@
 # D21 domain controllers
 dns_servers:
+  - 172.16.20.10
   - 172.16.21.10
   - 172.16.21.11
