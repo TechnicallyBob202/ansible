@@ -1,36 +1,30 @@
 ---
-# Discover current IP address from Proxmox guest agent
+# Discover current IP address from Proxmox guest agent via SSH
 
-- name: Get VM network info from Proxmox
-  community.general.proxmox_vm_info:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    node: "{{ proxmox_node }}"
-    vmid: "{{ vmid }}"
-    validate_certs: false
-  register: vm_info
+- name: Get current IP from Proxmox guest agent
+  shell: |
+    timeout 3 ssh -i /root/.ssh/ansible_key \
+      -o ConnectTimeout=2 \
+      -o StrictHostKeyChecking=no \
+      -o BatchMode=yes \
+      root@{{ proxmox_host }} \
+      'qm guest cmd {{ vmid }} network-get-interfaces' | \
+      grep -oP '(?<="ip-address" : ")[^"]*' | \
+      grep -v '^127' | grep -v '^fe80' | grep -v '^::1' | head -1 || echo ""
+  register: ip_discovery
+  failed_when: false
+  changed_when: false
 
-- name: Debug - Show raw VM info
-  debug:
-    var: vm_info.proxmox_vms[0]
-  when: vm_info.proxmox_vms is defined and vm_info.proxmox_vms | length > 0
-
-- name: Check if guest agent is available
+- name: Set discovered IP as fact
   set_fact:
-    guest_agent_available: "{{ vm_info.proxmox_vms[0].agent_network_interfaces is defined and vm_info.proxmox_vms[0].agent_network_interfaces | length > 0 }}"
-
-- name: Extract IP from guest agent
-  set_fact:
-    discovered_ip: "{{ vm_info.proxmox_vms[0].agent_network_interfaces | selectattr('name', 'equalto', 'Ethernet') | map(attribute='ip_addresses') | flatten | selectattr('ip_address_type', 'equalto', 'ipv4') | map(attribute='ip_address') | select('match', '^(?!169\\.254\\.)') | first }}"
-  when: guest_agent_available | bool
-
-- name: Fail if guest agent not available
-  fail:
-    msg: "Guest agent not available for {{ inventory_hostname }} (vmid {{ vmid }}). Ensure qemu-guest-agent is installed and running."
-  when: not (guest_agent_available | bool)
+    discovered_ip: "{{ ip_discovery.stdout }}"
+  when: ip_discovery.stdout != ""
 
 - name: Display discovered IP
   debug:
-    msg: "{{ inventory_hostname }}: Discovered IP = {{ discovered_ip }}"
-  when: discovered_ip is defined
+    msg: "Discovered IP for {{ inventory_hostname }}: {{ discovered_ip | default('NOT FOUND') }}"
+
+- name: Fail if no IP found
+  fail:
+    msg: "Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }}). Ensure qemu-guest-agent is running."
+  when: discovered_ip is not defined or discovered_ip == ""
