@@ -1,0 +1,221 @@
+---
+- name: Build Active Directory Forests and Domains
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Display build plan
+      debug:
+        msg:
+          - "Building Active Directory Infrastructure"
+          - "  Forest 1: D3.lab (2 DCs)"
+
+# =============================================================================
+# PHASE 1: Initialize Change Tracking
+# =============================================================================
+- name: Initialize Change Tracking for All VMs
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Initialize vm_changed flag
+      set_fact:
+        vm_changed: false
+
+# =============================================================================
+# PHASE 2: Install AD Features on All Domain Controllers
+# =============================================================================
+- name: Install Active Directory Features
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Install AD-DS features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+      register: features_result
+
+    - name: Mark VM as changed if features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 3: Promote Forest Root PDCs (serial: 1)
+# =============================================================================
+- name: Promote Forest Root PDCs
+  hosts: D3-DC01
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Promote to forest root PDC
+      include_role:
+        name: active_directory
+        tasks_from: promote_forest_root.yml
+      when: not is_domain_controller
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
+
+    - name: Check FSMO roles
+      include_role:
+        name: active_directory
+        tasks_from: check_fsmo_roles.yml
+
+# =============================================================================
+# PHASE 4: Promote Forest Root Replica DCs
+# =============================================================================
+- name: Promote Forest Root Replica DCs
+  hosts: D3-DC02
+  gather_facts: false
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Promote to replica DC
+      include_role:
+        name: active_directory
+        tasks_from: promote_replica_dc.yml
+      when: not is_domain_controller
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
+
+    - name: Verify replication
+      include_role:
+        name: active_directory
+        tasks_from: verify_replication.yml
+
+# =============================================================================
+# PHASE 7: Final Validation
+# =============================================================================
+- name: Final Validation
+  hosts: domain_controllers
+  gather_facts: false
+  tasks:
+    - name: Verify all DCs are operational
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+
+    - name: Verify replication health
+      include_role:
+        name: active_directory
+        tasks_from: verify_replication.yml
+
+- name: Consolidate Domain Information
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create files directory
+      file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+    - name: Consolidate domain SIDs
+      shell: |
+        cat /tmp/domain-sid-*.txt > {{ playbook_dir }}/../files/domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
+      changed_when: false
+
+    - name: Consolidate FSMO roles
+      shell: |
+        cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
+      changed_when: false
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "Active Directory deployment complete!"
+          - "  D1.lab: 2 DCs"
+          - "  D2.lab: 2 DCs"
+          - "  D21.lab: 2 DCs"
+          - "  D22.lab: 2 DCs"
+          - "Total: 8 Domain Controllers"
+          - ""
+          - "Domain information saved to files/"
+          - "  - domain-sids.txt"
+          - "  - fsmo-roles.txt"
+
+# =============================================================================
+# PHASE 8: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
+# =============================================================================
+- name: Snapshot after AD promotion
+  hosts: all
+  gather_facts: false
+  serial: 2
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot"
+
+    - name: Take snapshot - only for changed VMs
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        snapshot_name: post-dcpromo
+      when: vm_changed | default(false)
+
+# =============================================================================
+# PHASE 9: Final Summary
+# =============================================================================
+- name: Deployment Summary
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Count changed VMs by type
+      set_fact:
+        changed_dcs: "{{ groups['domain_controllers'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_dcs: "{{ groups['domain_controllers'] | length }}"
+        changed_infra: "{{ groups['infrastructure'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_infra: "{{ groups['infrastructure'] | default([]) | length }}"
+        changed_recovery: "{{ groups['recovery_vms'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        total_recovery: "{{ groups['recovery_vms'] | default([]) | length }}"
+
+    - name: Calculate totals
+      set_fact:
+        total_changed: "{{ (changed_dcs | int) + (changed_infra | int) + (changed_recovery | int) }}"
+        total_vms: "{{ (total_dcs | int) + (total_infra | int) + (total_recovery | int) }}"
+
+    - name: Display snapshot summary
+      debug:
+        msg:
+          - "========================================="
+          - "AD Build Complete!"
+          - "========================================="
+          - ""
+          - "Snapshots Created:"
+          - "  Domain Controllers: {{ changed_dcs }}/{{ total_dcs }}"
+          - "  Infrastructure VMs: {{ changed_infra }}/{{ total_infra }}"
+          - "  Recovery VMs: {{ changed_recovery }}/{{ total_recovery }}"
+          - "  ─────────────────────────────────"
+          - "  Total: {{ total_changed }}/{{ total_vms }} VMs snapshotted"
+          - ""
+          - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured and skipped"
+          - ""
+          - "Next: Run playbooks/04-build-OUs.yml to create OU structure and populate domains"
