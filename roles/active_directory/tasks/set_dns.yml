@@ -44,10 +44,11 @@
   register: _dns_now_raw
   changed_when: false
 
+# Normalize with full coalescing so nothing is undefined
 - name: Normalize current DNS list
   set_fact:
-    _dns_now_str: "{{ _dns_now_raw.stdout | default('') }}"
-    _current_dns: "{{ _dns_now_str | split(',') | map('trim') | reject('equalto','') | list }}"
+    _dns_now_str: "{{ (_dns_now_raw | default({})) | json_query('stdout') | default('') | string }}"
+    _current_dns: "{{ (_dns_now_str | string).split(',') | map('trim') | reject('equalto','') | list }}"
   changed_when: false
 
 - name: Decide if DNS needs update (order matters)
