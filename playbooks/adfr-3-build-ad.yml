@@ -54,7 +54,7 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 4: Promote Forest Root PDCs (serial: 1)
+# PHASE 4: Promote Forest Root PDCs (serial: 2)
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: D1-DC01:D2-DC01
@@ -73,9 +73,23 @@
       when: not is_domain_controller
       register: promotion_result
 
+    - name: Abort if promotion failed
+      fail:
+        msg: |
+          CRITICAL: Forest root promotion failed for {{ inventory_hostname }}
+          Error: {{ promotion_result.msg | default('Unknown error') }}
+
+          Manual cleanup required before continuing.
+      when:
+        - promotion_result is defined
+        - promotion_result.failed | default(false)
+
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when:
+        - promotion_result is defined
+        - not (promotion_result.failed | default(false))
 
     - name: Wait for DC to be ready
       include_role:
@@ -101,7 +115,7 @@
         tasks_from: ensure_dns.yml
 
 # =============================================================================
-# PHASE 5: Promote Forest Root Replica DCs
+# PHASE 5: Promote Forest Root Replica DCs (serial: 2)
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: D1-DC02:D2-DC02
@@ -120,9 +134,23 @@
       when: not is_domain_controller
       register: promotion_result
 
+    - name: Abort if promotion failed
+      fail:
+        msg: |
+          CRITICAL: Replica DC promotion failed for {{ inventory_hostname }}
+          Error: {{ promotion_result.msg | default('Unknown error') }}
+
+          Manual cleanup required before continuing.
+      when:
+        - promotion_result is defined
+        - promotion_result.failed | default(false)
+
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when:
+        - promotion_result is defined
+        - not (promotion_result.failed | default(false))
 
     - name: Wait for DC to be ready
       include_role:
@@ -148,7 +176,7 @@
         tasks_from: ensure_dns.yml
 
 # =============================================================================
-# PHASE 6: Promote Child Domain PDCs (serial: 1)
+# PHASE 6: Promote Child Domain PDCs (serial: 2)
 # =============================================================================
 - name: Promote Child Domain PDCs
   hosts: D21-DC01:D22-DC01
@@ -167,9 +195,24 @@
       when: not is_domain_controller
       register: promotion_result
 
+    - name: Abort if promotion failed
+      fail:
+        msg: |
+          CRITICAL: Child domain promotion failed for {{ inventory_hostname }}
+          Error: {{ promotion_result.msg | default('Unknown error') }}
+
+          Manual cleanup required before continuing.
+          Consider running Stage 0 cleanup on this DC.
+      when:
+        - promotion_result is defined
+        - promotion_result.failed | default(false)
+
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when:
+        - promotion_result is defined
+        - not (promotion_result.failed | default(false))
 
     - name: Wait for DC to be ready
       include_role:
@@ -195,7 +238,7 @@
         tasks_from: ensure_dns.yml
 
 # =============================================================================
-# PHASE 7: Promote Child Domain Replica DCs
+# PHASE 7: Promote Child Domain Replica DCs (serial: 2)
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: D21-DC02:D22-DC02
@@ -214,9 +257,23 @@
       when: not is_domain_controller
       register: promotion_result
 
+    - name: Abort if promotion failed
+      fail:
+        msg: |
+          CRITICAL: Replica DC promotion failed for {{ inventory_hostname }}
+          Error: {{ promotion_result.msg | default('Unknown error') }}
+
+          Manual cleanup required before continuing.
+      when:
+        - promotion_result is defined
+        - promotion_result.failed | default(false)
+
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when:
+        - promotion_result is defined
+        - not (promotion_result.failed | default(false))
 
     - name: Wait for DC to be ready
       include_role:
@@ -295,23 +352,7 @@
 # =============================================================================
 # PHASE 9: Snapshot VMs That Changed
 # =============================================================================
-- name: Snapshot after AD promotion
-  hosts: infrastructure
-  gather_facts: false
-  tasks:
-    - name: Display snapshot plan
-      debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
-
-- name: Snapshot after AD promotion
-  hosts: recovery_vms
-  gather_facts: false
-  tasks:
-    - name: Display snapshot plan
-      debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
-
-- name: Snapshot after AD promotion
+- name: Snapshot domain controllers after AD promotion
   hosts: domain_controllers
   gather_facts: false
   serial: 2
@@ -336,19 +377,10 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Count changed VMs by type
+    - name: Count changed VMs
       set_fact:
         changed_dcs: "{{ groups['domain_controllers'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-        changed_infra: "{{ groups['infrastructure'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-        changed_recovery: "{{ groups['recovery_vms'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
         total_dcs: "{{ groups['domain_controllers'] | length }}"
-        total_infra: "{{ groups['infrastructure'] | length }}"
-        total_recovery: "{{ groups['recovery_vms'] | length }}"
-
-    - name: Calculate totals
-      set_fact:
-        total_changed: "{{ (changed_dcs | int) + (changed_infra | int) + (changed_recovery | int) }}"
-        total_vms: "{{ (total_dcs | int) + (total_infra | int) + (total_recovery | int) }}"
 
     - name: Display snapshot summary
       debug:
@@ -359,11 +391,7 @@
           - ""
           - "Snapshots Created:"
           - "  Domain Controllers: {{ changed_dcs }}/{{ total_dcs }}"
-          - "  Infrastructure VMs: {{ changed_infra }}/{{ total_infra }}"
-          - "  Recovery VMs: {{ changed_recovery }}/{{ total_recovery }}"
-          - "  ─────────────────────────────────"
-          - "  Total: {{ total_changed }}/{{ total_vms }} VMs snapshotted"
           - ""
-          - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured and skipped"
+          - "{{ (total_dcs | int) - (changed_dcs | int) }} VMs were already configured and skipped"
           - ""
-          - "Next: Run playbooks/04-build-OUs.yml to create OU structure and populate domains"
+          - "Next: Run playbooks/adfr-4-*.yml for next stage"
