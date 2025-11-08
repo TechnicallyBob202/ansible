@@ -1,31 +1,48 @@
 ---
-# Promote server to forest root domain controller (first DC in new forest)
+# Promote server to first DC in child domain
 
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Promote to forest root PDC
-  microsoft.ad.domain:
-    dns_domain_name: "{{ domain_name }}"
-    domain_netbios_name: "{{ netbios_name }}"
-    safe_mode_password: "{{ ad_safe_mode_password }}"
-    create_dns_delegation: "{{ ad_create_dns_delegation }}"
-    install_dns: "{{ ad_install_dns }}"
-    database_path: "{{ ad_database_path }}"
-    sysvol_path: "{{ ad_sysvol_path }}"
-    log_path: "{{ ad_log_path }}"
-    reboot: yes
-  when: not is_domain_controller
-  register: forest_promotion
+- name: Promote to child domain PDC
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+
+    # Single secret from Semaphore for both parent admin and DSRM (Safe Mode)
+    $Plain = "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    if ([string]::IsNullOrEmpty($Plain)) { throw "WINDOWS_PASSWORD env var is empty or undefined" }
+    $Secure = ConvertTo-SecureString $Plain -AsPlainText -Force
+
+    # Always Administrator scoped to parent domain
+    $ParentUser = "administrator@{{ parent_domain }}"
+    $ParentCred = New-Object System.Management.Automation.PSCredential($ParentUser, $Secure)
+
+    Install-ADDSDomain `
+      -DomainType ChildDomain `
+      -NewDomainName "{{ netbios_name }}" `
+      -ParentDomainName "{{ parent_domain }}" `
+      -SafeModeAdministratorPassword $Secure `
+      -Credential $ParentCred `
+      -InstallDNS:${{ ad_install_dns | ternary('true','false') }} `
+      -CreateDNSDelegation:$true `
+      -DnsDelegationCredential $ParentCred `
+      -DatabasePath "{{ ad_database_path }}" `
+      -SysvolPath "{{ ad_sysvol_path }}" `
+      -LogPath "{{ ad_log_path }}" `
+      -Force `
+      -NoRebootOnCompletion:$false
+  when: not is_domain_controller and not domain_exists
+  register: child_promotion
+  async: "{{ ad_promotion_timeout }}"
   poll: 30
 
-- name: Wait for forest root to reboot and come back
+- name: Wait for child domain DC to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
   when:
-    - forest_promotion is defined
-    - forest_promotion.changed | default(false)
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
@@ -36,8 +53,8 @@
   delay: 30
   until: adws_service.state == 'running'
   when:
-    - forest_promotion is defined
-    - forest_promotion.changed | default(false)
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
 
 - name: Get new domain SID
   ansible.windows.win_shell: |
@@ -45,15 +62,15 @@
     Write-Output $domain.DomainSID.Value
   register: new_domain_sid
   when:
-    - forest_promotion is defined
-    - forest_promotion.changed | default(false)
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
 
 - name: Update domain SID fact
   set_fact:
     domain_sid: "{{ new_domain_sid.stdout | trim }}"
   when:
-    - forest_promotion is defined
-    - forest_promotion.changed | default(false)
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
 
 - name: Save domain SID to localhost
   copy:
@@ -61,13 +78,14 @@
     dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
   delegate_to: localhost
   when:
-    - forest_promotion is defined
-    - forest_promotion.changed | default(false)
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Forest Root {{ 'promoted' if (forest_promotion.changed | default(false)) else 'already exists' }}"
+      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if (child_promotion.changed | default(false)) else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
+      - "  Parent: {{ parent_domain }}"
       - "  NetBIOS: {{ netbios_name }}"
       - "  SID: {{ domain_sid | default('N/A') }}"
