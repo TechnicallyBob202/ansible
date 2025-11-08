@@ -4,23 +4,21 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Get parent domain credentials
-  set_fact:
-    parent_netbios: "{{ parent_domain.split('.')[0] | upper }}"
-  when: not domain_exists
-
 - name: Promote to child domain PDC
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    $ParentCred = New-Object System.Management.Automation.PSCredential("{{ parent_netbios }}\Administrator", $SecurePassword)
+
+    # Prefer explicit UPN var if you already define it; otherwise build from parent_domain
+    $ParentUser = "{{ parent_admin_upn | default('administrator@' ~ parent_domain) }}"
+    $ParentCred = New-Object System.Management.Automation.PSCredential($ParentUser, $SecurePassword)
 
     Install-ADDSDomain `
-      -NewDomainName "{{ domain_name.split('.')[0] }}" `
+      -NewDomainName "{{ netbios_name }}" `
       -ParentDomainName "{{ parent_domain }}" `
       -SafeModeAdministratorPassword $SecurePassword `
       -Credential $ParentCred `
-      -InstallDNS:${{ ad_install_dns | ternary('true', 'false') }} `
+      -InstallDNS:${{ ad_install_dns | ternary('true','false') }} `
       -DatabasePath "{{ ad_database_path }}" `
       -SysvolPath "{{ ad_sysvol_path }}" `
       -LogPath "{{ ad_log_path }}" `
