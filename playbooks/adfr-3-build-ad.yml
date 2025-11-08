@@ -88,6 +88,11 @@
         name: active_directory
         tasks_from: check_fsmo_roles.yml
 
+    - name: Ensure DNS on forest root PDCs
+      include_role:
+        name: active_directory
+        tasks_from: ensure_dns.yml
+
 # =============================================================================
 # PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
@@ -122,6 +127,11 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+
+    - name: Ensure DNS on root Replica DCs
+      include_role:
+        name: active_directory
+        tasks_from: ensure_dns.yml
 
 # =============================================================================
 # PHASE 6: Promote Child Domain PDCs (serial: 1)
@@ -158,6 +168,11 @@
         name: active_directory
         tasks_from: check_fsmo_roles.yml
 
+    - name: Ensure DNS on child PDCs
+      include_role:
+        name: active_directory
+        tasks_from: ensure_dns.yml
+
 # =============================================================================
 # PHASE 7: Promote Child Domain Replica DCs
 # =============================================================================
@@ -192,6 +207,11 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+
+    - name: Ensure DNS on Child Replica DCs
+      include_role:
+        name: active_directory
+        tasks_from: ensure_dns.yml
 
 # =============================================================================
 # PHASE 8: Final Validation
