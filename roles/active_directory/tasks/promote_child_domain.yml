@@ -7,18 +7,21 @@
 - name: Promote to child domain PDC
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
-    $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
 
-    # Prefer explicit UPN var if you already define it; otherwise build from parent_domain
-    $ParentUser = "{{ parent_admin_upn | default('administrator@' ~ parent_domain) }}"
-    $ParentCred = New-Object System.Management.Automation.PSCredential($ParentUser, $SecurePassword)
+    $DsrmPassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
+
+    $ParentPass = ConvertTo-SecureString "{{ parent_admin_password }}" -AsPlainText -Force
+    $ParentCred = New-Object System.Management.Automation.PSCredential("{{ parent_admin_user }}", $ParentPass)
 
     Install-ADDSDomain `
+      -DomainType ChildDomain `
       -NewDomainName "{{ netbios_name }}" `
       -ParentDomainName "{{ parent_domain }}" `
-      -SafeModeAdministratorPassword $SecurePassword `
+      -SafeModeAdministratorPassword $DsrmPassword `
       -Credential $ParentCred `
       -InstallDNS:${{ ad_install_dns | ternary('true','false') }} `
+      -CreateDNSDelegation:$true `
+      -DnsDelegationCredential $ParentCred `
       -DatabasePath "{{ ad_database_path }}" `
       -SysvolPath "{{ ad_sysvol_path }}" `
       -LogPath "{{ ad_log_path }}" `
