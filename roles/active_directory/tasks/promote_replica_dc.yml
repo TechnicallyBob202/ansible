@@ -11,11 +11,30 @@
   when: not is_domain_controller
   changed_when: false
 
+# THIS IS WHERE THE PROMOTION SHOULD BE - BEFORE using replica_promotion variable
+- name: Promote to replica DC
+  microsoft.ad.domain_controller:
+    dns_domain_name: "{{ domain_name }}"
+    domain_admin_user: "{{ netbios_name }}\\Administrator"
+    domain_admin_password: "{{ ansible_password }}"
+    safe_mode_password: "{{ ad_safe_mode_password }}"
+    database_path: "{{ ad_database_path }}"
+    sysvol_path: "{{ ad_sysvol_path }}"
+    domain_log_path: "{{ ad_log_path }}"
+    install_dns: "{{ ad_install_dns }}"
+    state: domain_controller
+    reboot: yes
+  when: not is_domain_controller
+  register: replica_promotion
+  poll: 30
+
 - name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: replica_promotion.changed
+  when:
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
 
 # Readiness checks
 - name: Wait for ADWS on replica
@@ -26,7 +45,9 @@
   retries: 10
   delay: 30
   until: adws_service.state == 'running'
-  when: replica_promotion.changed
+  when:
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
 
 - name: Wait for Netlogon on replica
   ansible.windows.win_service:
@@ -36,7 +57,9 @@
   retries: 10
   delay: 30
   until: netlogon_service.state == 'running'
-  when: replica_promotion.changed
+  when:
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
 
 - name: Wait for DNS Server on replica
   ansible.windows.win_service:
@@ -47,13 +70,16 @@
   delay: 30
   until: dns_service.state == 'running'
   when:
-    - replica_promotion.changed
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
     - ad_install_dns | default(true)
 
 - name: Short settle pause before AD cmdlets
   pause:
     seconds: 20
-  when: replica_promotion.changed
+  when:
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
   changed_when: false
 
 - name: Verify domain query on replica
@@ -65,4 +91,6 @@
   delay: 30
   until: domain_query.rc == 0
   changed_when: false
-  when: replica_promotion.changed
+  when:
+    - replica_promotion is defined
+    - replica_promotion.changed | default(false)
