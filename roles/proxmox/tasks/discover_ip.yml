@@ -1,0 +1,24 @@
+---
+# Discover current IP address from Proxmox guest agent
+
+- name: Get VM network info from Proxmox
+  community.general.proxmox_vm_info:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    validate_certs: false
+  register: vm_info
+  delegate_to: localhost
+
+- name: Extract IP from guest agent
+  set_fact:
+    discovered_ip: "{{ vm_info.proxmox_vms[0].agent_network_interfaces | selectattr('name', 'equalto', 'Ethernet') | map(attribute='ip_addresses') | flatten | selectattr('ip_address_type', 'equalto', 'ipv4') | map(attribute='ip_address') | select('match', '^(?!169\\.254\\.)') | first }}"
+  when:
+    - vm_info.proxmox_vms[0].agent_network_interfaces is defined
+    - vm_info.proxmox_vms[0].agent_network_interfaces | length > 0
+
+- name: Display discovered IP
+  debug:
+    msg: "{{ inventory_hostname }}: Discovered IP = {{ discovered_ip }}"
