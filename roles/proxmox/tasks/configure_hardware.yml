@@ -1,5 +1,5 @@
 ---
-# Configure VM hardware (CPU, RAM, Disk, Pool, Tags)
+# Configure VM hardware (CPU, RAM, Disk, Pool, Tags, OnBoot)
 
 - name: Derive resource pool from first tag
   set_fact:
@@ -55,6 +55,7 @@
     update: yes
   register: cpu_mem_config
   when: needs_cpu_mem_update | default(true)
+  delegate_to: localhost
 
 - name: Resize VM disk
   community.general.proxmox_disk:
@@ -68,6 +69,7 @@
     state: resized
   register: disk_resize
   when: needs_disk_resize | default(false)
+  delegate_to: localhost
 
 - name: Apply VM tags
   community.general.proxmox_kvm:
@@ -80,6 +82,20 @@
     tags: "{{ proxmox_vm_tags }}"
     update: true
   register: tag_config
+  delegate_to: localhost
+
+- name: Ensure VM is set to start on host boot
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    vmid: "{{ vmid }}"
+    node: "{{ proxmox_node }}"
+    onboot: true
+    update: true
+  register: onboot_result
+  delegate_to: localhost
 
 - name: Display hardware configuration result
   debug:
@@ -90,3 +106,4 @@
       - "  Disk: {{ vm_disk }}"
       - "  Pool: {{ derived_pool }}"
       - "  Tags: {{ proxmox_vm_tags }}"
+      - "  OnBoot: {{ 'enabled' if onboot_result.changed else 'already enabled' }}"
