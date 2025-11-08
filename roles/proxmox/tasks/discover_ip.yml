@@ -10,15 +10,27 @@
     vmid: "{{ vmid }}"
     validate_certs: false
   register: vm_info
-  delegate_to: localhost
+
+- name: Debug - Show raw VM info
+  debug:
+    var: vm_info.proxmox_vms[0]
+  when: vm_info.proxmox_vms is defined and vm_info.proxmox_vms | length > 0
+
+- name: Check if guest agent is available
+  set_fact:
+    guest_agent_available: "{{ vm_info.proxmox_vms[0].agent_network_interfaces is defined and vm_info.proxmox_vms[0].agent_network_interfaces | length > 0 }}"
 
 - name: Extract IP from guest agent
   set_fact:
     discovered_ip: "{{ vm_info.proxmox_vms[0].agent_network_interfaces | selectattr('name', 'equalto', 'Ethernet') | map(attribute='ip_addresses') | flatten | selectattr('ip_address_type', 'equalto', 'ipv4') | map(attribute='ip_address') | select('match', '^(?!169\\.254\\.)') | first }}"
-  when:
-    - vm_info.proxmox_vms[0].agent_network_interfaces is defined
-    - vm_info.proxmox_vms[0].agent_network_interfaces | length > 0
+  when: guest_agent_available | bool
+
+- name: Fail if guest agent not available
+  fail:
+    msg: "Guest agent not available for {{ inventory_hostname }} (vmid {{ vmid }}). Ensure qemu-guest-agent is installed and running."
+  when: not (guest_agent_available | bool)
 
 - name: Display discovered IP
   debug:
     msg: "{{ inventory_hostname }}: Discovered IP = {{ discovered_ip }}"
+  when: discovered_ip is defined
