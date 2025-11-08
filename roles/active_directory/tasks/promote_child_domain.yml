@@ -1,24 +1,29 @@
+---
+# Promote server to first DC in child domain
+
+- name: Check if already promoted
+  include_tasks: check_domain_status.yml
+
 - name: Promote to child domain PDC
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
 
-    # Use the single secret from Semaphore for BOTH:
-    #  - Parent domain admin credential (administrator@<parent_domain>)
-    #  - DSRM (Safe Mode) password
+    # Single secret from Semaphore for both parent admin and DSRM (Safe Mode)
     $Plain = "{{ lookup('env','WINDOWS_PASSWORD') }}"
     if ([string]::IsNullOrEmpty($Plain)) { throw "WINDOWS_PASSWORD env var is empty or undefined" }
     $Secure = ConvertTo-SecureString $Plain -AsPlainText -Force
 
-    # Always use Administrator with the parent domain context
+    # Always Administrator scoped to parent domain
     $ParentUser = "administrator@{{ parent_domain }}"
     $ParentCred = New-Object System.Management.Automation.PSCredential($ParentUser, $Secure)
 
     Install-ADDSDomain `
+      -DomainType ChildDomain `
       -NewDomainName "{{ netbios_name }}" `
       -ParentDomainName "{{ parent_domain }}" `
       -SafeModeAdministratorPassword $Secure `
       -Credential $ParentCred `
-      -InstallDNS:$true `
+      -InstallDNS:${{ ad_install_dns | ternary('true','false') }} `
       -CreateDNSDelegation:$true `
       -DnsDelegationCredential $ParentCred `
       -DatabasePath "{{ ad_database_path }}" `
@@ -30,3 +35,57 @@
   register: child_promotion
   async: "{{ ad_promotion_timeout }}"
   poll: 30
+
+- name: Wait for child domain DC to reboot and come back
+  wait_for_connection:
+    timeout: "{{ ad_reboot_timeout }}"
+    delay: 60
+  when:
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
+
+- name: Wait for Active Directory Web Services
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_service
+  retries: 10
+  delay: 30
+  until: adws_service.state == 'running'
+  when:
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
+
+- name: Get new domain SID
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: new_domain_sid
+  when:
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
+
+- name: Update domain SID fact
+  set_fact:
+    domain_sid: "{{ new_domain_sid.stdout | trim }}"
+  when:
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
+
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ domain_sid }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when:
+    - child_promotion is defined
+    - child_promotion.changed | default(false)
+
+- name: Display promotion result
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if (child_promotion.changed | default(false)) else 'already exists' }}"
+      - "  Domain: {{ domain_name }}"
+      - "  Parent: {{ parent_domain }}"
+      - "  NetBIOS: {{ netbios_name }}"
+      - "  SID: {{ domain_sid | default('N/A') }}"
