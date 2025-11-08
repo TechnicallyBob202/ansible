@@ -24,7 +24,7 @@
     fail_msg: "No DNS servers specified for {{ inventory_hostname }}"
   changed_when: false
 
-# Robust read: always define a string (possibly empty), never fail the run
+# 1) Read current DNS to a raw var; never fail
 - name: Read current IPv4 DNS server list (first NIC)
   ansible.windows.win_shell: |
     try {
@@ -44,18 +44,37 @@
   register: _dns_now_raw
   changed_when: false
 
-# Normalize with full coalescing so nothing is undefined
-- name: Normalize current DNS list
+# 2) Ensure we always have a string
+- name: Initialize _dns_now_str
   set_fact:
-    _dns_now_str: "{{ (_dns_now_raw | default({})) | json_query('stdout') | default('') | string }}"
-    _current_dns: "{{ (_dns_now_str | string).split(',') | map('trim') | reject('equalto','') | list }}"
+    _dns_now_str: ""
   changed_when: false
 
+- name: Set _dns_now_str from command output if present
+  set_fact:
+    _dns_now_str: "{{ _dns_now_raw.stdout }}"
+  when: (_dns_now_raw is defined) and (_dns_now_raw.stdout is defined)
+  changed_when: false
+
+# 3) Normalize to a list
+- name: Initialize _current_dns as empty list
+  set_fact:
+    _current_dns: []
+  changed_when: false
+
+- name: Parse current DNS list when string is non-empty
+  set_fact:
+    _current_dns: "{{ (_dns_now_str | string).split(',') | map('trim') | reject('equalto','') | list }}"
+  when: (_dns_now_str is defined) and (_dns_now_str | string | length > 0)
+  changed_when: false
+
+# 4) Compare desired vs current
 - name: Decide if DNS needs update (order matters)
   set_fact:
     _dns_needs_change: "{{ _current_dns != _desired_dns }}"
   changed_when: false
 
+# 5) Apply only if different
 - name: Apply DNS servers on primary IPv4 interface (only if different)
   ansible.windows.win_shell: |
     $servers = "{{ _desired_dns | join(',') }}"
