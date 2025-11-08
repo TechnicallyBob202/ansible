@@ -1,0 +1,64 @@
+---
+# Promote server to forest root domain controller (first DC in new forest)
+
+- name: Check if already promoted
+  include_tasks: check_domain_status.yml
+
+- name: Promote to forest root PDC
+  microsoft.ad.domain:
+    dns_domain_name: "{{ domain_name }}"
+    domain_netbios_name: "{{ netbios_name }}"
+    safe_mode_password: "{{ ad_safe_mode_password }}"
+    create_dns_delegation: "{{ ad_create_dns_delegation }}"
+    install_dns: "{{ ad_install_dns }}"
+    database_path: "{{ ad_database_path }}"
+    sysvol_path: "{{ ad_sysvol_path }}"
+    log_path: "{{ ad_log_path }}"
+    reboot: yes
+  when: not is_domain_controller
+  register: forest_promotion
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
+
+- name: Wait for forest root to reboot and come back
+  wait_for_connection:
+    timeout: "{{ ad_reboot_timeout }}"
+    delay: 60
+  when: forest_promotion.changed
+
+- name: Wait for Active Directory Web Services
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_service
+  retries: 10
+  delay: 30
+  until: adws_service.state == 'running'
+  when: forest_promotion.changed
+
+- name: Get new domain SID
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: new_domain_sid
+  when: forest_promotion.changed
+
+- name: Update domain SID fact
+  set_fact:
+    domain_sid: "{{ new_domain_sid.stdout | trim }}"
+  when: forest_promotion.changed
+
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ domain_sid }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when: forest_promotion.changed
+
+- name: Display promotion result
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - Forest Root {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
+      - "  Domain: {{ domain_name }}"
+      - "  NetBIOS: {{ netbios_name }}"
+      - "  SID: {{ domain_sid }}"

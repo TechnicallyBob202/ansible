@@ -1,0 +1,21 @@
+---
+# Install Active Directory Domain Services and management tools
+
+- name: Check if AD features are already installed
+  ansible.windows.win_feature:
+    name: "{{ ad_features }}"
+    state: present
+  check_mode: yes
+  register: features_check
+
+- name: Install AD Domain Services and tools
+  ansible.windows.win_feature:
+    name: "{{ ad_features }}"
+    state: present
+    include_management_tools: yes
+  register: feature_install
+  when: features_check.changed
+
+- name: Display installation result
+  debug:
+    msg: "{{ inventory_hostname }} - AD Features {{ 'installed' if feature_install.changed else 'already present' }}"

@@ -36,3 +36,7 @@ all:
       hosts:
         IAS:
           ansible_host: 172.16.50.11
+
+    domain_controllers:
+      children:
+        d3_forest:

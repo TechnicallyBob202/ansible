@@ -58,3 +58,8 @@ all:
           ansible_host: 172.16.23.10
         REC04:
           ansible_host: 172.16.23.11
+
+    domain_controllers:
+      children:
+        d1_forest:
+        d2_forest:

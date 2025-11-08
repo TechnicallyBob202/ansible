@@ -1,0 +1,46 @@
+---
+# Check FSMO role placement
+
+- name: Get forest-wide FSMO roles
+  ansible.windows.win_shell: |
+    $forest = Get-ADForest
+    [PSCustomObject]@{
+      SchemaMaster = $forest.SchemaMaster
+      DomainNamingMaster = $forest.DomainNamingMaster
+    } | ConvertTo-Json
+  register: forest_fsmo
+  changed_when: false
+  run_once: yes
+
+- name: Get domain-wide FSMO roles
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    [PSCustomObject]@{
+      PDCEmulator = $domain.PDCEmulator
+      RIDMaster = $domain.RIDMaster
+      InfrastructureMaster = $domain.InfrastructureMaster
+    } | ConvertTo-Json
+  register: domain_fsmo
+  changed_when: false
+
+- name: Parse FSMO information
+  set_fact:
+    fsmo_roles: "{{ domain_fsmo.stdout | from_json }}"
+
+- name: Display FSMO roles
+  debug:
+    msg:
+      - "FSMO Roles for {{ domain_name }}:"
+      - "  PDC Emulator: {{ fsmo_roles.PDCEmulator }}"
+      - "  RID Master: {{ fsmo_roles.RIDMaster }}"
+      - "  Infrastructure Master: {{ fsmo_roles.InfrastructureMaster }}"
+
+- name: Save FSMO information to localhost
+  copy:
+    content: |
+      Domain: {{ domain_name }}
+      PDC Emulator: {{ fsmo_roles.PDCEmulator }}
+      RID Master: {{ fsmo_roles.RIDMaster }}
+      Infrastructure Master: {{ fsmo_roles.InfrastructureMaster }}
+    dest: "/tmp/fsmo-roles-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
