@@ -1,5 +1,4 @@
 ---
----
 # Promote server to replica domain controller using steady-state DNS from inventory
 
 - name: Check if already a DC
