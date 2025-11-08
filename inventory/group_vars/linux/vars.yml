@@ -23,7 +23,7 @@ ansible_become_method: sudo
 # Network defaults
 linux_gateway: 172.16.0.1
 linux_dns_suffix: lab
-linux_ip_prefix: 20
+linux_ip_prefix: 16
 
 # DNS servers - Stage 02 uses Cloudflare, Stage 03+ uses DCs
 linux_dns_servers:

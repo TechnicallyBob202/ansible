@@ -11,7 +11,7 @@ proxmox_hosts:
 # Network configuration
 proxmox_network_bridge: vmbr0
 proxmox_network_vlan: 10
-lab_network: 172.16.0.0/20
+lab_network: 172.16.0.0/16
 
 # VM defaults
 proxmox_vm_start_on_boot: no

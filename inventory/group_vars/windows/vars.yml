@@ -6,7 +6,7 @@
 # Network defaults
 windows_gateway: 172.16.0.1
 windows_dns_suffix: lab
-windows_ip_prefix: 20
+windows_ip_prefix: 16
 
 # DNS servers - Stage 02 uses Cloudflare, Stage 03+ uses DCs
 # These are the Stage 02 defaults (overridden in Stage 03+)
