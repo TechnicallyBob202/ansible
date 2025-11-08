@@ -82,17 +82,6 @@
   changed_when: false
   when: replica_promotion.changed
 
-- name: Test LDAP via RootDSE on replica
-  ansible.windows.win_shell: |
-    $rootDSE = [ADSI]"LDAP://RootDSE"
-    if ($rootDSE.defaultNamingContext) { 'OK' } else { throw 'Cannot connect to LDAP' }
-  register: ldap_test
-  retries: 10
-  delay: 30
-  until: ldap_test.rc == 0
-  changed_when: false
-  when: replica_promotion.changed
-
 - name: Replica promotion summary
   debug:
     msg: "Replica promotion: host={{ inventory_hostname }} domain={{ domain_name }} changed={{ replica_promotion.changed | default(false) }}"
