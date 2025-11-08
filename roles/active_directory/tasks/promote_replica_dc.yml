@@ -4,38 +4,61 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-- name: Switch to domain admin creds for replica tasks
-  set_fact:
-    ansible_user: "{{ netbios_name }}\\Administrator"
-    ansible_password: "{{ ansible_password }}"
+# Preflight: wait until the target domain is contactable (SRV + LDAP) before promoting
+- name: Preflight | Wait for domain SRV records
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $tries = 0; $max = 20; $ok=$false
+    while($tries -lt $max -and -not $ok){
+      try {
+        Resolve-DnsName "_ldap._tcp.dc._msdcs.{{ domain_name }}" -Type SRV -ErrorAction Stop | Out-Null
+        $ok=$true
+      } catch {
+        Start-Sleep -Seconds 15
+        $tries++
+      }
+    }
+    if(-not $ok){ throw "SRV records for {{ domain_name }} not available after $($max*15) seconds" }
+  register: preflight_srv
   when: not is_domain_controller
-  changed_when: false
 
+- name: Preflight | Verify LDAP connectivity to any DC in domain
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
+    $Plain = "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    if ([string]::IsNullOrEmpty($Plain)) { throw "WINDOWS_PASSWORD env var is empty or undefined" }
+    $User  = "administrator@{{ domain_name }}"
+    $Pass  = $Plain
+    $de = New-Object DirectoryServices.DirectoryEntry("LDAP://{{ domain_name }}/RootDSE", $User, $Pass)
+    $null = $de.RefreshCache()
+    $de.Properties["defaultNamingContext"].Value | Out-Null
+  register: preflight_ldap
+  when: not is_domain_controller
+
+# Promote (do NOT install DNS here; later phase ensures DNS consistently)
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
-    domain_admin_user: "{{ netbios_name }}\\Administrator"
-    domain_admin_password: "{{ ansible_password }}"
-    safe_mode_password: "{{ ad_safe_mode_password }}"
+    domain_admin_user: "administrator@{{ domain_name }}"
+    domain_admin_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    safe_mode_password: "{{ lookup('env','WINDOWS_PASSWORD') }}"
+    install_dns: false
     database_path: "{{ ad_database_path }}"
     sysvol_path: "{{ ad_sysvol_path }}"
-    domain_log_path: "{{ ad_log_path }}"
-    install_dns: "{{ ad_install_dns }}"
-    state: domain_controller
+    log_path: "{{ ad_log_path }}"
     reboot: yes
   when: not is_domain_controller
   register: replica_promotion
+  async: "{{ ad_promotion_timeout }}"
   poll: 30
 
 - name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
+  when: replica_promotion.changed | default(false)
 
-- name: Wait for ADWS on replica
+- name: Wait for Active Directory Web Services
   ansible.windows.win_service:
     name: ADWS
     state: started
@@ -43,58 +66,25 @@
   retries: 10
   delay: 30
   until: adws_service.state == 'running'
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
+  when: replica_promotion.changed | default(false)
 
-- name: Wait for Netlogon on replica
-  ansible.windows.win_service:
-    name: Netlogon
-    state: started
-  register: netlogon_service
-  retries: 10
-  delay: 30
-  until: netlogon_service.state == 'running'
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
-
-- name: Wait for DNS Server on replica
-  ansible.windows.win_service:
-    name: DNS
-    state: started
-  register: dns_service
-  retries: 10
-  delay: 30
-  until: dns_service.state == 'running'
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
-    - ad_install_dns | default(true)
-
-- name: Short settle pause before AD cmdlets
-  pause:
-    seconds: 20
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
-  changed_when: false
-
-- name: Verify domain query on replica
+- name: Get domain SID after replica promotion
   ansible.windows.win_shell: |
-    $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-    "$($domain.DNSRoot)"
-  register: domain_query
-  retries: 10
-  delay: 30
-  until: domain_query.rc == 0
-  changed_when: false
-  when:
-    - replica_promotion is defined
-    - replica_promotion.changed | default(false)
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: rep_domain_sid
+  when: replica_promotion.changed | default(false)
 
-- name: Display promotion result
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ (rep_domain_sid.stdout | trim) }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when: replica_promotion.changed | default(false)
+
+- name: Display replica promotion result
   debug:
     msg:
       - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if (replica_promotion.changed | default(false)) else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
+      - "  SID: {{ (rep_domain_sid.stdout | trim) if (rep_domain_sid is defined) else 'N/A' }}"

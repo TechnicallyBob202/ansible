@@ -1,0 +1,9 @@
+---
+# D2 DNS configuration
+windows_dns_servers:
+  - 172.16.20.11
+  - 172.16.20.10
+  - 172.16.21.11
+  - 172.16.22.10
+
+windows_dns_suffix: d2.lab
