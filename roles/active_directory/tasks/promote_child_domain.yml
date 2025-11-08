@@ -33,42 +33,6 @@
   when: parent_netbios is not defined
   changed_when: false
 
-# 1) Ensure DNS is installed on the PARENT DC (delegate) - requires parent_pdc_host var
-- name: Ensure DNS feature on parent PDC
-  ansible.windows.win_feature:
-    name: DNS
-    state: present
-    include_management_tools: true
-  delegate_to: "{{ parent_pdc_host }}"
-  when:
-    - not is_domain_controller
-    - not domain_exists
-    - parent_pdc_host is defined
-  changed_when: false
-
-- name: Ensure DNS service started on parent PDC
-  ansible.windows.win_service:
-    name: DNS
-    start_mode: auto
-    state: started
-  delegate_to: "{{ parent_pdc_host }}"
-  when:
-    - not is_domain_controller
-    - not domain_exists
-    - parent_pdc_host is defined
-  changed_when: false
-
-# 2) Install DNS on THIS CHILD PDC (pre-install is idempotent; ADDS can also install)
-- name: Ensure DNS feature present on child PDC (pre-install)
-  ansible.windows.win_feature:
-    name: DNS
-    state: present
-    include_management_tools: true
-  when:
-    - not is_domain_controller
-    - not domain_exists
-  changed_when: false
-
 # Switch to parent domain admin creds for promotion
 - name: Switch to parent domain admin creds
   set_fact:

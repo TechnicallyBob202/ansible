@@ -1,0 +1,59 @@
+---
+# roles/active_directory/tasks/ensure_dns.yml
+# Idempotent DNS installation and validation for domain controllers
+
+- name: Check if host is a domain controller
+  include_tasks: check_domain_status.yml
+
+- name: Check DNS feature status
+  ansible.windows.win_feature:
+    name: DNS
+    state: present
+    include_management_tools: true
+  check_mode: yes
+  register: dns_feature_check
+  when: is_domain_controller
+
+- name: Install DNS feature if missing
+  ansible.windows.win_feature:
+    name: DNS
+    state: present
+    include_management_tools: true
+  when:
+    - is_domain_controller
+    - dns_feature_check.reboot_required or (dns_feature_check.changed | default(false))
+  register: dns_install
+
+- name: Ensure DNS service is running
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: started
+  when: is_domain_controller
+  register: dns_service
+  retries: 3
+  delay: 10
+  until: dns_service.state == 'running'
+
+- name: Check for AD-integrated zone
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
+    if ($zone) { exit 0 } else { exit 1 }
+  register: zone_check
+  failed_when: false
+  changed_when: false
+  when: is_domain_controller
+
+- name: Create AD-integrated zone if missing
+  ansible.windows.win_shell: |
+    Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain -PassThru | Out-Null
+    exit 0
+  when:
+    - is_domain_controller
+    - zone_check.rc != 0
+  register: zone_create
+
+- name: Display DNS status
+  debug:
+    msg: "{{ inventory_hostname }} - DNS {{ 'installed' if dns_install.changed | default(false) else 'already present' }}, service {{ dns_service.state }}, zone {{ 'created' if zone_create.changed | default(false) else 'exists' }}"
+  when: is_domain_controller

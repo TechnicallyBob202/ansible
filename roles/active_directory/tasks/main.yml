@@ -33,3 +33,7 @@
 - name: Include FSMO role check tasks
   include_tasks: check_fsmo_roles.yml
   when: ad_operation == 'check_fsmo_roles'
+
+- name: Include DNS healing tasks
+  include_tasks: ensure_dns.yml
+  when: ad_operation == 'ensure_dns'

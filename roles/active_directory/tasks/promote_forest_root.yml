@@ -4,15 +4,6 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-# 2) Install DNS on THIS forest root (pre-install is idempotent)
-- name: Ensure DNS feature present on forest root (pre-install)
-  ansible.windows.win_feature:
-    name: DNS
-    state: present
-    include_management_tools: true
-  when: not is_domain_controller
-  changed_when: false
-
 - name: Promote to forest root PDC
   microsoft.ad.domain:
     dns_domain_name: "{{ domain_name }}"
@@ -33,23 +24,6 @@
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
   when: forest_promotion.changed
-
-# 3) Validate DNS is installed on THIS forest root (service + zone)
-- name: Ensure DNS service is running on forest root
-  ansible.windows.win_service:
-    name: DNS
-    start_mode: auto
-    state: started
-
-- name: Ensure forest root domain zone exists (AD-integrated)
-  ansible.windows.win_shell: |
-    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
-    if (-not $zone) {
-      Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain -PassThru | Out-Null
-    }
-    exit 0
-  register: _ensure_zone_root
-  changed_when: false
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
