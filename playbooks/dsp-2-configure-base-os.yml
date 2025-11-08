@@ -63,6 +63,22 @@
           delegate_to: localhost
       vars:
         proxmox_operation: discover_ip
+      register: ip_discovery_result
+
+    - name: Abort if IP discovery failed
+      fail:
+        msg: |
+          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }})
+
+          This usually means:
+          - VM is not running
+          - qemu-guest-agent is not installed or not running
+          - Network is not configured on the VM
+
+          Manual intervention required before continuing.
+      when:
+        - ip_discovery_result is defined
+        - ip_discovery_result.failed | default(false)
 
     - name: Check if IP already matches
       set_fact:
@@ -92,6 +108,15 @@
         windows_operation: set_static_ip
       when: needs_ip_config
       register: ip_result
+
+    - name: Abort if IP configuration failed
+      fail:
+        msg: |
+          CRITICAL: Failed to configure static IP for {{ inventory_hostname }}
+          Error: {{ ip_result.msg | default('Unknown error') }}
+      when:
+        - ip_result is defined
+        - ip_result.failed | default(false)
 
     - name: Mark VM as changed if IP was configured
       set_fact:
@@ -124,6 +149,15 @@
         windows_operation: set_dns
       register: dns_result
 
+    - name: Abort if DNS configuration failed
+      fail:
+        msg: |
+          CRITICAL: Failed to configure DNS for {{ inventory_hostname }}
+          Error: {{ dns_result.msg | default('Unknown error') }}
+      when:
+        - dns_result is defined
+        - dns_result.failed | default(false)
+
     - name: Mark VM as changed if DNS was configured
       set_fact:
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
@@ -134,6 +168,15 @@
       vars:
         windows_operation: set_hostname
       register: hostname_result
+
+    - name: Abort if hostname configuration failed
+      fail:
+        msg: |
+          CRITICAL: Failed to set hostname for {{ inventory_hostname }}
+          Error: {{ hostname_result.msg | default('Unknown error') }}
+      when:
+        - hostname_result is defined
+        - hostname_result.failed | default(false)
 
     - name: Mark VM as changed if hostname was set
       set_fact:
@@ -176,6 +219,17 @@
           delegate_to: localhost
       vars:
         proxmox_operation: discover_ip
+      register: linux_ip_discovery
+
+    - name: Abort if Linux IP discovery failed
+      fail:
+        msg: |
+          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }})
+
+          Ensure VM is running and qemu-guest-agent is installed.
+      when:
+        - linux_ip_discovery is defined
+        - linux_ip_discovery.failed | default(false)
 
     - name: Set ansible_ssh_host to discovered IP
       set_fact:
@@ -263,20 +317,25 @@
   serial: 2
 
   tasks:
-    - name: Take snapshot
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+    - name: Create Proxmox snapshot
       include_role:
         name: proxmox
         apply:
           delegate_to: localhost
       vars:
         proxmox_operation: snapshot
-        snapshot_name: post-stage02
-      when: vm_changed | default(false)
+        snapshot_name: "stage2-base-configured"
+        snapshot_description: "After base OS configuration (IP, DNS, hostname)"
+      when: vm_changed
 
 # =============================================================================
 # PHASE 10: Summary
 # =============================================================================
-- name: Configuration Summary
+- name: Display Summary
   hosts: localhost
   gather_facts: false
 
@@ -298,7 +357,7 @@
         msg:
           - ""
           - "========================================="
-          - "  Stage 02 Complete - DSP"
+          - "Stage 02 Complete - DSP"
           - "========================================="
           - ""
           - "Configuration Results:"
@@ -308,4 +367,4 @@
           - ""
           - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured"
           - ""
-          - "Next: Run 03-dsp-build-ad-forests.yml to build AD"
+          - "Next: Run playbooks/dsp-3-build-ad.yml to build AD"
