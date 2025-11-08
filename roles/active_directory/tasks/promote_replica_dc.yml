@@ -1,5 +1,5 @@
 ---
-# Promote server to replica domain controller using steady-state DNS from inventory
+# Promote server to replica domain controller in existing domain
 
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
@@ -11,7 +11,6 @@
   when: not is_domain_controller
   changed_when: false
 
-# THIS IS WHERE THE PROMOTION SHOULD BE - BEFORE using replica_promotion variable
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
@@ -36,7 +35,6 @@
     - replica_promotion is defined
     - replica_promotion.changed | default(false)
 
-# Readiness checks
 - name: Wait for ADWS on replica
   ansible.windows.win_service:
     name: ADWS
@@ -94,3 +92,9 @@
   when:
     - replica_promotion is defined
     - replica_promotion.changed | default(false)
+
+- name: Display promotion result
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if (replica_promotion.changed | default(false)) else 'already exists' }}"
+      - "  Domain: {{ domain_name }}"
