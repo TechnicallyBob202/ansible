@@ -59,9 +59,10 @@
     - name: Discover current IP from Proxmox
       include_role:
         name: proxmox
+        apply:
+          delegate_to: localhost
       vars:
         proxmox_operation: discover_ip
-      delegate_to: localhost
 
     - name: Check if IP already matches
       set_fact:
@@ -171,9 +172,10 @@
     - name: Discover IP from Proxmox
       include_role:
         name: proxmox
+        apply:
+          delegate_to: localhost
       vars:
         proxmox_operation: discover_ip
-      delegate_to: localhost
 
     - name: Set ansible_ssh_host to discovered IP
       set_fact:
@@ -264,10 +266,11 @@
     - name: Take snapshot
       include_role:
         name: proxmox
+        apply:
+          delegate_to: localhost
       vars:
         proxmox_operation: snapshot
         snapshot_name: post-stage02
-      delegate_to: localhost
       when: vm_changed | default(false)
 
 # =============================================================================
