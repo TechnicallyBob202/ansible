@@ -1,0 +1,308 @@
+---
+# =============================================================================
+# Stage 02: Configure Base OS - DSP Lab
+# =============================================================================
+# Purpose: Configure networking on all DSP VMs (Windows + Linux)
+# - Discover current IPs from Proxmox
+# - Configure static IPs
+# - Set DNS servers (Cloudflare during Stage 02)
+# - Set hostnames
+# - Reboot if needed
+# - Snapshot changed VMs
+
+- name: Stage 02 - Configure Base OS (DSP)
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display stage introduction
+      debug:
+        msg:
+          - "========================================="
+          - "  Stage 02: Configure Base OS - DSP"
+          - "========================================="
+          - ""
+          - "Configuring {{ groups['all'] | length }} VMs:"
+          - "  • Discover current IPs"
+          - "  • Configure static IPs"
+          - "  • Set DNS to Cloudflare (Stage 02)"
+          - "  • Set hostnames"
+          - "  • Reboot if needed"
+          - "  • Snapshot changed VMs"
+
+# =============================================================================
+# PHASE 1: Initialize Change Tracking
+# =============================================================================
+- name: Initialize Change Tracking
+  hosts: all
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Initialize vm_changed flag
+      set_fact:
+        vm_changed: false
+
+# =============================================================================
+# PHASE 2: Discover Current IPs (Windows)
+# =============================================================================
+- name: Discover Current IPs (Windows)
+  hosts: all:!dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Save target static IP
+      set_fact:
+        target_ip: "{{ ansible_host }}"
+
+    - name: Discover current IP from Proxmox
+      include_role:
+        name: proxmox
+      vars:
+        proxmox_operation: discover_ip
+      delegate_to: localhost
+
+    - name: Check if IP already matches
+      set_fact:
+        needs_ip_config: "{{ discovered_ip != target_ip }}"
+
+    - name: Update ansible_host to discovered IP
+      set_fact:
+        ansible_host: "{{ discovered_ip }}"
+
+    - name: Display IP status
+      debug:
+        msg: "{{ inventory_hostname }}: {{ discovered_ip }} → {{ target_ip }} ({{ 'needs config' if needs_ip_config else 'already correct' }})"
+
+# =============================================================================
+# PHASE 3: Configure Static IPs (Windows)
+# =============================================================================
+- name: Configure Static IPs (Windows)
+  hosts: all:!dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Set static IP
+      include_role:
+        name: windows
+      vars:
+        windows_operation: set_static_ip
+      when: needs_ip_config
+      register: ip_result
+
+    - name: Mark VM as changed if IP was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+
+    - name: Update ansible_host to target IP
+      set_fact:
+        ansible_host: "{{ target_ip }}"
+      when: needs_ip_config
+
+    - name: Wait for IPs to settle
+      pause:
+        seconds: 10
+      run_once: true
+      when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
+
+# =============================================================================
+# PHASE 4: Configure DNS and Hostname (Windows)
+# =============================================================================
+- name: Configure DNS and Hostname (Windows)
+  hosts: all:!dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Configure DNS servers
+      include_role:
+        name: windows
+      vars:
+        windows_operation: set_dns
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
+
+    - name: Set hostname
+      include_role:
+        name: windows
+      vars:
+        windows_operation: set_hostname
+      register: hostname_result
+
+    - name: Mark VM as changed if hostname was set
+      set_fact:
+        vm_changed: "{{ vm_changed or (hostname_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 5: Reboot Windows Hosts
+# =============================================================================
+- name: Reboot Windows Hosts
+  hosts: all:!dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Reboot if needed
+      include_role:
+        name: windows
+      vars:
+        windows_operation: reboot
+      when: reboot_required | default(false)
+      register: reboot_result
+
+    - name: Mark VM as changed if rebooted
+      set_fact:
+        vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 6: Discover Linux IPs
+# =============================================================================
+- name: Discover Linux IPs
+  hosts: dsp_linux
+  gather_facts: false
+  serial: 1
+
+  tasks:
+    - name: Discover IP from Proxmox
+      include_role:
+        name: proxmox
+      vars:
+        proxmox_operation: discover_ip
+      delegate_to: localhost
+
+    - name: Set ansible_ssh_host to discovered IP
+      set_fact:
+        ansible_ssh_host: "{{ discovered_ip }}"
+
+    - name: Display connection info
+      debug:
+        msg: "{{ inventory_hostname }} at {{ ansible_ssh_host }} → {{ ansible_host }}"
+
+# =============================================================================
+# PHASE 7: Configure Linux VMs
+# =============================================================================
+- name: Configure Linux VMs
+  hosts: dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Configure Linux network
+      include_role:
+        name: linux
+      vars:
+        linux_operation: configure_network
+      register: linux_result
+
+    - name: Mark Linux VM as changed
+      set_fact:
+        vm_changed: "{{ linux_result.changed | default(true) }}"
+
+# =============================================================================
+# PHASE 8: Validation
+# =============================================================================
+- name: Validate Configuration (Windows)
+  hosts: all:!dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Get network configuration
+      ansible.windows.win_shell: |
+        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+        $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+        $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+
+        [PSCustomObject]@{
+          Hostname = $env:COMPUTERNAME
+          IPAddress = $ip.IPAddress
+          DNS = $dns.ServerAddresses -join ","
+        } | ConvertTo-Json
+      register: network_info
+      changed_when: false
+
+    - name: Parse network information
+      set_fact:
+        network_config: "{{ network_info.stdout | from_json }}"
+
+    - name: Validate configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ network_config.IPAddress }} ✓"
+          - "  Hostname: {{ network_config.Hostname }} ✓"
+          - "  DNS: {{ network_config.DNS }}"
+          - "  Changed: {{ vm_changed }}"
+
+- name: Validate Configuration (Linux)
+  hosts: dsp_linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Validate configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ ansible_host }} ✓"
+          - "  Changed: {{ vm_changed }}"
+
+# =============================================================================
+# PHASE 9: Snapshot Changed VMs
+# =============================================================================
+- name: Snapshot Changed VMs
+  hosts: all
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Take snapshot
+      include_role:
+        name: proxmox
+      vars:
+        proxmox_operation: snapshot
+        snapshot_name: post-stage02
+      delegate_to: localhost
+      when: vm_changed | default(false)
+
+# =============================================================================
+# PHASE 10: Summary
+# =============================================================================
+- name: Configuration Summary
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Count changed VMs
+      set_fact:
+        changed_windows: "{{ groups['all'] | difference(groups['dsp_linux'] | default([])) | map('extract', hostvars) | selectattr('vm_changed', 'defined') | selectattr('vm_changed', 'equalto', true) | list | length }}"
+        changed_linux: "{{ groups['dsp_linux'] | default([]) | map('extract', hostvars) | selectattr('vm_changed', 'defined') | selectattr('vm_changed', 'equalto', true) | list | length }}"
+        total_windows: "{{ groups['all'] | difference(groups['dsp_linux'] | default([])) | length }}"
+        total_linux: "{{ groups['dsp_linux'] | default([]) | length }}"
+
+    - name: Calculate totals
+      set_fact:
+        total_changed: "{{ (changed_windows | int) + (changed_linux | int) }}"
+        total_vms: "{{ (total_windows | int) + (total_linux | int) }}"
+
+    - name: Display summary
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Stage 02 Complete - DSP"
+          - "========================================="
+          - ""
+          - "Configuration Results:"
+          - "  Windows: {{ changed_windows }}/{{ total_windows }} changed"
+          - "  Linux: {{ changed_linux }}/{{ total_linux }} changed"
+          - "  Total: {{ total_changed }}/{{ total_vms }} VMs configured"
+          - ""
+          - "{{ (total_vms | int) - (total_changed | int) }} VMs were already configured"
+          - ""
+          - "Next: Run 03-dsp-build-ad-forests.yml to build AD"

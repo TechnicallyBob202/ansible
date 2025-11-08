@@ -1,0 +1,36 @@
+---
+# Configure DNS servers
+
+- name: Get network adapter name
+  ansible.windows.win_shell: |
+    (Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1).Name
+  register: adapter_name
+  changed_when: false
+
+- name: Check current DNS configuration
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    (Get-DnsClientServerAddress -InterfaceAlias $adapter -AddressFamily IPv4).ServerAddresses -join ","
+  register: current_dns
+  changed_when: false
+
+- name: Set DNS servers
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    Set-DnsClientServerAddress -InterfaceAlias $adapter -ServerAddresses {{ windows_dns_servers | join(',') }}
+  when: current_dns.stdout | trim != windows_dns_servers | join(',')
+  register: dns_change
+
+- name: Set DNS suffix
+  ansible.windows.win_shell: |
+    Set-DnsClient -InterfaceAlias "{{ adapter_name.stdout | trim }}" -ConnectionSpecificSuffix "{{ windows_dns_suffix }}"
+  when: windows_dns_suffix is defined
+  register: suffix_change
+
+- name: Set changed flag
+  set_fact:
+    dns_changed: "{{ (dns_change.changed | default(false)) or (suffix_change.changed | default(false)) }}"
+
+- name: Display result
+  debug:
+    msg: "{{ inventory_hostname }} - DNS {{ 'configured to' if dns_changed else 'already set to' }} {{ windows_dns_servers | join(', ') }}"

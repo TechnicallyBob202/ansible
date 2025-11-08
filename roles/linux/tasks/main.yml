@@ -1,0 +1,22 @@
+---
+# Main task file for linux role
+# Routes to specific task files based on operation
+
+- name: Include hostname configuration tasks
+  include_tasks: set_hostname.yml
+  when: linux_operation in ['set_hostname', 'configure_network']
+
+- name: Include static IP configuration tasks
+  include_tasks: set_static_ip.yml
+  when: linux_operation in ['set_static_ip', 'configure_network']
+
+- name: Include reboot tasks
+  include_tasks: reboot.yml
+  when:
+    - linux_operation == 'configure_network'
+    - network_config is defined
+    - network_config.changed
+
+- name: Include validation tasks
+  include_tasks: validate.yml
+  when: linux_operation == 'validate'

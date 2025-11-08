@@ -1,0 +1,21 @@
+---
+# Set hostname (requires reboot if changed)
+
+- name: Get current hostname
+  ansible.windows.win_shell: $env:COMPUTERNAME
+  register: current_hostname
+  changed_when: false
+
+- name: Set hostname
+  ansible.windows.win_hostname:
+    name: "{{ inventory_hostname }}"
+  when: current_hostname.stdout | trim != inventory_hostname
+  register: hostname_change
+
+- name: Set reboot required flag
+  set_fact:
+    reboot_required: "{{ hostname_change.changed | default(false) or hostname_change.reboot_required | default(false) }}"
+
+- name: Display result
+  debug:
+    msg: "{{ inventory_hostname }} - Hostname {{ 'set (reboot required)' if reboot_required else 'already correct' }}"

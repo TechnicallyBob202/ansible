@@ -1,0 +1,56 @@
+---
+# Configure static IP address
+
+- name: Get network adapter name
+  ansible.windows.win_shell: |
+    (Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1).Name
+  register: adapter_name
+  changed_when: false
+
+- name: Check current IP configuration
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    $ip = Get-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -ErrorAction SilentlyContinue
+    $gw = Get-NetRoute -InterfaceAlias $adapter -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue
+
+    [PSCustomObject]@{
+      IPAddress = $ip.IPAddress
+      Gateway = $gw.NextHop
+    } | ConvertTo-Json
+  register: current_config
+  changed_when: false
+
+- name: Parse current configuration
+  set_fact:
+    current_ip_config: "{{ current_config.stdout | from_json }}"
+
+- name: Remove existing IP configuration if needed
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    Remove-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+    Remove-NetRoute -InterfaceAlias $adapter -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
+  when:
+    - current_ip_config.IPAddress != target_ip
+  changed_when: false
+
+- name: Configure static IP address
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    New-NetIPAddress -InterfaceAlias $adapter -IPAddress "{{ target_ip }}" -PrefixLength {{ windows_ip_prefix }} -DefaultGateway {{ windows_gateway }} -ErrorAction SilentlyContinue
+  async: 30
+  poll: 0
+  register: ip_change
+  when: current_ip_config.IPAddress != target_ip
+
+- name: Set changed flag
+  set_fact:
+    ip_changed: "{{ ip_change.changed | default(false) }}"
+
+- name: Wait for network to stabilize
+  pause:
+    seconds: 15
+  when: ip_changed
+
+- name: Display result
+  debug:
+    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if ip_changed else 'already set to' }} {{ target_ip }}"

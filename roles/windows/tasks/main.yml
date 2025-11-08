@@ -1,0 +1,27 @@
+---
+# Main task file for windows role
+# Routes to specific task files based on operation
+
+- name: Include static IP configuration tasks
+  include_tasks: set_static_ip.yml
+  when: windows_operation == 'set_static_ip'
+
+- name: Include DNS configuration tasks
+  include_tasks: set_dns.yml
+  when: windows_operation == 'set_dns'
+
+- name: Include hostname configuration tasks
+  include_tasks: set_hostname.yml
+  when: windows_operation == 'set_hostname'
+
+- name: Include reboot tasks
+  include_tasks: reboot.yml
+  when: windows_operation == 'reboot'
+
+- name: Include full network configuration tasks
+  include_tasks: configure_network.yml
+  when: windows_operation == 'configure_network'
+
+- name: Include validation tasks
+  include_tasks: validate.yml
+  when: windows_operation == 'validate'

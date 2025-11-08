@@ -1,13 +1,22 @@
 ---
-# Main task router for proxmox role operations
+# Main task file for proxmox role
+# Routes to specific task files based on operation
 
-- name: Include deploy tasks (full deployment)
-  include_tasks: deploy.yml
-  when: proxmox_operation == 'deploy'
+- name: Include IP discovery tasks
+  include_tasks: discover_ip.yml
+  when: proxmox_operation == 'discover_ip'
 
 - name: Include clone tasks
   include_tasks: clone.yml
   when: proxmox_operation == 'clone'
+
+- name: Include configure network tasks
+  include_tasks: configure_network.yml
+  when: proxmox_operation == 'configure_network'
+
+- name: Include configure hardware tasks
+  include_tasks: configure_hardware.yml
+  when: proxmox_operation == 'configure_hardware'
 
 - name: Include start tasks
   include_tasks: start.yml
@@ -21,10 +30,10 @@
   include_tasks: destroy.yml
   when: proxmox_operation == 'destroy'
 
-- name: Include configure network tasks
-  include_tasks: configure_network.yml
-  when: proxmox_operation == 'configure_network'
+- name: Include snapshot tasks
+  include_tasks: snapshot.yml
+  when: proxmox_operation == 'snapshot'
 
-- name: Include configure hardware tasks
-  include_tasks: configure_hardware.yml
-  when: proxmox_operation == 'configure_hardware'
+- name: Include full deploy tasks (clone + configure + start)
+  include_tasks: deploy.yml
+  when: proxmox_operation == 'deploy'

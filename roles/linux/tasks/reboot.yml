@@ -1,0 +1,17 @@
+---
+# Reboot Linux host and wait for it to come back online
+
+- name: Reboot Linux host
+  ansible.builtin.reboot:
+    reboot_timeout: 600
+    post_reboot_delay: 30
+  register: reboot_result
+
+- name: Wait for system to be ready
+  ansible.builtin.wait_for_connection:
+    timeout: 300
+    delay: 10
+
+- name: Display result
+  debug:
+    msg: "{{ inventory_hostname }} - Rebooted successfully"

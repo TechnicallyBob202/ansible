@@ -1,0 +1,31 @@
+---
+# Validate network configuration
+
+- name: Get network configuration
+  ansible.windows.win_shell: |
+    $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
+    $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
+    $gw = Get-NetRoute -InterfaceAlias $adapter.Name -DestinationPrefix "0.0.0.0/0"
+
+    [PSCustomObject]@{
+      Hostname = $env:COMPUTERNAME
+      IPAddress = $ip.IPAddress
+      Gateway = $gw.NextHop
+      DNS = $dns.ServerAddresses -join ","
+    } | ConvertTo-Json
+  register: validation_info
+  changed_when: false
+
+- name: Parse validation information
+  set_fact:
+    validation_config: "{{ validation_info.stdout | from_json }}"
+
+- name: Display validation results
+  debug:
+    msg:
+      - "{{ inventory_hostname }} - Network Validation:"
+      - "  IP: {{ validation_config.IPAddress }} (expected: {{ ansible_host }})"
+      - "  Gateway: {{ validation_config.Gateway }} (expected: {{ windows_gateway }})"
+      - "  DNS: {{ validation_config.DNS }} (expected: {{ windows_dns_servers | join(',') }})"
+      - "  Hostname: {{ validation_config.Hostname }} (expected: {{ inventory_hostname }})"
