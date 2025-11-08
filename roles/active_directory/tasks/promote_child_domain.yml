@@ -1,7 +1,6 @@
 ---
 # Promote server to first DC in child domain (PDC) under an existing parent domain
 
-# Require domain_name (e.g., D21.D2.lab)
 - name: Assert required inputs
   assert:
     that:
@@ -10,11 +9,9 @@
     fail_msg: "domain_name must be set (e.g., D21.D2.lab)"
   changed_when: false
 
-# Skip if already a DC or domain already exists for this host
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# Derive child/parent names if not provided
 - name: Derive child_netbios from domain_name when missing
   set_fact:
     child_netbios: "{{ domain_name.split('.')[0] | upper }}"
@@ -33,7 +30,6 @@
   when: parent_netbios is not defined
   changed_when: false
 
-# Use parent domain admin creds for promotion (not DSRM)
 - name: Switch to parent domain admin creds
   set_fact:
     ansible_user: "{{ parent_netbios }}\\Administrator"
@@ -41,21 +37,6 @@
   when: not is_domain_controller and not domain_exists
   changed_when: false
 
-# Ensure DNS points to parent PDC (facts persisted by check_domain_status)
-- name: Select parent PDC IP from persisted facts
-  set_fact:
-    dns_primary: "{{ hostvars['localhost']['pdc_' + (parent_netbios | lower) + '_ip'] | default(hostvars['localhost']['forest_pdc_ip'] | default('')) }}"
-    dns_secondary: ""
-  when: not is_domain_controller and not domain_exists
-  changed_when: false
-
-- name: Apply DNS settings (parent PDC as resolver)
-  include_role:
-    name: active_directory
-    tasks_from: set_dns.yml
-  when: not is_domain_controller and not domain_exists
-
-# Promote (no auto-reboot), then explicit reboot + waits
 - name: Promote to child domain PDC (no auto-reboot)
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
@@ -77,7 +58,6 @@
   register: child_promo
   when: not is_domain_controller and not domain_exists
 
-# Reboot and handle transient WinRM timing reliably
 - name: Request reboot (tolerant)
   ansible.windows.win_reboot:
     reboot_timeout: "{{ ad_reboot_timeout | default(3600) }}"
@@ -87,7 +67,6 @@
   failed_when: false             # don't hard-fail here; we have a fallback
   when: not is_domain_controller and not domain_exists
 
-# Fallback: force reboot if the above couldn't trigger it
 - name: Force reboot if needed
   ansible.windows.win_shell: shutdown /r /t 0 /f
   when:
@@ -95,7 +74,6 @@
     - (_rb is failed) or (_rb is unreachable) or (not (_rb.rebooted | default(false)))
   ignore_errors: true
 
-# Optional: wait for WinRM to go away (helps in-flight sessions drain)
 - name: Wait for WinRM to drop
   wait_for:
     host: "{{ ansible_host }}"
@@ -107,13 +85,11 @@
   ignore_errors: true
   when: not is_domain_controller and not domain_exists
 
-# Now wait for the node to come back
 - name: Wait for connection after reboot
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout | default(3600) }}"
     delay: 60
 
-# Readiness checks
 - name: Wait for ADWS on child PDC
   ansible.windows.win_service:
     name: ADWS

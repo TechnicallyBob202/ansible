@@ -1,3 +1,4 @@
-# For child domain PDCs before promotion, point to parent (D2) PDC
-dns_primary: "{{ hostvars['localhost']['pdc_d2_ip'] | default(hostvars['localhost']['forest_pdc_ip'] | default('')) }}"
-dns_secondary: ""
+# D22 domain controllers
+dns_servers:
+  - 172.16.22.10
+  - 172.16.22.11

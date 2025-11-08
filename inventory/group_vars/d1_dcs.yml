@@ -1,2 +1,4 @@
-dns_primary: "{{ hostvars['localhost']['pdc_d1_ip'] | default(hostvars['localhost']['forest_pdc_ip'] | default('')) }}"
-dns_secondary: ""
+# D1 domain controllers
+dns_servers:
+  - 172.16.10.10
+  - 172.16.10.11

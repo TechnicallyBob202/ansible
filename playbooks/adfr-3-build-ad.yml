@@ -42,6 +42,18 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
+# PHASE 3: Set steady-state DNS on all DCs (static from inventory)
+# =============================================================================
+- name: Set steady-state DNS on all DCs
+  hosts: domain_controllers
+  gather_facts: false
+  tasks:
+    - name: Apply DNS settings from inventory (idempotent)
+      include_role:
+        name: active_directory
+        tasks_from: set_dns.yml
+
+# =============================================================================
 # PHASE 3: Promote Forest Root PDCs (serial: 1)
 # =============================================================================
 - name: Promote Forest Root PDCs
@@ -77,7 +89,7 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs
+# PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: D1-DC02:D2-DC02
@@ -87,11 +99,6 @@
       include_role:
         name: active_directory
         tasks_from: check_domain_status.yml
-
-    - name: Apply DNS settings (from group_vars)
-      include_role:
-        name: active_directory
-        tasks_from: set_dns.yml
 
     - name: Promote to replica DC
       include_role:
@@ -116,7 +123,7 @@
         tasks_from: verify_replication.yml
 
 # =============================================================================
-# PHASE 5: Promote Child Domain PDCs (serial: 1)
+# PHASE 6: Promote Child Domain PDCs (serial: 1)
 # =============================================================================
 - name: Promote Child Domain PDCs
   hosts: D21-DC01:D22-DC01
@@ -127,11 +134,6 @@
       include_role:
         name: active_directory
         tasks_from: check_domain_status.yml
-
-    - name: Apply DNS settings (from group_vars)
-      include_role:
-        name: active_directory
-        tasks_from: set_dns.yml
 
     - name: Promote to child domain PDC
       include_role:
@@ -156,7 +158,7 @@
         tasks_from: check_fsmo_roles.yml
 
 # =============================================================================
-# PHASE 6: Promote Child Domain Replica DCs
+# PHASE 7: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: D21-DC02:D22-DC02
@@ -166,17 +168,6 @@
       include_role:
         name: active_directory
         tasks_from: check_domain_status.yml
-
-    - name: Select child PDC IP from persisted facts
-      set_fact:
-        dns_primary: "{{ hostvars['localhost']['pdc_' + (netbios_name | lower) + '_ip'] | default('') }}"
-        dns_secondary: ""
-      changed_when: false
-
-    - name: Apply DNS settings for child replicas
-      include_role:
-        name: active_directory
-        tasks_from: set_dns.yml
 
     - name: Promote to replica DC
       include_role:
@@ -199,69 +190,6 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
-
-# =============================================================================
-# PHASE 7: Standardize DNS client settings on all DCs (Microsoft best practice)
-# =============================================================================
-- name: Set standardized DNS client settings on all DCs
-  hosts: domain_controllers
-  gather_facts: false
-  tasks:
-    # Ensure we have the latest PDC facts persisted on localhost (idempotent)
-    - name: Refresh domain status and persist PDC facts (idempotent)
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    # Determine PDC IP for this host's domain (facts saved by check_domain_status)
-    - name: Collect PDC facts for this domain from localhost
-      set_fact:
-        _pdc_ip: "{{ hostvars['localhost']['pdc_' + (netbios_name | lower) + '_ip'] | default(hostvars['localhost']['forest_pdc_ip'] | default('')) }}"
-      changed_when: false
-
-    # Figure out if this host is the PDC (by IP match)
-    - name: Identify if current host is the PDC for its domain
-      set_fact:
-        _is_pdc_host: "{{ (_pdc_ip | length > 0) and (_pdc_ip | lower == (ansible_host | lower)) }}"
-      changed_when: false
-
-    # Find a same-domain partner DC IP (first other host in the same group) for PDC's Preferred
-    - name: Choose partner DC IP (same domain) if available
-      set_fact:
-        _partner_ip: >-
-          {{
-            (groups[ group_names | select('match', '.*_dcs$') | list | first ] | default([]) )
-            | difference([inventory_hostname])
-            | map('extract', hostvars, 'ansible_host') | list | first | default('')
-          }}
-      when: _is_pdc_host
-      changed_when: false
-
-    # Compute Preferred/Alternate DNS per host
-    - name: Compute Preferred/Alternate DNS per DC
-      set_fact:
-        dns_primary: >-
-          {{
-            ( _is_pdc_host
-                | ternary(
-                    (_partner_ip if (_partner_ip | length > 0) else ansible_host),
-                    _pdc_ip
-                )
-            )
-          }}
-        dns_secondary: "{{ ansible_host }}"
-      changed_when: false
-
-    # Apply DNS on the NIC using your role task
-    - name: Apply standardized DNS settings
-      include_role:
-        name: active_directory
-        tasks_from: set_dns.yml
-
-    # Single-line summary (readable in CI)
-    - name: DNS standardization summary
-      debug:
-        msg: "DNS standardized: host={{ inventory_hostname }} preferred={{ dns_primary }} alternate={{ dns_secondary }}"
 
 # =============================================================================
 # PHASE 8: Final Validation
@@ -315,7 +243,7 @@
           - "  - fsmo-roles.txt"
 
 # =============================================================================
-# PHASE 8: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
+# PHASE 9: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: all
@@ -337,7 +265,7 @@
       when: vm_changed | default(false)
 
 # =============================================================================
-# PHASE 9: Final Summary
+# PHASE 10: Final Summary
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost

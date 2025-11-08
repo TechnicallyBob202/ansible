@@ -1,32 +1,55 @@
 ---
-# Set NIC DNS servers based on dns_primary and optional dns_secondary
+# Apply NIC DNS servers idempotently.
+# Accepts either:
+#   - dns_servers: [list]
+#   - or dns_primary (+ optional dns_secondary)
 
-- name: Assert DNS targets are set
-  assert:
-    that:
-      - dns_primary is defined
-      - (dns_primary | string | length) > 0
-    fail_msg: "dns_primary not set for {{ inventory_hostname }}. Ensure PDC facts are captured and group_vars configured."
-  changed_when: false
-
-- name: Compute DNS server list (primary + optional secondary)
+- name: Build desired DNS list
   set_fact:
-    _dns_servers: >-
+    _desired_dns: >-
       {{
-        [dns_primary] +
-        (([dns_secondary] if (dns_secondary | default('') | length > 0) else []))
+        (dns_servers | default([]))
+        if (dns_servers is defined)
+        else (
+          [dns_primary] +
+          (([dns_secondary] if (dns_secondary | default('') | length > 0) else []))
+        )
       }}
   changed_when: false
 
-- name: Apply DNS servers on primary IPv4 interface
-  ansible.windows.win_shell: |
-    $servers = "{{ _dns_servers | join(',') }}"
-    $nic = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses -ne $null } | Select-Object -First 1
-    if (-not $nic) { throw "No IPv4 DNS-capable NIC found" }
-    Set-DnsClientServerAddress -InterfaceIndex $nic.InterfaceIndex -ServerAddresses ($servers -split ',')
-  register: _dns_set
+- name: Assert desired DNS list is non-empty
+  assert:
+    that:
+      - _desired_dns | length > 0
+    fail_msg: "No DNS servers specified for {{ inventory_hostname }}"
   changed_when: false
 
-- name: Show DNS setting result
+- name: Read current IPv4 DNS server list (first NIC)
+  ansible.windows.win_shell: |
+    $nic = Get-DnsClientServerAddress -AddressFamily IPv4 |
+           Where-Object { $_.ServerAddresses -ne $null } |
+           Select-Object -First 1
+    if (-not $nic) { Write-Output ""; exit 0 }
+    ($nic.ServerAddresses -join ',')
+  register: _dns_now
+  changed_when: false
+
+- name: Decide if DNS needs update (order matters)
+  set_fact:
+    _current_dns: "{{ (_dns_now.stdout | default('')) | split(',') | map('trim') | reject('equalto','') | list }}"
+    _dns_needs_change: "{{ _current_dns != _desired_dns }}"
+  changed_when: false
+
+- name: Apply DNS servers on primary IPv4 interface (only if different)
+  ansible.windows.win_shell: |
+    $servers = "{{ _desired_dns | join(',') }}"
+    $nic = Get-DnsClientServerAddress -AddressFamily IPv4 |
+           Where-Object { $_.ServerAddresses -ne $null } |
+           Select-Object -First 1
+    if (-not $nic) { throw "No IPv4 DNS-capable NIC found" }
+    Set-DnsClientServerAddress -InterfaceIndex $nic.InterfaceIndex -ServerAddresses ($servers -split ',')
+  when: _dns_needs_change
+
+- name: DNS setting summary
   debug:
-    msg: "DNS set to {{ _dns_servers }} on host={{ inventory_hostname }}"
+    msg: "DNS on {{ inventory_hostname }} is now {{ _desired_dns }} (changed={{ _dns_needs_change }})"
