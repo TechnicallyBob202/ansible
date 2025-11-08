@@ -54,7 +54,7 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (serial: 1)
+# PHASE 4: Promote Forest Root PDCs (serial: 1)
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: D1-DC01:D2-DC01
@@ -88,7 +88,14 @@
         name: active_directory
         tasks_from: check_fsmo_roles.yml
 
-    - name: Ensure DNS on forest root PDCs
+# =============================================================================
+# PHASE 4.5: Ensure DNS on Forest Root PDCs
+# =============================================================================
+- name: Ensure DNS on Forest Root PDCs
+  hosts: D1-DC01:D2-DC01
+  gather_facts: false
+  tasks:
+    - name: Ensure DNS is installed and configured
       include_role:
         name: active_directory
         tasks_from: ensure_dns.yml
@@ -128,7 +135,14 @@
         name: active_directory
         tasks_from: verify_replication.yml
 
-    - name: Ensure DNS on root Replica DCs
+# =============================================================================
+# PHASE 5.5: Ensure DNS on Forest Root Replicas
+# =============================================================================
+- name: Ensure DNS on Forest Root Replicas
+  hosts: D1-DC02:D2-DC02
+  gather_facts: false
+  tasks:
+    - name: Ensure DNS is installed and configured
       include_role:
         name: active_directory
         tasks_from: ensure_dns.yml
@@ -168,7 +182,14 @@
         name: active_directory
         tasks_from: check_fsmo_roles.yml
 
-    - name: Ensure DNS on child PDCs
+# =============================================================================
+# PHASE 6.5: Ensure DNS on Child Domain PDCs
+# =============================================================================
+- name: Ensure DNS on Child Domain PDCs
+  hosts: D21-DC01:D22-DC01
+  gather_facts: false
+  tasks:
+    - name: Ensure DNS is installed and configured
       include_role:
         name: active_directory
         tasks_from: ensure_dns.yml
@@ -208,7 +229,14 @@
         name: active_directory
         tasks_from: verify_replication.yml
 
-    - name: Ensure DNS on Child Replica DCs
+# =============================================================================
+# PHASE 7.5: Ensure DNS on Child Domain Replicas
+# =============================================================================
+- name: Ensure DNS on Child Domain Replicas
+  hosts: D21-DC02:D22-DC02
+  gather_facts: false
+  tasks:
+    - name: Ensure DNS is installed and configured
       include_role:
         name: active_directory
         tasks_from: ensure_dns.yml
@@ -265,29 +293,44 @@
           - "  - fsmo-roles.txt"
 
 # =============================================================================
-# PHASE 9: Snapshot ALL changed VMs (DCs + Infrastructure + Recovery)
+# PHASE 9: Snapshot VMs That Changed
 # =============================================================================
 - name: Snapshot after AD promotion
-  hosts: all
+  hosts: infrastructure
+  gather_facts: false
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+- name: Snapshot after AD promotion
+  hosts: recovery_vms
+  gather_facts: false
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+- name: Snapshot after AD promotion
+  hosts: domain_controllers
   gather_facts: false
   serial: 2
   tasks:
     - name: Display snapshot plan
       debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot"
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
 
-    - name: Take snapshot - only for changed VMs
+    - name: Create Proxmox snapshot
       include_role:
         name: proxmox
-        tasks_from: snapshot.yml
-        apply:
-          delegate_to: localhost
+        tasks_from: snapshot_vm.yml
       vars:
-        snapshot_name: post-dcpromo
-      when: vm_changed | default(false)
+        snapshot_name: "stage3-ad-promoted"
+        snapshot_description: "After AD forest/domain promotion"
+      when: vm_changed
 
 # =============================================================================
-# PHASE 10: Final Summary
+# PHASE 10: Deployment Summary
 # =============================================================================
 - name: Deployment Summary
   hosts: localhost
@@ -296,11 +339,11 @@
     - name: Count changed VMs by type
       set_fact:
         changed_dcs: "{{ groups['domain_controllers'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        changed_infra: "{{ groups['infrastructure'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
+        changed_recovery: "{{ groups['recovery_vms'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
         total_dcs: "{{ groups['domain_controllers'] | length }}"
-        changed_infra: "{{ groups['infrastructure'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-        total_infra: "{{ groups['infrastructure'] | default([]) | length }}"
-        changed_recovery: "{{ groups['recovery_vms'] | default([]) | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-        total_recovery: "{{ groups['recovery_vms'] | default([]) | length }}"
+        total_infra: "{{ groups['infrastructure'] | length }}"
+        total_recovery: "{{ groups['recovery_vms'] | length }}"
 
     - name: Calculate totals
       set_fact:
