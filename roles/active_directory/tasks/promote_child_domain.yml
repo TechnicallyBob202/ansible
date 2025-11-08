@@ -1,6 +1,7 @@
 ---
 # Promote server to first DC in child domain (PDC) under an existing parent domain
 
+# Require domain_name (e.g., D21.D2.lab)
 - name: Assert required inputs
   assert:
     that:
@@ -9,9 +10,11 @@
     fail_msg: "domain_name must be set (e.g., D21.D2.lab)"
   changed_when: false
 
+# Skip if already a DC
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
+# Derive child/parent names if not provided
 - name: Derive child_netbios from domain_name when missing
   set_fact:
     child_netbios: "{{ domain_name.split('.')[0] | upper }}"
@@ -30,6 +33,43 @@
   when: parent_netbios is not defined
   changed_when: false
 
+# 1) Ensure DNS is installed on the PARENT DC (delegate) - requires parent_pdc_host var
+- name: Ensure DNS feature on parent PDC
+  ansible.windows.win_feature:
+    name: DNS
+    state: present
+    include_management_tools: true
+  delegate_to: "{{ parent_pdc_host }}"
+  when:
+    - not is_domain_controller
+    - not domain_exists
+    - parent_pdc_host is defined
+  changed_when: false
+
+- name: Ensure DNS service started on parent PDC
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: started
+  delegate_to: "{{ parent_pdc_host }}"
+  when:
+    - not is_domain_controller
+    - not domain_exists
+    - parent_pdc_host is defined
+  changed_when: false
+
+# 2) Install DNS on THIS CHILD PDC (pre-install is idempotent; ADDS can also install)
+- name: Ensure DNS feature present on child PDC (pre-install)
+  ansible.windows.win_feature:
+    name: DNS
+    state: present
+    include_management_tools: true
+  when:
+    - not is_domain_controller
+    - not domain_exists
+  changed_when: false
+
+# Switch to parent domain admin creds for promotion
 - name: Switch to parent domain admin creds
   set_fact:
     ansible_user: "{{ parent_netbios }}\\Administrator"
@@ -37,6 +77,7 @@
   when: not is_domain_controller and not domain_exists
   changed_when: false
 
+# Promote (no auto-reboot), then explicit reboot + waits
 - name: Promote to child domain PDC (no auto-reboot)
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
@@ -61,10 +102,10 @@
 - name: Request reboot (tolerant)
   ansible.windows.win_reboot:
     reboot_timeout: "{{ ad_reboot_timeout | default(3600) }}"
-    connect_timeout: 120         # give WinRM longer to accept the reboot call
-    post_reboot_delay: 60        # wait a bit after the OS is up before connecting
+    connect_timeout: 120
+    post_reboot_delay: 60
   register: _rb
-  failed_when: false             # don't hard-fail here; we have a fallback
+  failed_when: false
   when: not is_domain_controller and not domain_exists
 
 - name: Force reboot if needed
@@ -90,6 +131,24 @@
     timeout: "{{ ad_reboot_timeout | default(3600) }}"
     delay: 60
 
+# 3) Validate DNS is installed on THIS CHILD PDC (service + zone)
+- name: Ensure DNS service is running on child PDC
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: started
+
+- name: Ensure child domain zone exists (AD-integrated)
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
+    if (-not $zone) {
+      Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain -PassThru | Out-Null
+    }
+    exit 0
+  register: _ensure_zone
+  changed_when: false
+
+# Readiness checks
 - name: Wait for ADWS on child PDC
   ansible.windows.win_service:
     name: ADWS

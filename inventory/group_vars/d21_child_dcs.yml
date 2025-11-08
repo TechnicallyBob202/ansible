@@ -3,3 +3,6 @@ dns_servers:
   - 172.16.20.10
   - 172.16.21.10
   - 172.16.21.11
+
+parent_pdc_host: D2-DC01
+domain_pdc_host: D21-DC01

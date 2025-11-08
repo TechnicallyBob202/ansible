@@ -2,3 +2,5 @@
 dns_servers:
   - 172.16.10.10
   - 172.16.10.11
+
+domain_pdc_host: D1-DC01

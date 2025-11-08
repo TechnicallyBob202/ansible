@@ -11,7 +11,30 @@
   when: not is_domain_controller
   changed_when: false
 
-# Promote (the module handles reboot), then waits
+# 1) Ensure DNS is installed on the DOMAIN PDC (delegate) - requires domain_pdc_host var
+- name: Ensure DNS feature on domain PDC
+  ansible.windows.win_feature:
+    name: DNS
+    state: present
+    include_management_tools: true
+  delegate_to: "{{ domain_pdc_host }}"
+  when:
+    - not is_domain_controller
+    - domain_pdc_host is defined
+  changed_when: false
+
+- name: Ensure DNS service started on domain PDC
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: started
+  delegate_to: "{{ domain_pdc_host }}"
+  when:
+    - not is_domain_controller
+    - domain_pdc_host is defined
+  changed_when: false
+
+# 2) Install DNS on THIS replica (module can do it, but we also validate after)
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
@@ -34,6 +57,26 @@
     delay: 60
   when: replica_promotion.changed
 
+# 3) Validate DNS is installed on THIS replica (service + zone)
+- name: Ensure DNS service is running on replica
+  ansible.windows.win_service:
+    name: DNS
+    start_mode: auto
+    state: started
+  when: ad_install_dns | default(true)
+
+- name: Ensure domain zone exists on replica (AD-integrated)
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
+    if (-not $zone) {
+      Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain -PassThru | Out-Null
+    }
+    exit 0
+  register: _ensure_zone_replica
+  changed_when: false
+  when: ad_install_dns | default(true)
+
+# Readiness checks
 - name: Wait for ADWS on replica
   ansible.windows.win_service:
     name: ADWS
@@ -62,7 +105,9 @@
   retries: 10
   delay: 30
   until: dns_service.state == 'running'
-  when: replica_promotion.changed
+  when:
+    - replica_promotion.changed
+    - ad_install_dns | default(true)
 
 - name: Short settle pause before AD cmdlets
   pause:
@@ -80,7 +125,3 @@
   until: domain_query.rc == 0
   changed_when: false
   when: replica_promotion.changed
-
-- name: Replica promotion summary
-  debug:
-    msg: "Replica promotion: host={{ inventory_hostname }} domain={{ domain_name }} changed={{ replica_promotion.changed | default(false) }}"
