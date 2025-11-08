@@ -66,7 +66,7 @@
     safe_mode_password: "{{ ad_safe_mode_password }}"
     database_path: "{{ ad_database_path }}"
     sysvol_path: "{{ ad_sysvol_path }}"
-    log_path: "{{ ad_log_path }}"
+    domain_log_path: "{{ ad_log_path }}"
     install_dns: "{{ ad_install_dns }}"
     state: domain_controller
     reboot: yes
