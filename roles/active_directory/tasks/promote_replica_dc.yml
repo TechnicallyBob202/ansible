@@ -1,28 +1,51 @@
 ---
-# Promote server to replica domain controller in existing domain
+# Promote server to replica domain controller in an existing domain
+# Inventory-agnostic: discovers PDC via AD, with retries
 
+# 1) If it's already a DC, we'll detect and skip later
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# Retry until the PDC emulator is discoverable (handles promotion/replication lag)
+# 2) Ensure we use domain credentials for AD discovery/promotion
+- name: Switch to domain admin creds for replica tasks
+  set_fact:
+    ansible_user: "{{ netbios_name }}\\Administrator"
+    ansible_password: "{{ ansible_password }}"
+  when: not is_domain_controller
+  changed_when: false
+
+# 3) Discover current PDC Emulator with retries (handles initial lag)
 - name: Discover current PDC emulator (retry)
   ansible.windows.win_shell: |
     $ErrorActionPreference = 'SilentlyContinue'
-    $dc = Get-ADDomainController -Discover -Service "PrimaryDC"
-    if ($dc) { $dc.HostName } else { exit 1 }
+    try {
+      $dc = Get-ADDomainController -DomainName "{{ domain_name }}" -Discover -Service "PrimaryDC"
+      if ($dc -and $dc.HostName) {
+        $dc.HostName
+        exit 0
+      } else {
+        Write-Error "No PDC found yet"
+        exit 1
+      }
+    } catch {
+      Write-Error $_
+      exit 1
+    }
   register: pdc_query
-  retries: 20
+  retries: 30
   delay: 15
   until: pdc_query.rc == 0
+  when: not is_domain_controller
   changed_when: false
 
-- name: Set PDC hostname fact
+- name: Set PDC hostname
   set_fact:
     pdc_hostname: "{{ pdc_query.stdout | trim }}"
+  when: not is_domain_controller
   changed_when: false
 
-# Optional: ensure DNS for PDC resolves before proceeding
-- name: Wait until PDC hostname resolves
+# 4) Confirm DNS can resolve the PDC (best-effort)
+- name: Wait until PDC hostname resolves (DNS)
   ansible.windows.win_shell: |
     $name = "{{ pdc_hostname }}"
     try {
@@ -33,24 +56,29 @@
   retries: 10
   delay: 6
   until: pdc_dns.rc == 0
-  changed_when: false
-
-- name: Wait for PDC to be fully operational
-  ansible.windows.win_shell: |
-    Test-ComputerSecureChannel -Server {{ pdc_hostname }} -ErrorAction Stop
-    Write-Output "OK"
-  register: pdc_test
-  retries: 20
-  delay: 30
-  until: pdc_test.rc == 0
-  failed_when: false
   when: not is_domain_controller
+  changed_when: false
+  failed_when: false
 
+# 5) Optional: quick network probe to LDAP 389 (best-effort)
+- name: Probe LDAP port 389 on PDC
+  ansible.windows.win_shell: |
+    $ok = Test-NetConnection -ComputerName "{{ pdc_hostname | default(domain_name) }}" -Port 389 -InformationLevel Quiet
+    if ($ok) { exit 0 } else { exit 1 }
+  register: ldap_probe
+  retries: 10
+  delay: 10
+  until: ldap_probe.rc == 0
+  when: not is_domain_controller
+  changed_when: false
+  failed_when: false
+
+# 6) Promote to replica DC (module handles reboot; do not use async with reboot)
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
     domain_admin_user: "{{ netbios_name }}\\Administrator"
-    domain_admin_password: "{{ ad_safe_mode_password }}"
+    domain_admin_password: "{{ ansible_password }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
     database_path: "{{ ad_database_path }}"
     sysvol_path: "{{ ad_sysvol_path }}"
@@ -60,16 +88,17 @@
     reboot: yes
   when: not is_domain_controller
   register: replica_promotion
-  async: "{{ ad_promotion_timeout }}"
   poll: 30
 
+# 7) Reconnect after reboot
 - name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
   when: replica_promotion.changed
 
-- name: Wait for Active Directory Web Services
+# 8) Wait for AD services and readiness on the new replica
+- name: Wait for ADWS on replica
   ansible.windows.win_service:
     name: ADWS
     state: started
@@ -79,8 +108,55 @@
   until: adws_service.state == 'running'
   when: replica_promotion.changed
 
-- name: Display promotion result
+- name: Wait for Netlogon on replica
+  ansible.windows.win_service:
+    name: Netlogon
+    state: started
+  register: netlogon_service
+  retries: 10
+  delay: 30
+  until: netlogon_service.state == 'running'
+  when: replica_promotion.changed
+
+- name: Wait for DNS Server on replica
+  ansible.windows.win_service:
+    name: DNS
+    state: started
+  register: dns_service
+  retries: 10
+  delay: 30
+  until: dns_service.state == 'running'
+  when: replica_promotion.changed
+
+- name: Short settle pause before AD cmdlets
+  pause:
+    seconds: 20
+  when: replica_promotion.changed
+  changed_when: false
+
+- name: Verify domain query on replica
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+    Write-Output $domain.DNSRoot
+  register: domain_query
+  retries: 10
+  delay: 30
+  until: domain_query.rc == 0
+  changed_when: false
+  when: replica_promotion.changed
+
+- name: Test LDAP via RootDSE on replica
+  ansible.windows.win_shell: |
+    $rootDSE = [ADSI]"LDAP://RootDSE"
+    if ($rootDSE.defaultNamingContext) { 'OK' } else { throw 'Cannot connect to LDAP' }
+  register: ldap_test
+  retries: 10
+  delay: 30
+  until: ldap_test.rc == 0
+  changed_when: false
+  when: replica_promotion.changed
+
+# 9) Final status (single-line to avoid dark/black list rendering)
+- name: Display replica promotion result
   debug:
-    msg:
-      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
-      - "  Domain: {{ domain_name }}"
+    msg: "Replica promotion: host={{ inventory_hostname }}, domain={{ domain_name }}, changed={{ replica_promotion.changed | default(false) }}"
