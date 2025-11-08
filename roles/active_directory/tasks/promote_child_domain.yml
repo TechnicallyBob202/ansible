@@ -1,34 +1,61 @@
 ---
-# Promote a server to CHILD domain PDC under an existing parent domain (synchronous)
+# Promote server to first DC in child domain (PDC) under an existing parent domain
 
-# 1) Skip if already a DC
+# Require domain_name (e.g., D21.D2.lab)
+- name: Assert required inputs
+  assert:
+    that:
+      - domain_name is defined
+      - (domain_name | length) > 0
+    fail_msg: "domain_name must be set (e.g., D21.D2.lab)"
+  changed_when: false
+
+# Skip if already a DC or domain already exists for this host
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# 2) Use parent domain admin creds on the child PDC candidate
-#    Assumes you’ve set parent_fqdn (e.g., D2.lab), parent_netbios (e.g., D2), child_netbios (e.g., D21)
+# Derive child/parent names if not provided
+- name: Derive child_netbios from domain_name when missing
+  set_fact:
+    child_netbios: "{{ domain_name.split('.')[0] | upper }}"
+  when: child_netbios is not defined
+  changed_when: false
+
+- name: Derive parent_domain (FQDN) from domain_name when missing
+  set_fact:
+    parent_domain: "{{ domain_name.split('.')[1:] | join('.') }}"
+  when: parent_domain is not defined
+  changed_when: false
+
+- name: Derive parent_netbios from parent_domain when missing
+  set_fact:
+    parent_netbios: "{{ parent_domain.split('.')[0] | upper }}"
+  when: parent_netbios is not defined
+  changed_when: false
+
+# Use parent domain admin creds for promotion (not DSRM)
 - name: Switch to parent domain admin creds
   set_fact:
     ansible_user: "{{ parent_netbios }}\\Administrator"
     ansible_password: "{{ ansible_password }}"
-  when: not is_domain_controller
+  when: not is_domain_controller and not domain_exists
   changed_when: false
 
-# 3) Ensure DNS points to the parent PDC (facts persisted earlier by check_domain_status)
+# Ensure DNS points to parent PDC (facts persisted by check_domain_status)
 - name: Select parent PDC IP from persisted facts
   set_fact:
     dns_primary: "{{ hostvars['localhost']['pdc_' + (parent_netbios | lower) + '_ip'] | default(hostvars['localhost']['forest_pdc_ip'] | default('')) }}"
     dns_secondary: ""
-  when: not is_domain_controller
+  when: not is_domain_controller and not domain_exists
   changed_when: false
 
 - name: Apply DNS settings (parent PDC as resolver)
   include_role:
     name: active_directory
     tasks_from: set_dns.yml
-  when: not is_domain_controller
+  when: not is_domain_controller and not domain_exists
 
-# 4) Promote to child domain (NO auto-reboot here)
+# Promote (no auto-reboot), then explicit reboot + waits
 - name: Promote to child domain PDC (no auto-reboot)
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
@@ -38,29 +65,24 @@
 
     Install-ADDSDomain `
       -NewDomainName "{{ child_netbios }}" `
-      -ParentDomainName "{{ parent_fqdn }}" `
+      -ParentDomainName "{{ parent_domain }}" `
       -SafeModeAdministratorPassword $Safe `
       -Credential $ParentCred `
-      -InstallDNS:$true `
+      -InstallDNS:${{ ad_install_dns | ternary('true','false') }} `
       -DatabasePath "{{ ad_database_path }}" `
       -SysvolPath "{{ ad_sysvol_path }}" `
       -LogPath "{{ ad_log_path }}" `
       -Force `
       -NoRebootOnCompletion:$true
   register: child_promo
-  when: not is_domain_controller
+  when: not is_domain_controller and not domain_exists
 
-- name: Child domain promotion summary
-  debug:
-    msg: "Child domain promotion invoked (no reboot yet): host={{ inventory_hostname }} parent={{ parent_fqdn }} child_netbios={{ child_netbios }}"
-  when: not is_domain_controller
-
-# 5) Reboot and wait for WinRM to come back
 - name: Reboot after child domain promotion
   ansible.windows.win_reboot:
     reboot_timeout: "{{ ad_reboot_timeout | default(3600) }}"
-  when: not is_domain_controller
+  when: not is_domain_controller and not domain_exists
 
+# Readiness checks
 - name: Wait for ADWS on child PDC
   ansible.windows.win_service:
     name: ADWS
@@ -69,21 +91,13 @@
   retries: 10
   delay: 30
   until: child_adws.state == 'running'
-  when: not is_domain_controller
 
-# 6) Verify the child domain is queryable
 - name: Verify child domain query on PDC
   ansible.windows.win_shell: |
-    $d = Get-ADDomain -Identity "{{ child_netbios }}.{{ parent_fqdn }}" -ErrorAction Stop
+    $d = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
     "$($d.DNSRoot)"
   register: child_domain_query
   retries: 10
   delay: 30
   until: child_domain_query.rc == 0
   changed_when: false
-  when: not is_domain_controller
-
-- name: Promotion complete
-  debug:
-    msg: "Child domain PDC promotion complete: host={{ inventory_hostname }} domain={{ child_netbios }}.{{ parent_fqdn }}"
-  when: not is_domain_controller
