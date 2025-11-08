@@ -1,0 +1,32 @@
+---
+# Set NIC DNS servers based on dns_primary and optional dns_secondary
+
+- name: Assert DNS targets are set
+  assert:
+    that:
+      - dns_primary is defined
+      - (dns_primary | string | length) > 0
+    fail_msg: "dns_primary not set for {{ inventory_hostname }}. Ensure PDC facts are captured and group_vars configured."
+  changed_when: false
+
+- name: Compute DNS server list (primary + optional secondary)
+  set_fact:
+    _dns_servers: >-
+      {{
+        [dns_primary] +
+        (([dns_secondary] if (dns_secondary | default('') | length > 0) else []))
+      }}
+  changed_when: false
+
+- name: Apply DNS servers on primary IPv4 interface
+  ansible.windows.win_shell: |
+    $servers = "{{ _dns_servers | join(',') }}"
+    $nic = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses -ne $null } | Select-Object -First 1
+    if (-not $nic) { throw "No IPv4 DNS-capable NIC found" }
+    Set-DnsClientServerAddress -InterfaceIndex $nic.InterfaceIndex -ServerAddresses ($servers -split ',')
+  register: _dns_set
+  changed_when: false
+
+- name: Show DNS setting result
+  debug:
+    msg: "DNS set to {{ _dns_servers }} on host={{ inventory_hostname }}"

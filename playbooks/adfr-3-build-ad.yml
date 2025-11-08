@@ -88,6 +88,11 @@
         name: active_directory
         tasks_from: check_domain_status.yml
 
+    - name: Apply DNS settings (from group_vars)
+      include_role:
+        name: active_directory
+        tasks_from: set_dns.yml
+
     - name: Promote to replica DC
       include_role:
         name: active_directory
@@ -123,6 +128,11 @@
         name: active_directory
         tasks_from: check_domain_status.yml
 
+    - name: Apply DNS settings (from group_vars)
+      include_role:
+        name: active_directory
+        tasks_from: set_dns.yml
+
     - name: Promote to child domain PDC
       include_role:
         name: active_directory
@@ -157,6 +167,17 @@
         name: active_directory
         tasks_from: check_domain_status.yml
 
+    - name: Select child PDC IP from persisted facts
+      set_fact:
+        dns_primary: "{{ hostvars['localhost']['pdc_' + (netbios_name | lower) + '_ip'] | default('') }}"
+        dns_secondary: ""
+      changed_when: false
+
+    - name: Apply DNS settings for child replicas
+      include_role:
+        name: active_directory
+        tasks_from: set_dns.yml
+        
     - name: Promote to replica DC
       include_role:
         name: active_directory
