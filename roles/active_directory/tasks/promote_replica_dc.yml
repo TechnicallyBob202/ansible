@@ -4,10 +4,36 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-- name: Get PDC hostname for domain credentials
+# Retry until the PDC emulator is discoverable (handles promotion/replication lag)
+- name: Discover current PDC emulator (retry)
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'SilentlyContinue'
+    $dc = Get-ADDomainController -Discover -Service "PrimaryDC"
+    if ($dc) { $dc.HostName } else { exit 1 }
+  register: pdc_query
+  retries: 20
+  delay: 15
+  until: pdc_query.rc == 0
+  changed_when: false
+
+- name: Set PDC hostname fact
   set_fact:
-    pdc_hostname: "{{ groups[group_names | select('match', '.*_pdc$') | first] | first }}"
-  when: not is_domain_controller
+    pdc_hostname: "{{ pdc_query.stdout | trim }}"
+  changed_when: false
+
+# Optional: ensure DNS for PDC resolves before proceeding
+- name: Wait until PDC hostname resolves
+  ansible.windows.win_shell: |
+    $name = "{{ pdc_hostname }}"
+    try {
+      [System.Net.Dns]::GetHostAddresses($name) | Out-Null
+      exit 0
+    } catch { exit 1 }
+  register: pdc_dns
+  retries: 10
+  delay: 6
+  until: pdc_dns.rc == 0
+  changed_when: false
 
 - name: Wait for PDC to be fully operational
   ansible.windows.win_shell: |
