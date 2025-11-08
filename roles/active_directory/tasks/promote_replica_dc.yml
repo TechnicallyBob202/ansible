@@ -1,12 +1,11 @@
 ---
-# Promote server to replica domain controller in an existing domain
-# Inventory-agnostic: discovers PDC via AD, with retries
+# Promote server to replica domain controller using facts captured by check_domain_status
 
-# 1) If it's already a DC, we'll detect and skip later
+# 1) If it's already a DC, we'll skip promotion
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-# 2) Ensure we use domain credentials for AD discovery/promotion
+# 2) Use domain admin creds on the replica
 - name: Switch to domain admin creds for replica tasks
   set_fact:
     ansible_user: "{{ netbios_name }}\\Administrator"
@@ -14,66 +13,51 @@
   when: not is_domain_controller
   changed_when: false
 
-# 3) Discover current PDC Emulator with retries (handles initial lag)
-- name: Discover current PDC emulator (retry)
+# 3) Pull PDC facts captured earlier (prefer per-forest keys; fallback to generic)
+- name: Collect PDC facts from localhost
+  set_fact:
+    pdc_hostname: "{{ hostvars['localhost']['pdc_' + (netbios_name | lower) + '_fqdn'] | default(hostvars['localhost']['forest_pdc_fqdn'] | default(omit)) }}"
+    pdc_ip:       "{{ hostvars['localhost']['pdc_' + (netbios_name | lower) + '_ip']   | default(hostvars['localhost']['forest_pdc_ip']   | default(omit)) }}"
+  when: not is_domain_controller
+  changed_when: false
+
+- name: Assert PDC facts are present
+  assert:
+    that:
+      - pdc_hostname is defined
+      - pdc_ip is defined
+    fail_msg: "PDC facts not found. Ensure check_domain_status has run on the PDC earlier in this play."
+  when: not is_domain_controller
+  changed_when: false
+
+# 4) Ensure replica DNS points at the PDC (reliable promotion prerequisite)
+- name: Point replica primary DNS to PDC
   ansible.windows.win_shell: |
-    $ErrorActionPreference = 'SilentlyContinue'
-    try {
-      $dc = Get-ADDomainController -DomainName "{{ domain_name }}" -Discover -Service "PrimaryDC"
-      if ($dc -and $dc.HostName) {
-        $dc.HostName
-        exit 0
-      } else {
-        Write-Error "No PDC found yet"
-        exit 1
-      }
-    } catch {
-      Write-Error $_
+    $nic = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object { $_.ServerAddresses -ne $null } | Select-Object -First 1
+    if ($nic) {
+      Set-DnsClientServerAddress -InterfaceIndex $nic.InterfaceIndex -ServerAddresses "{{ pdc_ip }}"
+    } else {
       exit 1
     }
-  register: pdc_query
-  retries: 30
-  delay: 15
-  until: pdc_query.rc == 0
-  when: not is_domain_controller
-  changed_when: false
-
-- name: Set PDC hostname
-  set_fact:
-    pdc_hostname: "{{ pdc_query.stdout | trim }}"
-  when: not is_domain_controller
-  changed_when: false
-
-# 4) Confirm DNS can resolve the PDC (best-effort)
-- name: Wait until PDC hostname resolves (DNS)
-  ansible.windows.win_shell: |
-    $name = "{{ pdc_hostname }}"
-    try {
-      [System.Net.Dns]::GetHostAddresses($name) | Out-Null
-      exit 0
-    } catch { exit 1 }
-  register: pdc_dns
-  retries: 10
-  delay: 6
-  until: pdc_dns.rc == 0
-  when: not is_domain_controller
-  changed_when: false
+  register: set_dns
   failed_when: false
+  changed_when: false
+  when: not is_domain_controller
 
-# 5) Optional: quick network probe to LDAP 389 (best-effort)
-- name: Probe LDAP port 389 on PDC
+# 5) Optional probe to confirm connectivity to PDC LDAP (best-effort)
+- name: Probe LDAP 389 to PDC
   ansible.windows.win_shell: |
-    $ok = Test-NetConnection -ComputerName "{{ pdc_hostname | default(domain_name) }}" -Port 389 -InformationLevel Quiet
+    $ok = Test-NetConnection -ComputerName "{{ pdc_hostname }}" -Port 389 -InformationLevel Quiet
     if ($ok) { exit 0 } else { exit 1 }
   register: ldap_probe
   retries: 10
   delay: 10
   until: ldap_probe.rc == 0
-  when: not is_domain_controller
-  changed_when: false
   failed_when: false
+  changed_when: false
+  when: not is_domain_controller
 
-# 6) Promote to replica DC (module handles reboot; do not use async with reboot)
+# 6) Promote to replica DC (module reboots; do not use async with reboot)
 - name: Promote to replica DC
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
@@ -97,7 +81,7 @@
     delay: 60
   when: replica_promotion.changed
 
-# 8) Wait for AD services and readiness on the new replica
+# 8) Basic readiness checks (you can replace this section with wait_for_dc_ready.yml if you prefer)
 - name: Wait for ADWS on replica
   ansible.windows.win_service:
     name: ADWS
@@ -137,7 +121,7 @@
 - name: Verify domain query on replica
   ansible.windows.win_shell: |
     $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-    Write-Output $domain.DNSRoot
+    "$($domain.DNSRoot)"
   register: domain_query
   retries: 10
   delay: 30
@@ -156,7 +140,7 @@
   changed_when: false
   when: replica_promotion.changed
 
-# 9) Final status (single-line to avoid dark/black list rendering)
-- name: Display replica promotion result
+# 9) Single-line summary (readable)
+- name: Replica promotion summary
   debug:
-    msg: "Replica promotion: host={{ inventory_hostname }}, domain={{ domain_name }}, changed={{ replica_promotion.changed | default(false) }}"
+    msg: "Replica promotion: host={{ inventory_hostname }} domain={{ domain_name }} changed={{ replica_promotion.changed | default(false) }}"
