@@ -1,59 +1,79 @@
 ---
-# Destroy (delete) a VM
+# Destroy (delete) a VM using cluster-wide VM info and node->IP mapping
 
-- name: Check if VM exists
-  community.general.proxmox_kvm:
+# 1) Derive api host from node mapping if proxmox_host wasn't provided
+- name: Derive proxmox_host from proxmox_node (match clone.yml behavior)
+  set_fact:
+    proxmox_host: "{{ proxmox_api_hosts_by_node[proxmox_node] | default(proxmox_node | default(proxmox_hosts[0])) }}"
+  when: proxmox_host is not defined
+
+# 2) List VMs cluster-wide from this API host
+- name: List VMs cluster-wide
+  community.general.proxmox_vm_info:
     api_host: "{{ proxmox_host }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
-    state: current
-  register: vm_exists
-  failed_when: false
-  changed_when: false
+  register: pve_vms
+
+# 3) Find the VM by vmid and resolve the node it currently lives on
+- name: Resolve VM record by vmid
+  set_fact:
+    _vm_match: "{{ (pve_vms.proxmox_vms | default([])) | selectattr('vmid','equalto', (vmid | int)) | list | first }}"
+  when: pve_vms is defined
 
 - name: Report current VM state (pre-check)
   debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) current state on {{ proxmox_node }}: {{ vm_exists.status }}"
-  when: vm_exists.status is defined
+    msg: >-
+      VM {{ inventory_hostname }} ({{ vmid }}) is {{
+        (_vm_match.status | default(_vm_match.qmpstatus | default('unknown')))
+      }} on {{ _vm_match.node }} via {{
+        proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host)
+      }}
+  when: _vm_match is defined
 
 - name: Report VM not found (pre-check)
   debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - not found on {{ proxmox_node }}"
-  when: vm_exists.status is not defined
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - not found cluster-wide"
+  when: _vm_match is not defined
 
-- name: Stop VM before destruction
+# 4) Stop (best effort) and destroy on the resolved node
+- name: Stop VM before destruction (best effort)
   community.general.proxmox_kvm:
-    api_host: "{{ proxmox_host }}"
+    api_host: "{{ proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host) }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
+    node: "{{ _vm_match.node }}"
     state: stopped
     force: yes
-  when: vm_exists.status is defined
-  ignore_errors: yes
+  when: _vm_match is defined
+  failed_when: false
+  ignore_errors: true
 
 - name: Wait for VM to stop
   pause:
     seconds: 5
-  when: vm_exists.status is defined
+  when: _vm_match is defined
 
 - name: Destroy VM
   community.general.proxmox_kvm:
-    api_host: "{{ proxmox_host }}"
+    api_host: "{{ proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host) }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
-    node: "{{ proxmox_node }}"
+    node: "{{ _vm_match.node }}"
     state: absent
-  when: vm_exists.status is defined
+  when: _vm_match is defined
   register: destroy_result
 
 - name: Display destruction result
   debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'destroyed' if destroy_result.changed else 'did not exist' }}"
+    msg: >-
+      VM {{ inventory_hostname }} ({{ vmid }}) - {{
+        (_vm_match is defined)
+          | ternary( (destroy_result.changed | default(false)) | ternary('destroyed','already absent'),
+                    'not found')
+      }}
