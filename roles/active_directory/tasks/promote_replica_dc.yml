@@ -4,12 +4,23 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
+- name: Wait for PDC ADWS to be available
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: pdc_adws
+  retries: 30
+  delay: 10
+  until: pdc_adws.state == 'running'
+  delegate_to: "{{ hostvars[groups[group_names[0]][0]].ansible_host }}"
+  when: not is_domain_controller
+
 - name: Promote to replica DC
   ansible.windows.win_shell: |
     $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
     $domainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
 
-    Install-ADDSDomainController -DomainName "{{ domain_name }}" -InstallDns -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
+    Install-ADDSDomainController -DomainName "{{ domain_name }}" -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
   when: not is_domain_controller
   register: replica_promotion
 
