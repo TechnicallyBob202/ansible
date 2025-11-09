@@ -1,5 +1,6 @@
 ---
 # Destroy (delete) a VM
+
 - name: Check if VM exists
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
@@ -39,12 +40,11 @@
     purge: true
   when: vm_exists.status is defined
   register: destroy_result
-  failed_when: false
+  # Do NOT suppress failures here; if auth or API fails, we want to know.
 
 - name: Record per-host destruction result
   set_fact:
     host_destroyed: "{{ destroy_result.changed | default(false) }}"
-    host_absent: "{{ (destroy_result.changed | default(false)) | ternary(false, true) }}"
     host_skipped: "{{ vm_exists.status is not defined }}"
 
 - name: Display destruction result
