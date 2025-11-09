@@ -1,0 +1,97 @@
+---
+# ============================================================================
+# Global Variables - Shared by ALL Hosts (ADFR + DSP)
+# ============================================================================
+
+# ============================================================================
+# Connection Settings (inherited by all hosts unless overridden)
+# ============================================================================
+
+# Windows connection defaults
+ansible_connection: winrm
+ansible_winrm_transport: ntlm
+ansible_winrm_server_cert_validation: ignore
+ansible_port: 5985
+ansible_user: Administrator
+ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+
+# Linux connection defaults (for DSP)
+linux_user: blyons
+linux_password: "{{ lookup('env', 'LINUX_PASSWORD') }}"
+linux_port: 22
+
+# ============================================================================
+# Proxmox API Credentials (REQUIRED for Stage 1)
+# ============================================================================
+proxmox_user: root@pam
+proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
+proxmox_validate_certs: false
+
+# Proxmox API host mapping (by node name)
+proxmox_api_hosts_by_node:
+  semperis-nuc-1: 192.168.33.21
+  semperis-nuc-2: 192.168.33.22
+
+# Proxmox hosts list (for fallback)
+proxmox_hosts:
+  - 192.168.33.21
+  - 192.168.33.22
+
+# ============================================================================
+# Proxmox Network Defaults
+# ============================================================================
+proxmox_network_bridge: vmbr0
+proxmox_network_vlan: 10
+
+# ============================================================================
+# Proxmox Template IDs (by node)
+# ============================================================================
+# Node 1 templates
+proxmox_template_dc_node1: 9001
+proxmox_template_server_node1: 9011
+proxmox_template_linux_node1: 9021
+
+# Node 2 templates
+proxmox_template_dc_node2: 9002
+proxmox_template_server_node2: 9012
+proxmox_template_linux_node2: 9022
+
+# ============================================================================
+# Windows Defaults (for Stage 2)
+# ============================================================================
+windows_gateway: 172.16.0.1
+windows_ip_prefix: 16
+
+# DNS servers (Cloudflare - used during Stage 2, before AD is built)
+windows_dns_servers:
+  - 1.1.1.1
+  - 1.0.0.1
+
+windows_dns_suffix: lab
+
+# Reboot timeouts
+windows_reboot_timeout: 600
+windows_connection_timeout: 30
+windows_post_reboot_delay: 30
+
+# ============================================================================
+# Linux Defaults (for Stage 2)
+# ============================================================================
+linux_gateway: 172.16.0.1
+linux_ip_prefix: 16
+
+linux_dns_servers:
+  - 1.1.1.1
+  - 1.0.0.1
+
+# ============================================================================
+# Active Directory Defaults (for Stage 3)
+# ============================================================================
+ad_safe_mode_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
+ad_database_path: C:\Windows\NTDS
+ad_sysvol_path: C:\Windows\SYSVOL
+ad_log_path: C:\Windows\NTDS
+ad_install_dns: true
+ad_functional_level: WinThreshold
+ad_promotion_timeout: 1200
+ad_reboot_timeout: 600
