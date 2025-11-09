@@ -4,26 +4,13 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-- name: Promote to replica DC (forest root domain)
+- name: Promote to replica DC
   ansible.windows.win_shell: |
     $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
     $domainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
 
     Install-ADDSDomainController -DomainName "{{ domain_name }}" -InstallDns -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
-  when:
-    - not is_domain_controller
-    - domain_name == parent_domain | default(domain_name)
-  register: replica_promotion
-
-- name: Promote to replica DC (child domain)
-  ansible.windows.win_shell: |
-    $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    $domainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-
-    Install-ADDSDomainController -DomainName "{{ domain_name }}" -InstallDns -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
-  when:
-    - not is_domain_controller
-    - domain_name != parent_domain | default(domain_name)
+  when: not is_domain_controller
   register: replica_promotion
 
 - name: Wait for reboot to complete
