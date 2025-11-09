@@ -44,12 +44,16 @@
 # =============================================================================
 # PHASE 2: Configure DNS on All DCs (BEFORE any promotions)
 # =============================================================================
-- name: Configure DNS on All Domain Controllers
+- name: Set DNS to point to DC IPs
   hosts: domain_controllers
   gather_facts: false
   serial: 0
   tasks:
-    - name: Set DNS to point to DC IPs
+    - name: Map dns_servers to windows_dns_servers
+      set_fact:
+        windows_dns_servers: "{{ dns_servers }}"
+
+    - name: Configure DNS
       include_role:
         name: windows
         tasks_from: set_dns.yml
