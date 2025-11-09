@@ -1,0 +1,29 @@
+---
+- name: Diagnostic - Check DC Status
+  hosts: D1-DC02,D2-DC02
+  gather_facts: false
+
+  tasks:
+    - name: Check DomainRole
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        Write-Output "DomainRole: $($CS.DomainRole)"
+      register: domain_role
+
+    - name: Display DomainRole
+      debug:
+        msg: "{{ inventory_hostname }}: {{ domain_role.stdout | trim }}"
+
+    - name: Check NTDS service
+      ansible.windows.win_shell: |
+        $NTDS = Get-Service -Name NTDS -ErrorAction SilentlyContinue
+        if ($NTDS) {
+          Write-Output "NTDS exists: Status=$($NTDS.Status)"
+        } else {
+          Write-Output "NTDS does not exist"
+        }
+      register: ntds_check
+
+    - name: Display NTDS status
+      debug:
+        msg: "{{ inventory_hostname }}: {{ ntds_check.stdout | trim }}"
