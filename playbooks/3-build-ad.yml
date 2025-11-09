@@ -236,10 +236,10 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Promote Child Domain PDCs (parallel within child domains)
+# PHASE 5: Promote Child Domain PDCs
 # =============================================================================
-- name: Promote Child Domain PDCs (D21)
-  hosts: d21_child_dcs
+- name: Promote Child Domain PDCs
+  hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -278,113 +278,25 @@
         tasks_from: wait_for_dc_ready.yml
       when: promotion_result.changed | default(false)
 
-    - name: Check FSMO roles
+    - name: Ensure DNS is configured and running
       include_role:
         name: active_directory
-        tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
-
-- name: Promote Child Domain PDCs (D22)
-  hosts: d22_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify parent domain is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ parent_domain }}" -Credential $cred | Out-Null
-        Write-Output "Parent domain reachable"
-      retries: 30
-      delay: 10
-      until: result.rc == 0
-      register: result
-      changed_when: false
-
-    - name: Promote to child domain PDC
-      include_role:
-        name: active_directory
-        tasks_from: promote_child_domain.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'pdc'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Check FSMO roles
-      include_role:
-        name: active_directory
-        tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
-
-# =============================================================================
-# PHASE 6: Promote Child Domain Replica DCs (parallel within child domains)
-# =============================================================================
-- name: Promote Child Domain Replica DCs (D21)
-  hosts: d21_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify child domain PDC is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
-        Write-Output "Child domain reachable"
-      retries: 30
-      delay: 10
-      until: result.rc == 0
-      register: result
-      changed_when: false
-
-    - name: Promote to replica DC
-      include_role:
-        name: active_directory
-        tasks_from: promote_replica_dc.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'replica'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Verify replication
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
+        tasks_from: ensure_dns.yml
       when: is_domain_controller
 
-- name: Promote Child Domain Replica DCs (D22)
-  hosts: d22_child_dcs
+    - name: Check FSMO roles
+      include_role:
+        name: active_directory
+        tasks_from: check_fsmo_roles.yml
+      when:
+        - is_domain_controller
+        - dc_role == 'pdc'
+
+# =============================================================================
+# PHASE 6: Promote Child Domain Replica DCs
+# =============================================================================
+- name: Promote Child Domain Replica DCs
+  hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
   serial: 0
   tasks:
