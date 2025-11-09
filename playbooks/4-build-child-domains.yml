@@ -123,7 +123,28 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Child Domain Replica DCs
+# PHASE 4: Ensure DNS zones exist on promoted PDCs
+# =============================================================================
+- name: Ensure DNS zones exist on promoted PDCs
+  hosts: d21_child_dcs:d22_child_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Ensure DNS zone exists on PDCs
+      include_role:
+        name: active_directory
+        tasks_from: ensure_dns.yml
+      when:
+        - is_domain_controller
+        - dc_role == 'pdc'
+
+# =============================================================================
+# PHASE 5: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: d21_child_dcs:d22_child_dcs
@@ -172,7 +193,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Final Validation
+# PHASE 6: Final Validation
 # =============================================================================
 - name: Final Validation
   hosts: d21_child_dcs:d22_child_dcs
@@ -191,7 +212,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 6: Snapshots (only for changed VMs)
+# PHASE 7: Snapshots (only for changed VMs)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: d21_child_dcs:d22_child_dcs
