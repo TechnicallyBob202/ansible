@@ -1,15 +1,6 @@
 ---
 # Destroy (delete) a VM using cluster-wide VM info and node->IP mapping, with purge
 
-- name: Report current VM state (pre-check)
-  debug:
-    msg: >-
-      VM {{ inventory_hostname }} ({{ vmid }}) is {{
-        (_vm_match.status | default(_vm_match.qmpstatus | default('unknown')))
-      }} on {{ _vm_match.node }} via {{
-        proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host)
-      }}
-
 # Stop (best effort) and destroy on the resolved node
 - name: Stop VM before destruction (best effort)
   community.general.proxmox_kvm:
