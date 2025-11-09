@@ -4,10 +4,6 @@
   connection: local
   gather_facts: false
 
-  vars:
-    proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
-
   tasks:
     - name: Display cleanup plan
       debug:
@@ -26,11 +22,12 @@
         name: proxmox
         tasks_from: destroy.yml
 
+    # Accurate summary using per-host facts set by the role
     - name: Compute destroyed and skipped counts
       run_once: true
       set_fact:
-        _destroyed_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('equalto', true) | list | length }}"
-        _skipped_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_skipped')   | select('equalto', true) | list | length }}"
+        _destroyed_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('truthy') | list | length }}"
+        _skipped_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_skipped')   | select('truthy') | list | length }}"
 
     - name: Compute absent count
       run_once: true
