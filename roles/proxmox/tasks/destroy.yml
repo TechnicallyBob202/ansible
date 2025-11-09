@@ -1,7 +1,7 @@
 ---
-# Destroy (delete) a VM using cluster-wide VM info and node->IP mapping
+# Destroy (delete) a VM using cluster-wide VM info and node->IP mapping, with purge
 
-# 1) Derive api host from node mapping if proxmox_host wasn't provided
+# 1) Derive api host from node mapping if proxmox_host wasn't provided (same pattern as clone.yml)
 - name: Derive proxmox_host from proxmox_node (match clone.yml behavior)
   set_fact:
     proxmox_host: "{{ proxmox_api_hosts_by_node[proxmox_node] | default(proxmox_node | default(proxmox_hosts[0])) }}"
@@ -57,7 +57,7 @@
     seconds: 5
   when: _vm_match is defined
 
-- name: Destroy VM
+- name: Destroy VM (purge disks)
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host) }}"
     api_user: "{{ proxmox_user }}"
@@ -66,6 +66,7 @@
     vmid: "{{ vmid }}"
     node: "{{ _vm_match.node }}"
     state: absent
+    purge: true
   when: _vm_match is defined
   register: destroy_result
 
@@ -74,6 +75,6 @@
     msg: >-
       VM {{ inventory_hostname }} ({{ vmid }}) - {{
         (_vm_match is defined)
-          | ternary( (destroy_result.changed | default(false)) | ternary('destroyed','already absent'),
+          | ternary( (destroy_result.changed | default(false)) | ternary('destroyed (purged)','already absent'),
                     'not found')
       }}
