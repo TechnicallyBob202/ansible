@@ -19,8 +19,6 @@
     reboot: yes
   when: not is_domain_controller
   register: forest_promotion
-  async: "{{ ad_promotion_timeout }}"
-  poll: 30
 
 - name: Wait for forest root to reboot and come back
   wait_for_connection:

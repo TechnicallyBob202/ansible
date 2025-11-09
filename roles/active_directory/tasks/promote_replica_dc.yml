@@ -29,8 +29,6 @@
     reboot: yes
   when: not is_domain_controller
   register: replica_promotion
-  async: "{{ ad_promotion_timeout }}"
-  poll: 30
 
 - name: Wait for replica to reboot and come back
   wait_for_connection:
