@@ -1,0 +1,188 @@
+---
+- name: Build Active Directory Forest
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Display build plan
+      debug:
+        msg:
+          - "Building Active Directory Infrastructure"
+          - "  Forest 1: d3.lab (2 DCs)"
+          - "Total Duration: 15-20 minutes"
+
+# =============================================================================
+# PHASE 1: Initialize Change Tracking
+# =============================================================================
+- name: Initialize Change Tracking for All VMs
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Initialize vm_changed flag
+      set_fact:
+        vm_changed: false
+
+# =============================================================================
+# PHASE 2: Install AD Features on All Domain Controllers
+# =============================================================================
+- name: Install Active Directory Features
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Install AD-DS features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+      register: features_result
+
+    - name: Mark VM as changed if features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 3: Promote Forest Root PDC
+# =============================================================================
+- name: Promote Forest Root PDC
+  hosts: d3_dcs
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Promote to forest root PDC
+      include_role:
+        name: active_directory
+        tasks_from: promote_forest_root.yml
+      when: 
+        - not is_domain_controller
+        - dc_role == 'pdc'
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
+
+    - name: Check FSMO roles
+      include_role:
+        name: active_directory
+        tasks_from: check_fsmo_roles.yml
+      when: 
+        - is_domain_controller
+        - dc_role == 'pdc'
+
+# =============================================================================
+# PHASE 4: Promote Forest Root Replica DC
+# =============================================================================
+- name: Promote Forest Root Replica DC
+  hosts: d3_dcs
+  gather_facts: false
+  tasks:
+    - name: Check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Promote to replica DC
+      include_role:
+        name: active_directory
+        tasks_from: promote_replica_dc.yml
+      when: 
+        - not is_domain_controller
+        - dc_role == 'replica'
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+    - name: Wait for DC to be ready
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: promotion_result.changed | default(false)
+
+    - name: Verify replication
+      include_role:
+        name: active_directory
+        tasks_from: verify_replication.yml
+      when: is_domain_controller
+
+# =============================================================================
+# PHASE 5: Final Validation
+# =============================================================================
+- name: Final Validation
+  hosts: domain_controllers
+  gather_facts: false
+  tasks:
+    - name: Verify all DCs are operational
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: is_domain_controller
+
+    - name: Verify replication health
+      include_role:
+        name: active_directory
+        tasks_from: verify_replication.yml
+      when: is_domain_controller
+
+# =============================================================================
+# PHASE 6: Consolidate Domain Information
+# =============================================================================
+- name: Consolidate Domain Information
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Create files directory
+      file:
+        path: "{{ playbook_dir }}/../files"
+        state: directory
+        mode: '0755'
+
+    - name: Consolidate domain SIDs
+      shell: |
+        cat /tmp/domain-sid-*.txt > {{ playbook_dir }}/../files/domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
+      changed_when: false
+
+    - name: Consolidate FSMO roles
+      shell: |
+        cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
+      changed_when: false
+
+    - name: Display completion message
+      debug:
+        msg:
+          - "Active Directory deployment complete!"
+          - "  d3.lab: 2 DCs"
+          - "Total: 2 Domain Controllers"
+
+# =============================================================================
+# PHASE 7: Snapshots (only for changed VMs)
+# =============================================================================
+- name: Snapshot after AD promotion
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+    - name: Create Proxmox snapshot
+      include_role:
+        name: proxmox
+        tasks_from: snapshot_vm.yml
+      vars:
+        snapshot_name: "stage3-ad-promoted"
+        snapshot_description: "After AD forest promotion"
+      when: vm_changed

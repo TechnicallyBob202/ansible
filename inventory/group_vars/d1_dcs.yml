@@ -1,6 +1,14 @@
-# D1 domain controllers
-dns_servers:
-  - 172.16.10.10
-  - 172.16.10.11
+---
+# D1.lab Forest - Single Domain Configuration
 
+# Domain Identity
+domain_name: d1.lab
+netbios_name: D1
+
+# DNS Configuration
+dns_servers:
+  - 172.16.10.10  # D1-DC01
+  - 172.16.10.11  # D1-DC02
+
+# Domain Controller for credential references
 domain_pdc_host: D1-DC01

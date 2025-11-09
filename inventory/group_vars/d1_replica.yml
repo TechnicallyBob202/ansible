@@ -1,7 +1,0 @@
----
-# D1 DNS configuration
-windows_dns_servers:
-  - 172.16.10.10
-  - 172.16.10.11
-
-windows_dns_suffix: d1.lab

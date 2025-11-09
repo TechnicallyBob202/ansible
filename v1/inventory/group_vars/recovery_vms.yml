@@ -1,7 +1,0 @@
----
-# Recovery VMs DNS configuration
-windows_dns_servers:
-  - 192.168.35.21       # OAK-DC (arbor.lab replica)
-  - 192.168.35.31       # BASALT-DC (alpine.lab replica)
-
-windows_dns_suffix: lab

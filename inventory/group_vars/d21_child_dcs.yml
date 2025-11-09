@@ -1,8 +1,22 @@
-# D21 domain controllers
-dns_servers:
-  - 172.16.20.10
-  - 172.16.21.10
-  - 172.16.21.11
+---
+# D21.d2.lab Child Domain Configuration
 
+# Domain Identity
+domain_name: d21.d2.lab
+netbios_name: D21
+
+# Parent Domain
+parent_domain: d2.lab
+parent_domain_netbios: D2
+
+# DNS Configuration (includes parent + child DCs)
+dns_servers:
+  - 172.16.20.10  # D2-DC01 (parent)
+  - 172.16.21.10  # D21-DC01 (this domain)
+  - 172.16.21.11  # D21-DC02 (this domain)
+
+# Parent Domain Controller (for credentials during child domain creation)
 parent_pdc_host: D2-DC01
+
+# This Domain Controller
 domain_pdc_host: D21-DC01

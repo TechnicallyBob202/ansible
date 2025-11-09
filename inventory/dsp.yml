@@ -10,8 +10,31 @@ all:
           hosts:
             D3-DC01:
               ansible_host: 172.16.40.10
+              dc_role: pdc
+              vmid: 4010
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "dsp,ad"
+              
             D3-DC02:
               ansible_host: 172.16.40.11
+              dc_role: replica
+              vmid: 4011
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "dsp,ad"
+          
+          vars:
+            domain_name: d3.lab
+            netbios_name: D3
 
     # ============================================
     # DSP Infrastructure
@@ -20,8 +43,27 @@ all:
       hosts:
         DSP:
           ansible_host: 172.16.50.10
+          vmid: 5010
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
+          vm_cores: 4
+          vm_memory: 8192
+          vm_disk: 100G
+          proxmox_vm_tags: "dsp"
+          role: "DSP Management Server"
+          
         SQL:
           ansible_host: 172.16.50.12
+          vmid: 5012
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9011
+          vm_cores: 4
+          vm_memory: 16384
+          vm_disk: 200G
+          proxmox_vm_tags: "dsp"
+          role: "SQL Server"
 
     # ============================================
     # DSP Linux Systems
@@ -36,7 +78,24 @@ all:
       hosts:
         IAS:
           ansible_host: 172.16.50.11
+          vmid: 5011
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          # Linux template - TBD
+          vm_cores: 2
+          vm_memory: 4096
+          vm_disk: 80G
+          proxmox_vm_tags: "dsp"
+          role: "Identity Analytics Scanner"
 
+    # ============================================
+    # Logical Groupings
+    # ============================================
     domain_controllers:
       children:
         d3_forest:
+
+    infrastructure:
+      children:
+        dsp_infrastructure:
+        dsp_linux:
