@@ -29,9 +29,23 @@
   until: adws_service.state == 'running'
   when: child_promotion.rc == 0
 
+- name: Create AD-integrated DNS zone
+  ansible.windows.win_shell: |
+    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
+    if ($zone) {
+      Write-Output "Zone already exists"
+      exit 0
+    }
+
+    Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain
+    Write-Output "Zone created"
+  when: child_promotion.rc == 0
+  register: zone_result
+
 - name: Display promotion result
   debug:
     msg:
       - "{{ inventory_hostname }} - Child Domain PDC promoted"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
+      - "  DNS Zone: {{ 'created' if 'created' in zone_result.stdout else 'exists' }}"

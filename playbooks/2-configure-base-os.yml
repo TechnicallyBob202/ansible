@@ -8,6 +8,7 @@
 # - Set DNS servers (Cloudflare during Stage 02)
 # - Set hostnames
 # - Reboot if needed
+# - Snapshot changed VMs
 
 - name: Stage 02 - Configure Base OS (ADFR)
   hosts: localhost
@@ -27,6 +28,7 @@
           - "  • Set DNS to Cloudflare (Stage 02)"
           - "  • Set hostnames"
           - "  • Reboot if needed"
+          - "  • Snapshot changed VMs"
 
 # =============================================================================
 # PHASE 1: Initialize Change Tracking
@@ -270,7 +272,32 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 7: Summary
+# PHASE 7: Snapshot Changed VMs
+# =============================================================================
+- name: Snapshot Changed VMs
+  hosts: all
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+    - name: Create Proxmox snapshot
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        proxmox_operation: snapshot
+        snapshot_name: "stage2-base-configured"
+        snapshot_description: "After base OS configuration (IP, DNS, hostname)"
+      when: vm_changed
+
+# =============================================================================
+# PHASE 8: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -285,12 +312,13 @@
     - name: Display summary
       debug:
         msg:
+          - ""
           - "========================================="
-          - "Stage 02 Complete!"
+          - "Stage 02 Complete"
           - "========================================="
           - ""
           - "VMs Configured: {{ changed_vms }}/{{ total_vms }}"
           - ""
-          - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured and skipped"
+          - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
           - ""
-          - "Next: Run playbooks/adfr-3-build-ad.yml to build AD forests"
+          - "Next: Run playbooks/adfr-3-build-forests.yml to build AD forests"
