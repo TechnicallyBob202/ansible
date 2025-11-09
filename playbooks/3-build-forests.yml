@@ -67,44 +67,7 @@
 # PHASE 3: Promote Forest Root PDCs (parallel per forest)
 # =============================================================================
 - name: Promote Forest Root PDCs (D1)
-  hosts: d1_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Promote to forest root PDC
-      include_role:
-        name: active_directory
-        tasks_from: promote_forest_root.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'pdc'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Check FSMO roles
-      include_role:
-        name: active_directory
-        tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
-
-- name: Promote Forest Root PDCs (D2)
-  hosts: d2_parent_dcs
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -144,53 +107,7 @@
 # PHASE 4: Promote Forest Root Replica DCs (parallel per forest)
 # =============================================================================
 - name: Promote Forest Root Replica DCs (D1)
-  hosts: d1_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify forest root PDC is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
-        Write-Output "Forest root reachable"
-      retries: 30
-      delay: 10
-      until: result.rc == 0
-      register: result
-      changed_when: false
-
-    - name: Promote to replica DC
-      include_role:
-        name: active_directory
-        tasks_from: promote_replica_dc.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'replica'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Verify replication
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-
-- name: Promote Forest Root Replica DCs (D2)
-  hosts: d2_parent_dcs
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
