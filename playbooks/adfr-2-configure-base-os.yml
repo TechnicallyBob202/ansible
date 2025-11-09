@@ -2,7 +2,7 @@
 # =============================================================================
 # Stage 02: Configure Base OS - ADFR Lab
 # =============================================================================
-# Purpose: Configure networking on all ADFR VMs (Windows + Linux)
+# Purpose: Configure networking on all ADFR VMs (Windows)
 # - Discover current IPs from Proxmox
 # - Configure static IPs
 # - Set DNS servers (Cloudflare during Stage 02)
@@ -47,7 +47,7 @@
 # PHASE 2: Discover Current IPs (Windows)
 # =============================================================================
 - name: Discover Current IPs (Windows)
-  hosts: all:!adfr_linux
+  hosts: all
   gather_facts: false
   serial: 0
 
@@ -96,7 +96,7 @@
 # PHASE 3: Configure Static IPs (Windows)
 # =============================================================================
 - name: Configure Static IPs (Windows)
-  hosts: all:!adfr_linux
+  hosts: all
   gather_facts: false
   serial: 0
 
@@ -137,7 +137,7 @@
 # PHASE 4: Configure DNS and Hostname (Windows)
 # =============================================================================
 - name: Configure DNS and Hostname (Windows)
-  hosts: all:!adfr_linux
+  hosts: all
   gather_facts: false
   serial: 0
 
@@ -186,7 +186,7 @@
 # PHASE 5: Reboot Windows Hosts
 # =============================================================================
 - name: Reboot Windows Hosts
-  hosts: all:!adfr_linux
+  hosts: all
   gather_facts: false
   serial: 0
 
@@ -204,66 +204,10 @@
         vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 6: Discover Linux IPs
-# =============================================================================
-- name: Discover Linux IPs
-  hosts: adfr_linux
-  gather_facts: false
-  serial: 1
-
-  tasks:
-    - name: Discover IP from Proxmox
-      include_role:
-        name: proxmox
-        apply:
-          delegate_to: localhost
-      vars:
-        proxmox_operation: discover_ip
-      register: linux_ip_discovery
-
-    - name: Abort if Linux IP discovery failed
-      fail:
-        msg: |
-          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }})
-
-          Ensure VM is running and qemu-guest-agent is installed.
-      when:
-        - linux_ip_discovery is defined
-        - linux_ip_discovery.failed | default(false)
-
-    - name: Set ansible_ssh_host to discovered IP
-      set_fact:
-        ansible_ssh_host: "{{ discovered_ip }}"
-
-    - name: Display connection info
-      debug:
-        msg: "{{ inventory_hostname }} at {{ ansible_ssh_host }} → {{ ansible_host }}"
-
-# =============================================================================
-# PHASE 7: Configure Linux VMs
-# =============================================================================
-- name: Configure Linux VMs
-  hosts: adfr_linux
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Configure Linux network
-      include_role:
-        name: linux
-      vars:
-        linux_operation: configure_network
-      register: linux_result
-
-    - name: Mark Linux VM as changed
-      set_fact:
-        vm_changed: "{{ linux_result.changed | default(true) }}"
-
-# =============================================================================
-# PHASE 8: Validation
+# PHASE 6: Validation
 # =============================================================================
 - name: Validate Configuration (Windows)
-  hosts: all:!adfr_linux
+  hosts: all
   gather_facts: false
   serial: 0
 
@@ -295,21 +239,8 @@
           - "  DNS: {{ network_config.DNS }}"
           - "  Changed: {{ vm_changed }}"
 
-- name: Validate Configuration (Linux)
-  hosts: adfr_linux
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Validate configuration
-      debug:
-        msg:
-          - "{{ inventory_hostname }}:"
-          - "  IP: {{ ansible_host }} ✓"
-          - "  Changed: {{ vm_changed }}"
-
 # =============================================================================
-# PHASE 9: Snapshot Changed VMs
+# PHASE 7: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot Changed VMs
   hosts: all
@@ -333,7 +264,7 @@
       when: vm_changed
 
 # =============================================================================
-# PHASE 10: Summary
+# PHASE 8: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost

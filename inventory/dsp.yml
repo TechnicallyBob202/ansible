@@ -19,7 +19,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "dsp,ad"
-              
+
             D3-DC02:
               ansible_host: 172.16.40.11
               dc_role: replica
@@ -31,7 +31,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "dsp,ad"
-          
+
           vars:
             domain_name: d3.lab
             netbios_name: D3
@@ -52,7 +52,7 @@ all:
           vm_disk: 100G
           proxmox_vm_tags: "dsp"
           role: "DSP Management Server"
-          
+
         SQL:
           ansible_host: 172.16.50.12
           vmid: 5012

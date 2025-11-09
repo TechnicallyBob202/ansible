@@ -19,7 +19,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-              
+
             D1-DC02:
               ansible_host: 172.16.10.11
               dc_role: replica
@@ -31,7 +31,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-          
+
           vars:
             domain_name: d1.lab
             netbios_name: D1
@@ -54,7 +54,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-              
+
             D2-DC02:
               ansible_host: 172.16.20.11
               dc_role: replica
@@ -66,7 +66,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-          
+
           vars:
             domain_name: d2.lab
             netbios_name: D2
@@ -84,7 +84,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-              
+
             D21-DC02:
               ansible_host: 172.16.21.11
               dc_role: replica
@@ -96,7 +96,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-          
+
           vars:
             domain_name: d21.d2.lab
             netbios_name: D21
@@ -116,7 +116,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-              
+
             D22-DC02:
               ansible_host: 172.16.22.11
               dc_role: replica
@@ -128,7 +128,7 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "adfr,ad"
-          
+
           vars:
             domain_name: d22.d2.lab
             netbios_name: D22
@@ -151,7 +151,7 @@ all:
           vm_disk: 100G
           proxmox_vm_tags: "adfr"
           role: "ADFR Management Server"
-          
+
         DP1:
           ansible_host: 172.16.30.11
           vmid: 3011
@@ -163,7 +163,7 @@ all:
           vm_disk: 500G
           proxmox_vm_tags: "adfr"
           role: "Distribution Point 1"
-          
+
         DP2:
           ansible_host: 172.16.30.12
           vmid: 3012
@@ -192,7 +192,7 @@ all:
           vm_disk: 80G
           proxmox_vm_tags: "adfr"
           role: "Recovery VM"
-          
+
         REC02:
           ansible_host: 172.16.11.11
           vmid: 1111
@@ -204,7 +204,7 @@ all:
           vm_disk: 80G
           proxmox_vm_tags: "adfr"
           role: "Recovery VM"
-          
+
         REC03:
           ansible_host: 172.16.23.10
           vmid: 2310
@@ -216,7 +216,7 @@ all:
           vm_disk: 80G
           proxmox_vm_tags: "adfr"
           role: "Recovery VM"
-          
+
         REC04:
           ansible_host: 172.16.23.11
           vmid: 2311

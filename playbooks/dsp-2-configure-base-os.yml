@@ -204,7 +204,7 @@
         vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 6: Discover Linux IPs
+# PHASE 6: Discover Linux IPs (if you have Linux VMs)
 # =============================================================================
 - name: Discover Linux IPs
   hosts: dsp_linux

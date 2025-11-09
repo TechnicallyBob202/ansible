@@ -7,8 +7,8 @@
       debug:
         msg:
           - "Building Active Directory Infrastructure"
-          - "  Forest 1: D1.lab (2 DCs)"
-          - "  Forest 2: D2.lab (6 DCs in 3 domains)"
+          - "  Forest 1: d1.lab (2 DCs)"
+          - "  Forest 2: d2.lab (6 DCs in 3 domains)"
           - "Total Duration: 45-60 minutes"
 
 # =============================================================================
@@ -42,10 +42,10 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (serial: 1)
+# PHASE 3: Promote Forest Root PDCs (serial: 1 - one at a time)
 # =============================================================================
 - name: Promote Forest Root PDCs
-  hosts: d1_pdc:d2_pdc
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 1
   tasks:
@@ -58,7 +58,9 @@
       include_role:
         name: active_directory
         tasks_from: promote_forest_root.yml
-      when: not is_domain_controller
+      when:
+        - not is_domain_controller
+        - dc_role == 'pdc'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -75,12 +77,15 @@
       include_role:
         name: active_directory
         tasks_from: check_fsmo_roles.yml
+      when:
+        - is_domain_controller
+        - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs
+# PHASE 4: Promote Forest Root Replica DCs (parallel)
 # =============================================================================
 - name: Promote Forest Root Replica DCs
-  hosts: d1_replica:d2_replica
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   tasks:
     - name: Check domain status
@@ -92,7 +97,9 @@
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when: not is_domain_controller
+      when:
+        - not is_domain_controller
+        - dc_role == 'replica'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -109,12 +116,13 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+      when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Promote Child Domain PDCs (serial: 1)
+# PHASE 5: Promote Child Domain PDCs (serial: 1 - one at a time)
 # =============================================================================
 - name: Promote Child Domain PDCs
-  hosts: d21_pdc:d22_pdc
+  hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
   serial: 1
   tasks:
@@ -127,7 +135,9 @@
       include_role:
         name: active_directory
         tasks_from: promote_child_domain.yml
-      when: not is_domain_controller
+      when:
+        - not is_domain_controller
+        - dc_role == 'pdc'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -144,12 +154,15 @@
       include_role:
         name: active_directory
         tasks_from: check_fsmo_roles.yml
+      when:
+        - is_domain_controller
+        - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 6: Promote Child Domain Replica DCs
+# PHASE 6: Promote Child Domain Replica DCs (parallel)
 # =============================================================================
 - name: Promote Child Domain Replica DCs
-  hosts: d21_replica:d22_replica
+  hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
   tasks:
     - name: Check domain status
@@ -161,7 +174,9 @@
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when: not is_domain_controller
+      when:
+        - not is_domain_controller
+        - dc_role == 'replica'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -178,6 +193,7 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+      when: is_domain_controller
 
 # =============================================================================
 # PHASE 7: Final Validation
@@ -190,14 +206,16 @@
       include_role:
         name: active_directory
         tasks_from: wait_for_dc_ready.yml
+      when: is_domain_controller
 
     - name: Verify replication health
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+      when: is_domain_controller
 
 # =============================================================================
-# PHASE 8: Summaries & Files
+# PHASE 8: Consolidate Domain Information
 # =============================================================================
 - name: Consolidate Domain Information
   hosts: localhost
@@ -223,14 +241,14 @@
       debug:
         msg:
           - "Active Directory deployment complete!"
-          - "  D1.lab: 2 DCs"
-          - "  D2.lab: 2 DCs"
-          - "  D21.lab: 2 DCs"
-          - "  D22.lab: 2 DCs"
+          - "  d1.lab: 2 DCs"
+          - "  d2.lab: 2 DCs"
+          - "  d21.d2.lab: 2 DCs"
+          - "  d22.d2.lab: 2 DCs"
           - "Total: 8 Domain Controllers"
 
 # =============================================================================
-# PHASE 9: Snapshots (optional)
+# PHASE 9: Snapshots (only for changed VMs)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: domain_controllers

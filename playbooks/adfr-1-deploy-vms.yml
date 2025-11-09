@@ -28,7 +28,7 @@
           - "Deploying {{ ansible_play_hosts | length }} VMs:"
           - "  • D1 Forest: {{ groups['d1_forest'] | default([]) | length }} VMs"
           - "  • D2 Forest: {{ groups['d2_forest'] | default([]) | length }} VMs"
-          - "  • ADFR Infrastructure: {{ groups['adfr_infrastructure'] | default([]) | length }} VMs"
+          - "  • ADFR Infrastructure: {{ groups['infrastructure'] | default([]) | length }} VMs"
           - ""
           - "VMs will boot with DHCP"
           - "Run ADFR-2 next to configure static IPs"
