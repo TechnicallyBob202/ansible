@@ -40,7 +40,11 @@
   serial: 0
 
   tasks:
-    - name: Wait for WinRM to be available
+    - name: Display WinRM wait start
+      debug:
+        msg: "{{ inventory_hostname }} - Waiting for WinRM on {{ ansible_host }}:5985 (up to 10 minutes)..."
+
+    - name: Wait for WinRM port to be open
       wait_for:
         host: "{{ ansible_host }}"
         port: 5985
@@ -49,7 +53,11 @@
       delegate_to: localhost
       register: winrm_wait
 
-    - name: Test WinRM connectivity
+    - name: Display port open status
+      debug:
+        msg: "{{ inventory_hostname }} - WinRM port is open, testing connectivity..."
+
+    - name: Test WinRM connectivity with ping
       ansible.windows.win_ping:
       retries: 10
       delay: 10
@@ -58,7 +66,7 @@
 
     - name: Display WinRM ready status
       debug:
-        msg: "{{ inventory_hostname }} - WinRM available and responding"
+        msg: "{{ inventory_hostname }} - WinRM fully operational and responding ✓"
 
 # =============================================================================
 # PHASE 1: Initialize Change Tracking
