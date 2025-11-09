@@ -13,6 +13,10 @@
   register: vm_exists
   failed_when: false
   changed_when: false
+  delegate_to: localhost
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Stop VM before destruction
   community.general.proxmox_kvm:
@@ -26,6 +30,10 @@
     force: yes
   when: vm_exists.failed == false
   ignore_errors: true
+  delegate_to: localhost
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Wait for VM to stop
   pause:
@@ -43,6 +51,10 @@
     state: absent
   when: vm_exists.failed == false
   register: destroy_result
+  delegate_to: localhost
+  vars:
+    ansible_connection: local
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Display destruction result
   debug:
