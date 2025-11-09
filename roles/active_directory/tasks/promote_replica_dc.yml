@@ -21,7 +21,9 @@
     $domainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
 
     Install-ADDSDomainController -DomainName "{{ domain_name }}" -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
-  when: not is_domain_controller
+  when:
+    - not is_domain_controller
+    - pdc_adws.state == 'running'
   register: replica_promotion
 
 - name: Wait for reboot to complete
