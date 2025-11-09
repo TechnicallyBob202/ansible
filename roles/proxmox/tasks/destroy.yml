@@ -1,27 +1,6 @@
 ---
 # Destroy (delete) a VM using cluster-wide VM info and node->IP mapping, with purge
 
-# 1) Derive api host from node mapping if proxmox_host wasn't provided (same pattern as clone.yml)
-- name: Derive proxmox_host from proxmox_node (match clone.yml behavior)
-  set_fact:
-    proxmox_host: "{{ proxmox_api_hosts_by_node[proxmox_node] | default(proxmox_node | default(proxmox_hosts[0])) }}"
-  when: proxmox_host is not defined
-
-# 2) List VMs cluster-wide from this API host
-- name: List VMs cluster-wide
-  community.general.proxmox_vm_info:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-  register: pve_vms
-
-# 3) Find the VM by vmid and resolve the node it currently lives on
-- name: Resolve VM record by vmid
-  set_fact:
-    _vm_match: "{{ (pve_vms.proxmox_vms | default([])) | selectattr('vmid','equalto', (vmid | int)) | list | first }}"
-  when: pve_vms is defined
-
 - name: Report current VM state (pre-check)
   debug:
     msg: >-
@@ -30,44 +9,33 @@
       }} on {{ _vm_match.node }} via {{
         proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host)
       }}
-  when: _vm_match is defined
 
-- name: Report VM not found (pre-check)
-  debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - not found cluster-wide"
-  when: _vm_match is not defined
-
-# 4) Stop (best effort) and destroy on the resolved node
+# Stop (best effort) and destroy on the resolved node
 - name: Stop VM before destruction (best effort)
   community.general.proxmox_kvm:
-    api_host: "{{ proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host) }}"
+    api_host: "{{ proxmox_host }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
-    node: "{{ _vm_match.node }}"
+    node: "{{ proxmox_node }}"
     state: stopped
     force: yes
-  when: _vm_match is defined
-  failed_when: false
-  ignore_errors: true
 
 - name: Wait for VM to stop
   pause:
     seconds: 5
-  when: _vm_match is defined
 
 - name: Destroy VM (purge disks)
   community.general.proxmox_kvm:
-    api_host: "{{ proxmox_api_hosts_by_node[_vm_match.node] | default(proxmox_host) }}"
+    api_host: "{{ proxmox_host }}"
     api_user: "{{ proxmox_user }}"
     api_password: "{{ proxmox_password }}"
     validate_certs: "{{ proxmox_validate_certs }}"
     vmid: "{{ vmid }}"
-    node: "{{ _vm_match.node }}"
+    node: "{{ proxmox_node }}"
     state: absent
     purge: true
-  when: _vm_match is defined
   register: destroy_result
 
 - name: Display destruction result
