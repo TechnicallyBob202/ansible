@@ -12,7 +12,7 @@
           - "Total Duration: 45-60 minutes"
 
 # =============================================================================
-# PHASE 1: Initialize Change Tracking
+# PHASE 0: Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking for All VMs
   hosts: all
@@ -24,7 +24,7 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 2: Install AD Features on All Domain Controllers
+# PHASE 1: Install AD Features on All Domain Controllers
 # =============================================================================
 - name: Install Active Directory Features
   hosts: domain_controllers
@@ -42,7 +42,25 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (serial: 1 - one at a time)
+# PHASE 2: Configure DNS on All DCs (BEFORE any promotions)
+# =============================================================================
+- name: Configure DNS on All Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Set DNS to point to DC IPs
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 3: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
@@ -82,7 +100,7 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs (parallel)
+# PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -119,7 +137,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Promote Child Domain PDCs (serial: 1 - one at a time)
+# PHASE 5: Promote Child Domain PDCs
 # =============================================================================
 - name: Promote Child Domain PDCs
   hosts: d21_child_dcs:d22_child_dcs
@@ -159,7 +177,7 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 6: Promote Child Domain Replica DCs (parallel)
+# PHASE 6: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
   hosts: d21_child_dcs:d22_child_dcs
@@ -262,7 +280,9 @@
     - name: Create Proxmox snapshot
       include_role:
         name: proxmox
-        tasks_from: snapshot_vm.yml
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
       vars:
         snapshot_name: "stage3-ad-promoted"
         snapshot_description: "After AD forest/domain promotion"
