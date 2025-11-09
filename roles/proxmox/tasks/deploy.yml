@@ -28,6 +28,21 @@
 - name: Start VM
   include_tasks: start.yml
 
+# Apply tags and pool AFTER VM is started
+- name: Apply tags and pool to VM
+  community.general.proxmox_kvm:
+    api_host: "{{ proxmox_host }}"
+    api_user: "{{ proxmox_user }}"
+    api_password: "{{ proxmox_password }}"
+    validate_certs: "{{ proxmox_validate_certs }}"
+    node: "{{ proxmox_node }}"
+    vmid: "{{ vmid }}"
+    tags: "{{ proxmox_vm_tags }}"
+    pool: "{{ proxmox_pool | default(omit) }}"
+    update: yes
+  when: proxmox_vm_tags is defined
+  delegate_to: localhost
+
 - name: Deployment summary
   debug:
     msg:
@@ -38,4 +53,6 @@
       - "  Memory: {{ vm_memory }} MB"
       - "  Disk: {{ vm_disk }}"
       - "  IP: {{ ansible_host }}"
+      - "  Tags: {{ proxmox_vm_tags | default('none') }}"
+      - "  Pool: {{ proxmox_pool | default('none') }}"
       - "  Newly deployed: {{ vm_changed | default(false) }}"

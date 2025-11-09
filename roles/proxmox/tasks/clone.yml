@@ -17,7 +17,7 @@
 - name: Determine node index from proxmox_node
   set_fact:
     proxmox_node_index: >-
-      {{ '1' if proxmox_node in ['192.168.33.21', 'pve1'] else '2' }}
+      {{ '1' if proxmox_node in ['192.168.33.21', 'pve1', 'semperis-nuc-1'] else '2' }}
   when: template_id is not defined
 
 # Derive template_id if not already provided
@@ -53,11 +53,11 @@
       - vmid is defined
     fail_msg: "template_id and/or vmid not set for {{ inventory_hostname }}."
 
-# Optional: Derive pool from tags (kept from your current task)
-- name: Determine pool from tags
+# Set pool from tags (first tag becomes the pool name)
+- name: Set pool from tags
   set_fact:
-    proxmox_pool: "{{ (proxmox_vm_tags | split(','))[0] | upper }}"
-  when: proxmox_vm_tags is defined
+    proxmox_pool: "{{ proxmox_vm_tags | upper }}"
+  when: proxmox_vm_tags is defined and proxmox_vm_tags != ''
 
 # Cluster-aware check for existing VMID
 - name: List VMs cluster-wide
@@ -90,9 +90,8 @@
     clone: "{{ template_id }}"
     newid: "{{ vmid }}"
     name: "{{ inventory_hostname }}"
-    pool: "{{ proxmox_pool }}"
     full: yes
-    timeout: "{{ proxmox_clone_timeout }}"
+    timeout: "{{ proxmox_clone_timeout | default(300) }}"
   when: not vm_preexisted
   register: clone_result
 

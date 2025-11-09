@@ -6,7 +6,6 @@
 # - Configure hardware (CPU, RAM, disk)
 # - Configure network (VLAN, tags, pools)
 # - Start VMs (boot with DHCP)
-# - Snapshot newly deployed VMs
 # =============================================================================
 
 - name: ADFR-1 - Deploy ADFR Lab VMs
@@ -29,6 +28,7 @@
           - "  • D1 Forest: {{ groups['d1_forest'] | default([]) | length }} VMs"
           - "  • D2 Forest: {{ groups['d2_forest'] | default([]) | length }} VMs"
           - "  • ADFR Infrastructure: {{ groups['infrastructure'] | default([]) | length }} VMs"
+          - "  • Recovery VMs: {{ groups['recovery_vms'] | default([]) | length }} VMs"
           - ""
           - "VMs will boot with DHCP"
           - "Run ADFR-2 next to configure static IPs"
@@ -44,39 +44,6 @@
     - name: Display deployment status
       debug:
         msg: "{{ inventory_hostname }} - {{ 'NEWLY DEPLOYED' if (vm_changed | default(false)) else 'ALREADY EXISTS' }}"
-
-    - name: Determine if any VMs were newly deployed
-      set_fact:
-        any_new_vms: "{{ (ansible_play_hosts
-                          | map('extract', hostvars, 'vm_changed')
-                          | select('equalto', true)
-                          | list | length) > 0 }}"
-      run_once: true
-      delegate_to: localhost
-      delegate_facts: true
-
-# =============================================================================
-# Snapshot newly deployed VMs
-# =============================================================================
-- name: Snapshot after deployment
-  hosts: all
-  gather_facts: false
-  serial: 2
-
-  tasks:
-    - name: Display snapshot decision
-      debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'CREATE' if (vm_changed | default(false)) else 'SKIP' }} snapshot"
-
-    - name: Take snapshot (post-deploy)
-      include_role:
-        name: proxmox
-        tasks_from: snapshot.yml
-        apply:
-          delegate_to: localhost
-      vars:
-        snapshot_name: post-deploy
-      when: vm_changed | default(false)
 
 # =============================================================================
 # Summary
@@ -95,6 +62,5 @@
           - "========================================="
           - ""
           - "✓ VMs deployed and started"
-          - "✓ Snapshots created for new VMs"
           - ""
           - "Next: Run ADFR-2 to configure static IPs and hostnames"
