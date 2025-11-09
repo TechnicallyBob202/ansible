@@ -1,29 +1,30 @@
 ---
-- name: Diagnostic - Check DC Status
-  hosts: D1-DC02,D2-DC02
+- name: Diagnostic - Check Replication Details
+  hosts: d1_dcs,d2_parent_dcs
   gather_facts: false
 
   tasks:
-    - name: Check DomainRole
+    - name: Get detailed replication info
       ansible.windows.win_shell: |
-        $CS = Get-WmiObject Win32_ComputerSystem
-        Write-Output "DomainRole: $($CS.DomainRole)"
-      register: domain_role
+        # Get all replication partners
+        $partners = repadmin /showrepl | Out-String
 
-    - name: Display DomainRole
+        # Get replication summary
+        $summary = repadmin /replsummary | Out-String
+
+        # Check if this DC knows about other DCs
+        $allDCs = nltest /dclist:{{ domain_name }} 2>&1 | Out-String
+
+        Write-Output "=== REPLICATION PARTNERS ==="
+        Write-Output $partners
+        Write-Output ""
+        Write-Output "=== REPLICATION SUMMARY ==="
+        Write-Output $summary
+        Write-Output ""
+        Write-Output "=== ALL DCs IN DOMAIN ==="
+        Write-Output $allDCs
+      register: repl_details
+
+    - name: Display replication details
       debug:
-        msg: "{{ inventory_hostname }}: {{ domain_role.stdout | trim }}"
-
-    - name: Check NTDS service
-      ansible.windows.win_shell: |
-        $NTDS = Get-Service -Name NTDS -ErrorAction SilentlyContinue
-        if ($NTDS) {
-          Write-Output "NTDS exists: Status=$($NTDS.Status)"
-        } else {
-          Write-Output "NTDS does not exist"
-        }
-      register: ntds_check
-
-    - name: Display NTDS status
-      debug:
-        msg: "{{ inventory_hostname }}: {{ ntds_check.stdout | trim }}"
+        msg: "{{ repl_details.stdout_lines }}"
