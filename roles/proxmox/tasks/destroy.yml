@@ -14,6 +14,16 @@
   failed_when: false
   changed_when: false
 
+- name: Report current VM state (pre-check)
+  debug:
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) current state on {{ proxmox_node }}: {{ vm_exists.status }}"
+  when: vm_exists.status is defined
+
+- name: Report VM not found (pre-check)
+  debug:
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - not found on {{ proxmox_node }}"
+  when: vm_exists.status is not defined
+
 - name: Stop VM before destruction
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
@@ -25,7 +35,7 @@
     state: stopped
     force: yes
   when: vm_exists.status is defined
-  ignore_errors: true
+  ignore_errors: yes
 
 - name: Wait for VM to stop
   pause:
