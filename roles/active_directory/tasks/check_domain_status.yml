@@ -1,0 +1,112 @@
+---
+# Check if domain exists and get domain information, plus persist DC facts for later phases
+
+# 1) Is AD DS feature installed? (informational)
+- name: Check if AD Domain Services feature is present (check-mode)
+  ansible.windows.win_feature:
+    name: AD-Domain-Services
+    state: present
+  check_mode: yes
+  register: adds_installed
+  changed_when: false
+  failed_when: false
+
+# 2) Is this machine a DC?
+- name: Check if system is a domain controller
+  ansible.windows.win_shell: |
+    $DC = Get-WmiObject Win32_ComputerSystem
+    if ($DC.DomainRole -ge 4) {
+      Write-Output "IS_DC"
+      exit 0
+    } else {
+      Write-Output "NOT_DC"
+      exit 1
+    }
+  register: is_dc_check
+  failed_when: false
+  changed_when: false
+
+# 3) If DC, wait briefly for ADWS (reduces early false negatives right after promotion)
+- name: Wait for ADWS before querying domain (status check)
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_state_for_status
+  retries: 10
+  delay: 15
+  until: adws_state_for_status.state == 'running'
+  when: is_dc_check.rc == 0
+  changed_when: false
+  failed_when: false
+
+# 4) Query domain/forest details when DC
+- name: Get domain information if DC
+  ansible.windows.win_shell: |
+    try {
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      $forest = Get-ADForest -Identity $domain.Forest -ErrorAction Stop
+      [PSCustomObject]@{
+        DomainName  = $domain.DNSRoot
+        NetBIOSName = $domain.NetBIOSName
+        DomainSID   = $domain.DomainSID.Value
+        ForestName  = $forest.Name
+        ForestMode  = $forest.ForestMode
+        DomainMode  = $domain.DomainMode
+        PDCEmulator = $domain.PDCEmulator
+      } | ConvertTo-Json
+    } catch {
+      Write-Output "DOMAIN_NOT_FOUND"
+      exit 1
+    }
+  register: domain_info_check
+  failed_when: false
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+# 5) Parse and set facts
+- name: Parse domain information
+  set_fact:
+    domain_info: "{{ domain_info_check.stdout | from_json }}"
+  when:
+    - is_dc_check.rc == 0
+    - domain_info_check.rc == 0
+
+- name: Set domain status facts
+  set_fact:
+    is_domain_controller: "{{ is_dc_check.rc == 0 }}"
+    domain_exists: "{{ (domain_info_check.rc == 0) if (is_dc_check.rc == 0) else false }}"
+    domain_sid: "{{ domain_info.DomainSID if (domain_info is defined) else 'UNKNOWN' }}"
+    domain_netbios: "{{ (domain_info.NetBIOSName if domain_info is defined else netbios_name) }}"
+  changed_when: false
+
+# 6) Capture DC identity facts (FQDN/IP) and persist them on localhost
+#    This runs on ANY DC every time (idempotent), and stores generic + per-forest keys.
+- name: Get this DC's FQDN
+  ansible.windows.win_shell: |
+    [System.Net.Dns]::GetHostByName(($env:COMPUTERNAME)).HostName
+  register: _thisdc_fqdn_cmd
+  when: is_domain_controller
+  changed_when: false
+
+- name: Get this DC's IPv4
+  ansible.windows.win_shell: |
+    (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "*Ethernet*" | Where-Object {$_.IPAddress -notlike "169.*"} | Select-Object -First 1).IPAddress
+  register: _thisdc_ip_cmd
+  when: is_domain_controller
+  changed_when: false
+
+- name: Persist DC facts on localhost for later phases
+  set_fact:
+    forest_pdc_fqdn: "{{ _thisdc_fqdn_cmd.stdout | trim }}"
+    forest_pdc_ip:   "{{ _thisdc_ip_cmd.stdout   | trim }}"
+    "pdc_{{ domain_netbios | lower }}_fqdn": "{{ _thisdc_fqdn_cmd.stdout | trim }}"
+    "pdc_{{ domain_netbios | lower }}_ip":   "{{ _thisdc_ip_cmd.stdout   | trim }}"
+  delegate_to: localhost
+  delegate_facts: true
+  when: is_domain_controller
+  changed_when: false
+
+# 7) Single-line status (readable in CI)
+- name: Display domain status
+  debug:
+    msg: "Status host={{ inventory_hostname }} is_dc={{ is_domain_controller }} domain_exists={{ domain_exists }} domain={{ domain_info.DomainName | default('N/A') }} sid={{ domain_sid }} netbios={{ domain_netbios }}"
