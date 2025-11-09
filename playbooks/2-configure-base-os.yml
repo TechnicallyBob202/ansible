@@ -42,24 +42,11 @@
   tasks:
     - name: Display WinRM wait start
       debug:
-        msg: "{{ inventory_hostname }} - Waiting for WinRM on {{ ansible_host }}:5985 (up to 10 minutes)..."
+        msg: "{{ inventory_hostname }} - Testing WinRM connectivity (up to 10 minutes)..."
 
-    - name: Wait for WinRM port to be open
-      wait_for:
-        host: "{{ ansible_host }}"
-        port: 5985
-        timeout: 600
-        delay: 10
-      delegate_to: localhost
-      register: winrm_wait
-
-    - name: Display port open status
-      debug:
-        msg: "{{ inventory_hostname }} - WinRM port is open, testing connectivity..."
-
-    - name: Test WinRM connectivity with ping
+    - name: Test WinRM connectivity with retries
       ansible.windows.win_ping:
-      retries: 10
+      retries: 60
       delay: 10
       until: ping_result is succeeded
       register: ping_result
