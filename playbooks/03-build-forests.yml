@@ -12,42 +12,7 @@
           - "Total Duration: 20-30 minutes"
 
 # =============================================================================
-# PHASE 1: Capture Initial DC State
-# =============================================================================
-- name: Capture Initial DC State
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check initial DC state
-      ansible.windows.win_shell: |
-        $DC = Get-WmiObject Win32_ComputerSystem
-        if ($DC.DomainRole -ge 4) {
-          Write-Output "IS_DC"
-        } else {
-          Write-Output "NOT_DC"
-        }
-      register: dc_state_initial
-      changed_when: false
-
-    - name: Set initial state fact
-      set_fact:
-        dc_state_initial: "{{ dc_state_initial.stdout | trim }}"
-
-# =============================================================================
-# PHASE 2: Initialize Change Tracking for All VMs
-# =============================================================================
-- name: Initialize Change Tracking for All VMs
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Initialize vm_changed flag
-      set_fact:
-        vm_changed: false
-
-# =============================================================================
-# PHASE 3: Install AD Features on Forest Root DCs
+# PHASE 1: Install AD Features on Forest Root DCs
 # =============================================================================
 - name: Install Active Directory Features
   hosts: d1_dcs:d2_parent_dcs
@@ -65,7 +30,7 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 4: Configure DNS on Forest Root DCs
+# PHASE 2: Configure DNS on Forest Root DCs
 # =============================================================================
 - name: Set DNS to point to DC IPs
   hosts: d1_dcs:d2_parent_dcs
@@ -87,9 +52,9 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 5: Promote Forest Root PDCs (parallel per forest)
+# PHASE 3: Promote Forest Root PDCs (parallel both forests)
 # =============================================================================
-- name: Promote Forest Root PDCs (D1)
+- name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
@@ -127,9 +92,9 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 6: Promote Forest Root Replica DCs (parallel per forest)
+# PHASE 4: Promote Forest Root Replica DCs (parallel both forests)
 # =============================================================================
-- name: Promote Forest Root Replica DCs (D1)
+- name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
@@ -176,7 +141,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 7: Final Validation
+# PHASE 5: Final Validation
 # =============================================================================
 - name: Final Validation
   hosts: d1_dcs:d2_parent_dcs
@@ -195,60 +160,13 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5b: Check DC State Before Snapshot
-# =============================================================================
-- name: Check DC State Before Snapshot
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Check initial DC state
-      ansible.windows.win_shell: |
-        $DC = Get-WmiObject Win32_ComputerSystem
-        if ($DC.DomainRole -ge 4) {
-          Write-Output "IS_DC"
-        } else {
-          Write-Output "NOT_DC"
-        }
-      register: dc_state_initial
-      changed_when: false
-
-    - name: Set initial state fact
-      set_fact:
-        dc_state_initial: "{{ dc_state_initial.stdout | trim }}"
-
-# =============================================================================
-# PHASE 8: Snapshots (only for promoted VMs)
+# PHASE 6: Snapshots
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 2
   tasks:
-    - name: Check current DC state
-      ansible.windows.win_shell: |
-        $DC = Get-WmiObject Win32_ComputerSystem
-        if ($DC.DomainRole -ge 4) {
-          Write-Output "IS_DC"
-        } else {
-          Write-Output "NOT_DC"
-        }
-      register: dc_state_current
-      changed_when: false
-
-    - name: Set current state fact
-      set_fact:
-        dc_state_current: "{{ dc_state_current.stdout | trim }}"
-
-    - name: Determine if VM was promoted
-      set_fact:
-        was_promoted: "{{ (dc_state_initial == 'NOT_DC') and (dc_state_current == 'IS_DC') }}"
-
-    - name: Display snapshot plan
-      debug:
-        msg: "{{ inventory_hostname }} - {{ 'SNAPSHOT (promoted)' if was_promoted else 'SKIP snapshot' }}"
-
     - name: Create Proxmox snapshot
       include_role:
         name: proxmox
@@ -258,4 +176,3 @@
       vars:
         snapshot_name: "stage3-forest-roots-promoted"
         snapshot_description: "After AD forest root promotion"
-      when: was_promoted
