@@ -23,12 +23,42 @@
           - "========================================="
           - ""
           - "Configuring {{ groups['all'] | length }} VMs:"
+          - "  • Wait for WinRM availability"
           - "  • Discover current IPs"
           - "  • Configure static IPs"
           - "  • Set DNS to Cloudflare (Stage 02)"
           - "  • Set hostnames"
           - "  • Reboot if needed"
           - "  • Snapshot changed VMs"
+
+# =============================================================================
+# PHASE 0: Wait for WinRM Availability
+# =============================================================================
+- name: Wait for WinRM Availability
+  hosts: all
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Wait for WinRM to be available
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 5985
+        timeout: 600
+        delay: 10
+      delegate_to: localhost
+      register: winrm_wait
+
+    - name: Test WinRM connectivity
+      ansible.windows.win_ping:
+      retries: 10
+      delay: 10
+      until: ping_result is succeeded
+      register: ping_result
+
+    - name: Display WinRM ready status
+      debug:
+        msg: "{{ inventory_hostname }} - WinRM available and responding"
 
 # =============================================================================
 # PHASE 1: Initialize Change Tracking
