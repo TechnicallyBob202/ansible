@@ -5,17 +5,11 @@
   include_tasks: check_domain_status.yml
 
 - name: Promote to child domain PDC
-  microsoft.ad.domain_controller:
-    dns_domain_name: "{{ domain_name }}"
-    domain_admin_user: "{{ parent_domain_netbios }}\\Administrator"
-    domain_admin_password: "{{ ad_safe_mode_password }}"
-    safe_mode_password: "{{ ad_safe_mode_password }}"
-    database_path: "{{ ad_database_path }}"
-    sysvol_path: "{{ ad_sysvol_path }}"
-    domain_log_path: "{{ ad_log_path }}"
-    install_dns: "{{ ad_install_dns }}"
-    state: domain_controller
-    reboot: true
+  ansible.windows.win_shell: |
+    $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
+    $parentCred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
+
+    Install-ADDSDomain -NewDomainName "{{ domain_name.split('.')[0] }}" -ParentDomainName "{{ parent_domain }}" -DomainType ChildDomain -InstallDns -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $parentCred -Force
   when: not is_domain_controller
   register: child_promotion
 
@@ -23,7 +17,7 @@
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: child_promotion.changed | default(false)
+  when: child_promotion.rc == 0
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
@@ -33,11 +27,11 @@
   retries: 10
   delay: 30
   until: adws_service.state == 'running'
-  when: child_promotion.changed | default(false)
+  when: child_promotion.rc == 0
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Child Domain PDC {{ 'promoted' if child_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Child Domain PDC promoted"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
