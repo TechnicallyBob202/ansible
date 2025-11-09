@@ -6,7 +6,7 @@
     name: ADWS
     state: started
   register: adws_service
-  retries: 10
+  retries: 20
   delay: 30
   until: adws_service.state == 'running'
 
@@ -15,7 +15,7 @@
     name: Netlogon
     state: started
   register: netlogon_service
-  retries: 10
+  retries: 20
   delay: 30
   until: netlogon_service.state == 'running'
 
@@ -24,16 +24,16 @@
     name: DNS
     state: started
   register: dns_service
-  retries: 10
+  retries: 20
   delay: 30
   until: dns_service.state == 'running'
 
-- name: Verify DC can query its own domain
+- name: Wait for domain to be queryable
   ansible.windows.win_shell: |
     $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
     Write-Output $domain.DNSRoot
   register: domain_query
-  retries: 10
+  retries: 20
   delay: 30
   until: domain_query.rc == 0
   changed_when: false
@@ -47,9 +47,23 @@
       throw "Cannot connect to LDAP"
     }
   register: ldap_test
-  retries: 10
+  retries: 20
   delay: 30
   until: ldap_test.rc == 0
+  changed_when: false
+
+- name: Verify SYSVOL replication is ready
+  ansible.windows.win_shell: |
+    $state = Get-WmiObject -Namespace root\microsoftdfs -Class dfsrreplicatedfolderinfo | Where-Object { $_.ReplicatedFolderName -eq "SYSVOL Share" }
+    if ($state.State -eq 4) {
+      Write-Output "SYSVOL Ready"
+    } else {
+      throw "SYSVOL not ready, state: $($state.State)"
+    }
+  register: sysvol_check
+  retries: 20
+  delay: 30
+  until: sysvol_check.rc == 0
   changed_when: false
 
 - name: Display DC readiness

@@ -37,7 +37,6 @@
         tasks_from: install_ad_features.yml
       register: features_result
 
-
 # =============================================================================
 # PHASE 3: Configure DNS on Forest Root DCs
 # =============================================================================
@@ -55,7 +54,6 @@
         name: windows
         tasks_from: set_dns.yml
       register: dns_result
-
 
 # =============================================================================
 # PHASE 4: Promote Forest Root PDCs (parallel both forests)
@@ -75,27 +73,68 @@
         name: active_directory
         tasks_from: promote_forest_root.yml
       when:
-        - not is_domain_controller
         - dc_role == 'pdc'
       register: promotion_result
 
-
-    - name: Wait for DC to be ready
+# =============================================================================
+# PHASE 5: Comprehensive PDC Health Validation
+# =============================================================================
+- name: Validate PDCs are fully operational
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 1
+  tasks:
+    - name: Re-check domain status
       include_role:
         name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
+        tasks_from: check_domain_status.yml
+      when: dc_role == 'pdc'
 
-    - name: Check FSMO roles
+    - name: Verify PDC can enumerate itself
+      ansible.windows.win_shell: |
+        $dc = Get-ADDomainController -Identity $env:COMPUTERNAME -ErrorAction Stop
+        $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+        [PSCustomObject]@{
+          Hostname = $dc.HostName
+          IsGC = $dc.IsGlobalCatalog
+          OperatingSystem = $dc.OperatingSystem
+          PDCEmulator = $domain.PDCEmulator
+          DomainMode = $domain.DomainMode
+        } | ConvertTo-Json
+      register: pdc_info
+      retries: 10
+      delay: 20
+      until: pdc_info.rc == 0
+      changed_when: false
+      when: dc_role == 'pdc'
+
+    - name: Parse PDC info
+      set_fact:
+        pdc_details: "{{ pdc_info.stdout | from_json }}"
+      when:
+        - dc_role == 'pdc'
+        - pdc_info.stdout is defined
+
+    - name: Display PDC health
+      debug:
+        msg:
+          - "{{ inventory_hostname }} - Forest Root PDC Health Check"
+          - "  Hostname: {{ pdc_details.Hostname }}"
+          - "  Global Catalog: {{ pdc_details.IsGC }}"
+          - "  PDC Emulator: {{ pdc_details.PDCEmulator }}"
+          - "  Domain Mode: {{ pdc_details.DomainMode }}"
+      when:
+        - dc_role == 'pdc'
+        - pdc_details is defined
+
+    - name: Check FSMO roles on PDC
       include_role:
         name: active_directory
         tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
+      when: dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 5: Promote Forest Root Replica DCs (parallel both forests)
+# PHASE 6: Promote Forest Root Replica DCs (parallel both forests)
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -117,37 +156,29 @@
       until: result.rc == 0
       register: result
       changed_when: false
+      when: dc_role == 'replica'
 
     - name: Promote to replica DC
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'replica'
+      when: dc_role == 'replica'
       register: promotion_result
 
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Verify replication
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-
 # =============================================================================
-# PHASE 6: Final Validation
+# PHASE 7: Final Validation
 # =============================================================================
-- name: Final Validation
+- name: Final Domain Health Check
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
+  serial: 1
   tasks:
-    - name: Verify all DCs are operational
+    - name: Re-check domain status
+      include_role:
+        name: active_directory
+        tasks_from: check_domain_status.yml
+
+    - name: Verify DC is operational
       include_role:
         name: active_directory
         tasks_from: wait_for_dc_ready.yml
@@ -159,8 +190,26 @@
         tasks_from: verify_replication.yml
       when: is_domain_controller
 
+    - name: Final domain enumeration test
+      ansible.windows.win_shell: |
+        $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+        $dcs = Get-ADDomainController -Filter * -ErrorAction Stop
+        [PSCustomObject]@{
+          Domain = $domain.DNSRoot
+          DCCount = $dcs.Count
+          DCs = ($dcs.Name -join ", ")
+        } | ConvertTo-Json
+      register: final_check
+      changed_when: false
+
+    - name: Display final domain status
+      debug:
+        msg:
+          - "{{ inventory_hostname }} - Final Domain Status"
+          - "{{ final_check.stdout | from_json | to_nice_json }}"
+
 # =============================================================================
-# PHASE 7: Snapshots
+# PHASE 8: Snapshots
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: d1_dcs:d2_parent_dcs
