@@ -55,16 +55,46 @@
         target_ip: "{{ ansible_host }}"
 
     - name: Discover current IP from Proxmox (with retries)
-      include_role:
-        name: proxmox
-        apply:
+      block:
+        - name: Include IP discovery role
+          include_role:
+            name: proxmox
+            apply:
+              delegate_to: localhost
+          vars:
+            proxmox_operation: discover_ip
+          register: ip_discovery_result
+      rescue:
+        - name: Wait before retry
+          pause:
+            seconds: 10
           delegate_to: localhost
-      vars:
-        proxmox_operation: discover_ip
-      register: ip_discovery_result
-      retries: 3
-      delay: 10
-      until: ip_discovery_result is success
+
+        - name: Retry IP discovery (attempt 2)
+          include_role:
+            name: proxmox
+            apply:
+              delegate_to: localhost
+          vars:
+            proxmox_operation: discover_ip
+          register: ip_discovery_result
+          ignore_errors: true
+
+        - name: Wait before final retry
+          pause:
+            seconds: 10
+          when: ip_discovery_result.failed | default(false)
+          delegate_to: localhost
+
+        - name: Retry IP discovery (attempt 3)
+          include_role:
+            name: proxmox
+            apply:
+              delegate_to: localhost
+          vars:
+            proxmox_operation: discover_ip
+          register: ip_discovery_result
+          when: ip_discovery_result.failed | default(false)
 
     - name: Abort if IP discovery failed after retries
       fail:
