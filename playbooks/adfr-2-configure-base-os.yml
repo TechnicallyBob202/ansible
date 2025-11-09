@@ -8,7 +8,6 @@
 # - Set DNS servers (Cloudflare during Stage 02)
 # - Set hostnames
 # - Reboot if needed
-# - Snapshot changed VMs
 
 - name: Stage 02 - Configure Base OS (ADFR)
   hosts: localhost
@@ -28,7 +27,6 @@
           - "  • Set DNS to Cloudflare (Stage 02)"
           - "  • Set hostnames"
           - "  • Reboot if needed"
-          - "  • Snapshot changed VMs"
 
 # =============================================================================
 # PHASE 1: Initialize Change Tracking
@@ -44,7 +42,7 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 2: Discover Current IPs (Windows)
+# PHASE 2: Discover Current IPs (Windows) - with Retries
 # =============================================================================
 - name: Discover Current IPs (Windows)
   hosts: all
@@ -56,7 +54,7 @@
       set_fact:
         target_ip: "{{ ansible_host }}"
 
-    - name: Discover current IP from Proxmox
+    - name: Discover current IP from Proxmox (with retries)
       include_role:
         name: proxmox
         apply:
@@ -64,16 +62,19 @@
       vars:
         proxmox_operation: discover_ip
       register: ip_discovery_result
+      retries: 3
+      delay: 10
+      until: ip_discovery_result is success
 
-    - name: Abort if IP discovery failed
+    - name: Abort if IP discovery failed after retries
       fail:
         msg: |
-          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }})
+          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }}) after 3 attempts
 
           This usually means:
           - VM is not running
           - qemu-guest-agent is not installed or not running
-          - Network is not configured on the VM
+          - VM is still booting (wait a few minutes and try again)
 
           Manual intervention required before continuing.
       when:
@@ -98,7 +99,7 @@
 - name: Configure Static IPs (Windows)
   hosts: all
   gather_facts: false
-  serial: 0
+  serial: 5
 
   tasks:
     - name: Set static IP
@@ -127,11 +128,10 @@
         ansible_host: "{{ target_ip }}"
       when: needs_ip_config
 
-    - name: Wait for IPs to settle
+    - name: Wait for IP to settle
       pause:
-        seconds: 10
-      run_once: true
-      when: hostvars | dict2items | selectattr('value.needs_ip_config', 'defined') | selectattr('value.needs_ip_config', 'equalto', true) | list | length > 0
+        seconds: 5
+      when: needs_ip_config
 
 # =============================================================================
 # PHASE 4: Configure DNS and Hostname (Windows)
@@ -139,7 +139,7 @@
 - name: Configure DNS and Hostname (Windows)
   hosts: all
   gather_facts: false
-  serial: 0
+  serial: 5
 
   tasks:
     - name: Configure DNS servers
@@ -188,7 +188,7 @@
 - name: Reboot Windows Hosts
   hosts: all
   gather_facts: false
-  serial: 0
+  serial: 5
 
   tasks:
     - name: Reboot if needed
@@ -209,7 +209,7 @@
 - name: Validate Configuration (Windows)
   hosts: all
   gather_facts: false
-  serial: 0
+  serial: 5
 
   tasks:
     - name: Get network configuration
@@ -240,31 +240,7 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 7: Snapshot Changed VMs
-# =============================================================================
-- name: Snapshot Changed VMs
-  hosts: all
-  gather_facts: false
-  serial: 2
-
-  tasks:
-    - name: Display snapshot plan
-      debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
-
-    - name: Create Proxmox snapshot
-      include_role:
-        name: proxmox
-        apply:
-          delegate_to: localhost
-      vars:
-        proxmox_operation: snapshot
-        snapshot_name: "stage2-base-configured"
-        snapshot_description: "After base OS configuration (IP, DNS, hostname)"
-      when: vm_changed
-
-# =============================================================================
-# PHASE 8: Summary
+# PHASE 7: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -283,7 +259,7 @@
           - "Stage 02 Complete!"
           - "========================================="
           - ""
-          - "Snapshots Created: {{ changed_vms }}/{{ total_vms }}"
+          - "VMs Configured: {{ changed_vms }}/{{ total_vms }}"
           - ""
           - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured and skipped"
           - ""
