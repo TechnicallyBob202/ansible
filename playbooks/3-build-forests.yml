@@ -1,21 +1,21 @@
 ---
-- name: Build Active Directory Forests and Domains
+- name: Build Active Directory Forest Roots
   hosts: localhost
   gather_facts: true
   tasks:
     - name: Display build plan
       debug:
         msg:
-          - "Building Active Directory Infrastructure"
+          - "Building AD Forest Roots"
           - "  Forest 1: d1.lab (2 DCs)"
-          - "  Forest 2: d2.lab (6 DCs in 3 domains)"
-          - "Total Duration: 45-60 minutes"
+          - "  Forest 2: d2.lab (2 DCs)"
+          - "Total Duration: 20-30 minutes"
 
 # =============================================================================
 # PHASE 0: Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking for All VMs
-  hosts: all
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -24,10 +24,10 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 1: Install AD Features on All Domain Controllers
+# PHASE 1: Install AD Features on Forest Root DCs
 # =============================================================================
 - name: Install Active Directory Features
-  hosts: domain_controllers
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -42,10 +42,10 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 2: Configure DNS on All DCs (BEFORE any promotions)
+# PHASE 2: Configure DNS on Forest Root DCs
 # =============================================================================
 - name: Set DNS to point to DC IPs
-  hosts: domain_controllers
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -64,7 +64,7 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (parallel within each forest)
+# PHASE 3: Promote Forest Root PDCs (parallel per forest)
 # =============================================================================
 - name: Promote Forest Root PDCs (D1)
   hosts: d1_dcs
@@ -141,7 +141,7 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs (parallel within each forest)
+# PHASE 4: Promote Forest Root Replica DCs (parallel per forest)
 # =============================================================================
 - name: Promote Forest Root Replica DCs (D1)
   hosts: d1_dcs
@@ -236,116 +236,10 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Promote Child Domain PDCs
-# =============================================================================
-- name: Promote Child Domain PDCs
-  hosts: d21_child_dcs:d22_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify parent domain is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ parent_domain }}" -Credential $cred | Out-Null
-        Write-Output "Parent domain reachable"
-      retries: 30
-      delay: 10
-      until: result.rc == 0
-      register: result
-      changed_when: false
-
-    - name: Promote to child domain PDC
-      include_role:
-        name: active_directory
-        tasks_from: promote_child_domain.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'pdc'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Ensure DNS is configured and running
-      include_role:
-        name: active_directory
-        tasks_from: ensure_dns.yml
-      when: is_domain_controller
-
-    - name: Check FSMO roles
-      include_role:
-        name: active_directory
-        tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
-
-# =============================================================================
-# PHASE 6: Promote Child Domain Replica DCs
-# =============================================================================
-- name: Promote Child Domain Replica DCs
-  hosts: d21_child_dcs:d22_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify child domain PDC is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
-        Write-Output "Child domain reachable"
-      retries: 30
-      delay: 10
-      until: result.rc == 0
-      register: result
-      changed_when: false
-
-    - name: Promote to replica DC
-      include_role:
-        name: active_directory
-        tasks_from: promote_replica_dc.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'replica'
-      register: promotion_result
-
-    - name: Mark VM as changed if promoted
-      set_fact:
-        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
-
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Verify replication
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-
-# =============================================================================
-# PHASE 7: Final Validation
+# PHASE 5: Final Validation
 # =============================================================================
 - name: Final Validation
-  hosts: domain_controllers
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   tasks:
     - name: Verify all DCs are operational
@@ -361,43 +255,10 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 8: Consolidate Domain Information
-# =============================================================================
-- name: Consolidate Domain Information
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Create files directory
-      file:
-        path: "{{ playbook_dir }}/../files"
-        state: directory
-        mode: '0755'
-
-    - name: Consolidate domain SIDs
-      shell: |
-        cat /tmp/domain-sid-*.txt > {{ playbook_dir }}/../files/domain-sids.txt 2>/dev/null || echo "# No domain SID files found"
-      changed_when: false
-
-    - name: Consolidate FSMO roles
-      shell: |
-        cat /tmp/fsmo-roles-*.txt > {{ playbook_dir }}/../files/fsmo-roles.txt 2>/dev/null || echo "# No FSMO files found"
-      changed_when: false
-
-    - name: Display completion message
-      debug:
-        msg:
-          - "Active Directory deployment complete!"
-          - "  d1.lab: 2 DCs"
-          - "  d2.lab: 2 DCs"
-          - "  d21.d2.lab: 2 DCs"
-          - "  d22.d2.lab: 2 DCs"
-          - "Total: 8 Domain Controllers"
-
-# =============================================================================
-# PHASE 9: Snapshots (only for changed VMs)
+# PHASE 6: Snapshots (only for changed VMs)
 # =============================================================================
 - name: Snapshot after AD promotion
-  hosts: domain_controllers
+  hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 2
   tasks:
@@ -412,6 +273,6 @@
         apply:
           delegate_to: localhost
       vars:
-        snapshot_name: "stage3-ad-promoted"
-        snapshot_description: "After AD forest/domain promotion"
+        snapshot_name: "stage3-forest-roots-promoted"
+        snapshot_description: "After AD forest root promotion"
       when: vm_changed
