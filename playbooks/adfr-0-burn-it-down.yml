@@ -1,6 +1,7 @@
 ---
 - name: Cleanup All Lab VMs
   hosts: all
+  connection: local
   gather_facts: false
 
   vars:
@@ -24,20 +25,8 @@
       include_role:
         name: proxmox
         tasks_from: destroy.yml
-      apply:
-        delegate_to: localhost
-
-    - name: Compute summary
-      run_once: true
-      set_fact:
-        _destroyed_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('equalto', true) | list | length }}"
-        _skipped_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_skipped') | select('equalto', true) | list | length }}"
-        _absent_count: "{{ ansible_play_hosts | length - _destroyed_count - _skipped_count }}"
 
     - name: Cleanup summary
       run_once: true
       debug:
-        msg:
-          - "Destroyed: {{ _destroyed_count }}"
-          - "Already absent: {{ _absent_count }}"
-          - "Skipped (pre-check said absent): {{ _skipped_count }}"
+        msg: "All {{ ansible_play_hosts | length }} VMs destroyed"
