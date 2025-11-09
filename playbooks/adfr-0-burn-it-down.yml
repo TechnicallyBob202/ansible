@@ -4,11 +4,6 @@
   connection: local
   gather_facts: false
 
-  # Match your previous working env var usage for credentials
-  vars:
-    proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
-
   tasks:
     - name: Display cleanup plan
       debug:
