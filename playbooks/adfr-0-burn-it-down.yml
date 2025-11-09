@@ -2,56 +2,32 @@
 - name: Cleanup All Lab VMs
   hosts: all
   connection: local
-  gather_facts: false
-  serial: 10
+  gather_facts: no
 
-  # Intentionally no proxmox_* vars here; we rely on group_vars/all.yml,
-  # which pulls proxmox_password from the PROXMOX_PASSWORD environment variable.
+  # Match your previous working env var usage for credentials
+  vars:
+    proxmox_user: root@pam
+    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
 
-  pre_tasks:
-    - name: Sanity check Proxmox credentials and host vars
-      run_once: true
-      assert:
-        that:
-          - proxmox_user is defined
-          - proxmox_password is defined
-          - (proxmox_password | length) > 0
-        fail_msg: "Proxmox credentials missing. Ensure PROXMOX_PASSWORD is set in the job environment and proxmox_user is defined in all.yml."
-
+  tasks:
     - name: Display cleanup plan
-      run_once: true
       debug:
         msg:
           - "WARNING: This will destroy {{ ansible_play_hosts | length }} VMs"
           - "Waiting 10 seconds... Press Ctrl+C to abort"
+      run_once: true
 
     - name: Wait before destruction
-      run_once: true
       pause:
         seconds: 10
+      run_once: true
 
-  tasks:
     - name: Stop and destroy VMs
       include_role:
         name: proxmox
         tasks_from: destroy.yml
 
-    # Accurate summary using per-host facts set by the role
-    - name: Compute destroyed and skipped counts
-      run_once: true
-      set_fact:
-        _destroyed_count: "{{ (ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('truthy') | list | length) | int }}"
-        _skipped_count: "{{ (ansible_play_hosts | map('extract', hostvars, 'host_skipped')   | select('truthy') | list | length) | int }}"
-
-    - name: Compute absent count
-      run_once: true
-      set_fact:
-        _absent_count: "{{ (ansible_play_hosts | length | int) - (_destroyed_count | int) - (_skipped_count | int) }}"
-
     - name: Cleanup summary
-      run_once: true
       debug:
-        msg:
-          - "Destroyed: {{ _destroyed_count }}"
-          - "Already absent: {{ _absent_count }}"
-          - "Skipped (pre-check said absent): {{ _skipped_count }}"
+        msg: "All {{ ansible_play_hosts | length }} VMs destroyed"
+      run_once: true
