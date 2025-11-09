@@ -35,23 +35,19 @@
   delay: 10
   until: dns_service.state == 'running'
 
-- name: Check for AD-integrated zone
+- name: Create AD-integrated zone
   ansible.windows.win_shell: |
     $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
-    if ($zone) { exit 0 } else { exit 1 }
-  register: zone_check
-  failed_when: false
-  changed_when: false
-  when: is_domain_controller
+    if ($zone) {
+      Write-Output "Zone exists"
+      exit 0
+    }
 
-- name: Create AD-integrated zone if missing
-  ansible.windows.win_shell: |
     Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain -PassThru | Out-Null
-    exit 0
-  when:
-    - is_domain_controller
-    - zone_check.rc != 0
+    Write-Output "Zone created"
+  when: is_domain_controller
   register: zone_create
+  changed_when: "'created' in zone_create.stdout"
 
 - name: Display DNS status
   debug:
