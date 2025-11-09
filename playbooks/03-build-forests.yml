@@ -12,7 +12,19 @@
           - "Total Duration: 20-30 minutes"
 
 # =============================================================================
-# PHASE 1: Install AD Features on Forest Root DCs
+# PHASE 1: Initialize (always snapshot)
+# =============================================================================
+- name: Initialize
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Set vm_changed to true (always snapshot)
+      set_fact:
+        vm_changed: true
+
+# =============================================================================
+# PHASE 2: Install AD Features on Forest Root DCs
 # =============================================================================
 - name: Install Active Directory Features
   hosts: d1_dcs:d2_parent_dcs
@@ -25,8 +37,9 @@
         tasks_from: install_ad_features.yml
       register: features_result
 
+
 # =============================================================================
-# PHASE 2: Configure DNS on Forest Root DCs
+# PHASE 3: Configure DNS on Forest Root DCs
 # =============================================================================
 - name: Set DNS to point to DC IPs
   hosts: d1_dcs:d2_parent_dcs
@@ -43,8 +56,9 @@
         tasks_from: set_dns.yml
       register: dns_result
 
+
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (parallel both forests)
+# PHASE 4: Promote Forest Root PDCs (parallel both forests)
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
@@ -81,7 +95,7 @@
         - dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs (parallel both forests)
+# PHASE 5: Promote Forest Root Replica DCs (parallel both forests)
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -127,7 +141,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 5: Final Validation
+# PHASE 6: Final Validation
 # =============================================================================
 - name: Final Validation
   hosts: d1_dcs:d2_parent_dcs
@@ -146,7 +160,7 @@
       when: is_domain_controller
 
 # =============================================================================
-# PHASE 6: Snapshots
+# PHASE 7: Snapshots
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: d1_dcs:d2_parent_dcs
