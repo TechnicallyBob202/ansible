@@ -6,7 +6,7 @@
 
   vars:
     proxmox_user: root@pam
-    proxmox_password: "{{ lookup('env', 'proxmox-root-password') }}"
+    proxmox_password: "{{ lookup('env', 'PROXMOX_PASSWORD') }}"
 
   tasks:
     - name: Display cleanup plan
@@ -26,11 +26,15 @@
         name: proxmox
         tasks_from: destroy.yml
 
-    - name: Compute summary
+    - name: Compute destroyed and skipped counts
       run_once: true
       set_fact:
-        _destroyed_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('truthy') | list | length }}"
-        _skipped_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_skipped') | select('truthy') | list | length }}"
+        _destroyed_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_destroyed') | select('equalto', true) | list | length }}"
+        _skipped_count: "{{ ansible_play_hosts | map('extract', hostvars, 'host_skipped')   | select('equalto', true) | list | length }}"
+
+    - name: Compute absent count
+      run_once: true
+      set_fact:
         _absent_count: "{{ ansible_play_hosts | length - _destroyed_count - _skipped_count }}"
 
     - name: Cleanup summary
