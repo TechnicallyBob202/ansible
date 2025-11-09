@@ -129,7 +129,7 @@
 - name: Configure Static IPs (Windows)
   hosts: all
   gather_facts: false
-  serial: 5
+  serial: 0
 
   tasks:
     - name: Set static IP
@@ -169,7 +169,7 @@
 - name: Configure DNS and Hostname (Windows)
   hosts: all
   gather_facts: false
-  serial: 5
+  serial: 0
 
   tasks:
     - name: Configure DNS servers
@@ -218,7 +218,7 @@
 - name: Reboot Windows Hosts
   hosts: all
   gather_facts: false
-  serial: 5
+  serial: 0
 
   tasks:
     - name: Reboot if needed
@@ -239,7 +239,7 @@
 - name: Validate Configuration (Windows)
   hosts: all
   gather_facts: false
-  serial: 5
+  serial: 0
 
   tasks:
     - name: Get network configuration
