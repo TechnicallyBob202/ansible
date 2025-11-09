@@ -1,0 +1,152 @@
+---
+- name: Revert Domain Controllers to After Forest Creation
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display revert plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Reverting to Stage 3 Snapshots"
+          - "========================================="
+          - ""
+          - "This will revert to state AFTER forests built,"
+          - "but BEFORE child domain promotion:"
+          - "  Snapshot: stage3-forest-roots-promoted"
+          - ""
+          - "Domain Controllers to revert:"
+          - "  D1: D1-DC01, D1-DC02 (both replicas)"
+          - "  D2: D2-DC01, D2-DC02 (both replicas)"
+          - ""
+          - "Child domains will be REVERTED:"
+          - "  D21: D21-DC01, D21-DC02"
+          - "  D22: D22-DC01, D22-DC02"
+          - ""
+          - "Waiting 10 seconds... Press Ctrl+C to abort"
+
+    - name: Wait before reverting
+      pause:
+        seconds: 10
+
+# =============================================================================
+# PHASE 1: Stop All Domain Controllers
+# =============================================================================
+- name: Stop All Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Stop VM before revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: stopped
+        force: yes
+      delegate_to: localhost
+      register: stop_result
+
+    - name: Display stop result
+      debug:
+        msg: "{{ inventory_hostname }} - stopped"
+
+# =============================================================================
+# PHASE 2: Revert Forest Root DCs to Stage 3
+# =============================================================================
+- name: Revert Forest Root DCs to Stage 3
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Revert snapshot
+      shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm rollback {{ vmid }} stage3-forest-roots-promoted"
+      delegate_to: localhost
+      register: rollback_result
+
+    - name: Display rollback result
+      debug:
+        msg: "{{ inventory_hostname }} - reverted to stage3-forest-roots-promoted snapshot"
+
+# =============================================================================
+# PHASE 3: Revert Child Domain DCs to Stage 2
+# =============================================================================
+- name: Revert Child Domain DCs to Stage 2
+  hosts: d21_child_dcs:d22_child_dcs
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Revert snapshot
+      shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm rollback {{ vmid }} stage2-base-configured"
+      delegate_to: localhost
+      register: rollback_result
+
+    - name: Display rollback result
+      debug:
+        msg: "{{ inventory_hostname }} - reverted to stage2-base-configured snapshot"
+
+# =============================================================================
+# PHASE 4: Start All Domain Controllers
+# =============================================================================
+- name: Start All Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Start VM after revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: started
+      delegate_to: localhost
+      register: start_result
+
+    - name: Display start result
+      debug:
+        msg: "{{ inventory_hostname }} - started"
+
+# =============================================================================
+# PHASE 5: Summary
+# =============================================================================
+- name: Display Summary
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Revert Complete"
+          - "========================================="
+          - ""
+          - "Forest Root DCs reverted to:"
+          - "  stage3-forest-roots-promoted (fully promoted)"
+          - ""
+          - "Child Domain DCs reverted to:"
+          - "  stage2-base-configured (before promotion)"
+          - ""
+          - "VMs are starting up now. Wait 2-3 minutes"
+          - "before running Stage 4 (Build Child Domains)"
+          - ""
+          - "Next: Run playbooks/adfr-4-build-child-domains.yml"
