@@ -4,33 +4,39 @@
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-- name: Wait for PDC ADWS to be available
-  ansible.windows.win_service:
-    name: ADWS
-    state: started
-  register: pdc_adws
-  retries: 30
-  delay: 10
-  until: pdc_adws.state == 'running'
-  delegate_to: "{{ hostvars[groups[group_names[0]][0]].ansible_host }}"
+- name: Wait for PDC to be fully operational
+  ansible.windows.win_shell: |
+    Test-ComputerSecureChannel -Server {{ hostvars[groups[group_names[0]][0]].inventory_hostname }} -ErrorAction Stop
+    Write-Output "OK"
+  register: pdc_test
+  retries: 20
+  delay: 30
+  until: pdc_test.rc == 0
+  failed_when: false
   when: not is_domain_controller
 
 - name: Promote to replica DC
-  ansible.windows.win_shell: |
-    $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    $domainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-
-    Install-ADDSDomainController -DomainName "{{ domain_name }}" -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $domainCred -Force
-  when:
-    - not is_domain_controller
-    - pdc_adws.state == 'running'
+  microsoft.ad.domain_controller:
+    dns_domain_name: "{{ domain_name }}"
+    domain_admin_user: "{{ netbios_name }}\\Administrator"
+    domain_admin_password: "{{ ad_safe_mode_password }}"
+    safe_mode_password: "{{ ad_safe_mode_password }}"
+    database_path: "{{ ad_database_path }}"
+    sysvol_path: "{{ ad_sysvol_path }}"
+    log_path: "{{ ad_log_path }}"
+    install_dns: "{{ ad_install_dns }}"
+    state: domain_controller
+    reboot: yes
+  when: not is_domain_controller
   register: replica_promotion
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
 
-- name: Wait for reboot to complete
+- name: Wait for replica to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: replica_promotion.rc == 0
+  when: replica_promotion.changed
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
@@ -40,10 +46,10 @@
   retries: 10
   delay: 30
   until: adws_service.state == 'running'
-  when: replica_promotion.rc == 0
+  when: replica_promotion.changed
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Replica DC promoted"
+      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"

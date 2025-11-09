@@ -77,7 +77,7 @@
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
-      run_once: yes
+      run_once: true
 
 # =============================================================================
 # PHASE 8: Promote Child Domain PDCs

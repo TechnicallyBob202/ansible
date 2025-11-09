@@ -1,51 +1,75 @@
 ---
-# Promote server to child domain PDC
+# Promote server to first DC in child domain
 
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
 - name: Promote to child domain PDC
   ansible.windows.win_shell: |
-    $safeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    $parentCred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
+    $ErrorActionPreference = "Stop"
+    $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
+    $ParentCred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", $SecurePassword)
 
-    Install-ADDSDomain -NewDomainName "{{ domain_name.split('.')[0] }}" -ParentDomainName "{{ parent_domain }}" -DomainType ChildDomain -InstallDns -DatabasePath "{{ ad_database_path }}" -SysvolPath "{{ ad_sysvol_path }}" -LogPath "{{ ad_log_path }}" -SafeModeAdministratorPassword $safeModePassword -Credential $parentCred -Force
-  when: not is_domain_controller
+    Install-ADDSDomain `
+      -NewDomainName "{{ domain_name.split('.')[0] }}" `
+      -ParentDomainName "{{ parent_domain }}" `
+      -SafeModeAdministratorPassword $SecurePassword `
+      -Credential $ParentCred `
+      -InstallDNS:${{ ad_install_dns | ternary('true', 'false') }} `
+      -DatabasePath "{{ ad_database_path }}" `
+      -SysvolPath "{{ ad_sysvol_path }}" `
+      -LogPath "{{ ad_log_path }}" `
+      -Force `
+      -NoRebootOnCompletion:$false
+  when: not is_domain_controller and not domain_exists
   register: child_promotion
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
 
-- name: Wait for reboot to complete
+- name: Wait for child domain DC to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
-    delay: 60
-  when: child_promotion.rc == 0
+    delay: 90
+  when: child_promotion.changed
 
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
     name: ADWS
     state: started
   register: adws_service
-  retries: 10
+  retries: 15
   delay: 30
   until: adws_service.state == 'running'
-  when: child_promotion.rc == 0
+  when: child_promotion.changed
 
-- name: Create AD-integrated DNS zone
+- name: Get new domain SID
   ansible.windows.win_shell: |
-    $zone = Get-DnsServerZone -Name "{{ domain_name }}" -ErrorAction SilentlyContinue
-    if ($zone) {
-      Write-Output "Zone already exists"
-      exit 0
-    }
+    Start-Sleep -Seconds 30
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: new_domain_sid
+  retries: 5
+  delay: 30
+  until: new_domain_sid.rc == 0
+  when: child_promotion.changed
 
-    Add-DnsServerPrimaryZone -Name "{{ domain_name }}" -ReplicationScope Domain
-    Write-Output "Zone created"
-  when: child_promotion.rc == 0
-  register: zone_result
+- name: Update domain SID fact
+  set_fact:
+    domain_sid: "{{ new_domain_sid.stdout | trim }}"
+  when: child_promotion.changed
+
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ domain_sid }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when: child_promotion.changed
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Child Domain PDC promoted"
+      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if child_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
-      - "  DNS Zone: {{ 'created' if 'created' in zone_result.stdout else 'exists' }}"
+      - "  NetBIOS: {{ netbios_name }}"
+      - "  SID: {{ domain_sid }}"
