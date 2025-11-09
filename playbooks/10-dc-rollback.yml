@@ -1,0 +1,118 @@
+---
+- name: Revert Domain Controllers to Stage 2 Snapshot
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display revert plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Reverting to Stage 2 Snapshots"
+          - "========================================="
+          - ""
+          - "This will revert all domain controllers to:"
+          - "  Snapshot: stage2-base-configured"
+          - ""
+          - "Waiting 10 seconds... Press Ctrl+C to abort"
+
+    - name: Wait before reverting
+      pause:
+        seconds: 10
+
+# =============================================================================
+# PHASE 1: Stop Domain Controllers
+# =============================================================================
+- name: Stop Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Stop VM before revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: stopped
+        force: yes
+      delegate_to: localhost
+      register: stop_result
+
+    - name: Display stop result
+      debug:
+        msg: "{{ inventory_hostname }} - stopped"
+
+# =============================================================================
+# PHASE 2: Revert to Stage 2 Snapshot
+# =============================================================================
+- name: Revert to Stage 2 Snapshot
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Revert snapshot
+      shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm rollback {{ vmid }} stage2-base-configured"
+      delegate_to: localhost
+      register: rollback_result
+
+    - name: Display rollback result
+      debug:
+        msg: "{{ inventory_hostname }} - reverted to stage2-base-configured snapshot"
+
+# =============================================================================
+# PHASE 3: Start Domain Controllers
+# =============================================================================
+- name: Start Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Start VM after revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: started
+      delegate_to: localhost
+      register: start_result
+
+    - name: Display start result
+      debug:
+        msg: "{{ inventory_hostname }} - started"
+
+# =============================================================================
+# PHASE 4: Summary
+# =============================================================================
+- name: Display Summary
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Revert Complete"
+          - "========================================="
+          - ""
+          - "All domain controllers have been reverted"
+          - "to the stage2-base-configured snapshot"
+          - ""
+          - "VMs are starting up now. Wait 2-3 minutes"
+          - "before running Stage 3 (Build Forests)"
+          - ""
+          - "Next: Run playbooks/adfr-3-build-forests.yml"
