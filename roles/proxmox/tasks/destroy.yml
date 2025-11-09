@@ -24,13 +24,13 @@
     node: "{{ proxmox_node }}"
     state: stopped
     force: yes
-  when: vm_exists.status is defined
+  when: vm_exists.failed == false
   ignore_errors: true
 
 - name: Wait for VM to stop
   pause:
     seconds: 5
-  when: vm_exists.status is defined
+  when: vm_exists.failed == false
 
 - name: Destroy VM
   community.general.proxmox_kvm:
@@ -41,9 +41,9 @@
     vmid: "{{ vmid }}"
     node: "{{ proxmox_node }}"
     state: absent
-  when: vm_exists.status is defined
+  when: vm_exists.failed == false
   register: destroy_result
 
 - name: Display destruction result
   debug:
-    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'destroyed' if destroy_result.changed else 'did not exist' }}"
+    msg: "VM {{ inventory_hostname }} ({{ vmid }}) - {{ 'destroyed' if destroy_result.changed | default(false) else 'did not exist or was not destroyed' }}"
