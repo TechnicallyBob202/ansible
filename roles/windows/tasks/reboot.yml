@@ -10,12 +10,10 @@
   register: reboot_result
 
 - name: Wait for WinRM to be available
-  wait_for:
-    host: "{{ ansible_host }}"
-    port: 5985
+  wait_for_connection:
     timeout: 1200
     delay: 30
-  delegate_to: localhost
+  retries: 40
 
 - name: Verify system is responsive
   ansible.windows.win_ping:
