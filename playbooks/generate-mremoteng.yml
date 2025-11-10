@@ -23,6 +23,9 @@
     - name: Generate mRemoteNG
       include_tasks: ../roles/utility/tasks/generate_mremoteng.yml
 
+    - name: Commit and push to git
+      include_tasks: ../roles/utility/tasks/git_commit_docs.yml
+
     - name: Display completion
       debug:
         msg:
@@ -31,4 +34,4 @@
           - "  mRemoteNG Generation Complete"
           - "========================================="
           - ""
-          - "Configuration file(s) generated and ready for use"
+          - "Configuration file(s) generated, committed, and pushed"
