@@ -109,6 +109,27 @@
       when: dc_role == 'replica'
 
 # =============================================================================
+# PHASE 5B: Force Replication in Forest Roots
+# =============================================================================
+- name: Force Replication in Forest Roots
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Force replication after forest root replicas promoted
+      ansible.windows.win_shell: |
+        $domain = "{{ domain_name }}"
+        repadmin /replicate * $domain /force
+        Start-Sleep -Seconds 5
+        repadmin /showrepl
+      when: dc_role == 'replica'
+      changed_when: false
+      register: repl_force
+      retries: 3
+      delay: 10
+      until: repl_force.rc == 0
+
+# =============================================================================
 # PHASE 6: Final Validation (once per domain)
 # =============================================================================
 - name: Final Validation - Forest Readiness
