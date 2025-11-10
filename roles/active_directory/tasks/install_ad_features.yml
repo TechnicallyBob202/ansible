@@ -1,6 +1,16 @@
 ---
 # Install Active Directory Domain Services and management tools
 
+- name: Set ad_features if not defined
+  set_fact:
+    ad_features:
+      - AD-Domain-Services
+      - RSAT-AD-Tools
+      - RSAT-AD-PowerShell
+      - RSAT-ADDS
+      - RSAT-AD-AdminCenter
+  when: ad_features is not defined
+
 - name: Check if AD features are already installed
   ansible.windows.win_feature:
     name: "{{ ad_features }}"
