@@ -9,11 +9,11 @@
     pre_reboot_delay: 5
   register: reboot_result
 
-- name: Wait for WinRM to be available
+- name: Wait for system to be reachable
   wait_for_connection:
+    connect_timeout: 30
+    sleep: 30
     timeout: 1200
-    delay: 30
-  retries: 40
 
 - name: Verify system is responsive
   ansible.windows.win_ping:
