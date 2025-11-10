@@ -293,23 +293,26 @@
 # =============================================================================
 # PHASE 8: Reboot Windows Hosts
 # =============================================================================
-- name: Reboot Windows Hosts
+- name: Check if reboot is necessary
   hosts: all
   gather_facts: false
   serial: 0
-
   tasks:
-    - name: Reboot if needed
+    - name: Check for pending reboots
       include_role:
         name: windows
-      vars:
-        windows_operation: reboot
-      when: reboot_required | default(false)
-      register: reboot_result
+        tasks_from: check_reboot_needed.yml
 
-    - name: Mark VM as changed if rebooted
-      set_fact:
-        vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
+- name: Reboot only if necessary
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Reboot to clear pending state if needed
+      ansible.windows.win_reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 30
+      when: reboot_needed
 
 # =============================================================================
 # PHASE 9: Validation
