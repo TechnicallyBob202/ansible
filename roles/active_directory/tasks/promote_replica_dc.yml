@@ -140,4 +140,4 @@
     msg:
       - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
-      - "  Secure Channel: {{ 'OK' if post_reboot_channel.rc == 0 else 'WARNING' }}"
+      - "  Secure Channel: {{ 'OK' if (post_reboot_channel.rc | default(1)) == 0 else 'N/A' }}"
