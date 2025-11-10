@@ -188,22 +188,10 @@
 
   tasks:
     - name: Set static IP
-      include_role:
-        name: windows
-      vars:
-        windows_operation: set_static_ip
+      include_tasks: ../roles/windows/tasks/set_static_ip.yml
       register: ip_result
 
-    - name: Abort if IP configuration failed
-      fail:
-        msg: |
-          CRITICAL: Failed to configure static IP for {{ inventory_hostname }}
-          Error: {{ ip_result.msg | default('Unknown error') }}
-      when:
-        - ip_result is defined
-        - ip_result.failed | default(false)
-
-    - name: Mark VM as changed if IP was configured
+    - name: Consolidate IP changes
       set_fact:
         vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
 
@@ -243,41 +231,16 @@
 
   tasks:
     - name: Configure DNS servers
-      include_role:
-        name: windows
-      vars:
-        windows_operation: set_dns
+      include_tasks: ../roles/windows/tasks/set_dns.yml
       register: dns_result
-
-    - name: Abort if DNS configuration failed
-      fail:
-        msg: |
-          CRITICAL: Failed to configure DNS for {{ inventory_hostname }}
-          Error: {{ dns_result.msg | default('Unknown error') }}
-      when:
-        - dns_result is defined
-        - dns_result.failed | default(false)
-
-    - name: Mark VM as changed if DNS was configured
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
     - name: Set hostname
       include_tasks: ../roles/windows/tasks/set_hostname.yml
       register: hostname_result
 
-    - name: Abort if hostname configuration failed
-      fail:
-        msg: |
-          CRITICAL: Failed to set hostname for {{ inventory_hostname }}
-          Error: {{ hostname_result.msg | default('Unknown error') }}
-      when:
-        - hostname_result is defined
-        - hostname_result.failed | default(false)
-
-    - name: Mark VM as changed if hostname was set
+    - name: Consolidate DNS and hostname changes
       set_fact:
-        vm_changed: "{{ vm_changed or (hostname_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
 
 # =============================================================================
 # PHASE 7: Install AD-DS Features on Domain Controllers
@@ -289,12 +252,10 @@
 
   tasks:
     - name: Install Active Directory Domain Services features
-      include_role:
-        name: active_directory
-        tasks_from: install_ad_features.yml
+      include_tasks: ../roles/active_directory/tasks/install_ad_features.yml
       register: adds_install_result
 
-    - name: Mark VM as changed if AD-DS features were installed
+    - name: Consolidate AD-DS changes
       set_fact:
         vm_changed: "{{ vm_changed or (adds_install_result.changed | default(false)) }}"
 
@@ -403,10 +364,10 @@
           - "appropriate mRemoteNG connection file..."
 
     - name: Generate mRemoteNG
-      include_tasks: tasks/generate_mremoteng.yml
+      include_tasks: ../roles/utility/tasks/generate_mremoteng.yml
 
     - name: Commit mRemoteNG to git
-      include_tasks: tasks/git_commit_docs.yml
+      include_tasks: ../roles/utility/tasks/git_commit_docs.yml
 
 # =============================================================================
 # PHASE 12: Summary (moved from Phase 11)
