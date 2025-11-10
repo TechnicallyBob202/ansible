@@ -147,7 +147,7 @@
 - name: Promote Child Domain Replica DCs
   hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
-  serial: 1
+  serial: 0
   tasks:
     - name: Check domain status
       include_role:
@@ -178,7 +178,7 @@
 - name: Final Validation - Child Domains Operational
   hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
-  serial: 1
+  serial: 0
   tasks:
     - name: Wait for DC to be fully operational
       include_role:
