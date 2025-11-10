@@ -10,7 +10,7 @@
     } | ConvertTo-Json
   register: forest_fsmo
   changed_when: false
-  run_once: yes
+  run_once: true
 
 - name: Get domain-wide FSMO roles
   ansible.windows.win_shell: |

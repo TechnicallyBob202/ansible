@@ -1,0 +1,42 @@
+---
+# Check if system has pending reboots
+
+- name: Check for pending reboots
+  ansible.windows.win_shell: |
+    $pendingReboot = $false
+
+    # Check registry for pending reboots
+    $rebootPending = @(
+      'HKLM:\System\CurrentControlSet\Control\Session Manager',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update',
+      'HKLM:\System\CurrentControlSet\Services\Netlogon'
+    )
+
+    foreach ($path in $rebootPending) {
+      if (Test-Path $path) {
+        $reg = Get-ItemProperty -Path $path -ErrorAction SilentlyContinue
+        if ($reg.PSObject.Properties.Name -contains 'PendingFileRenameOperations') {
+          $pendingReboot = $true
+          break
+        }
+      }
+    }
+
+    if (Test-Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce') {
+      $runonce = Get-ItemProperty -Path 'HKLM:\Software\Microsoft\Windows\CurrentVersion\RunOnce' -ErrorAction SilentlyContinue
+      if ($runonce.PSObject.Properties.Count -gt 0) {
+        $pendingReboot = $true
+      }
+    }
+
+    if ($pendingReboot) {
+      Write-Output "REBOOT_PENDING"
+    } else {
+      Write-Output "NO_REBOOT"
+    }
+  register: reboot_check
+  changed_when: false
+
+- name: Set reboot_needed flag
+  set_fact:
+    reboot_needed: "{{ 'REBOOT_PENDING' in reboot_check.stdout }}"
