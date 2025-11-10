@@ -160,8 +160,13 @@
   tasks:
     - name: Collect initially unreachable hosts
       set_fact:
-        unreachable_hosts: "{{ groups['all'] | select('in', hostvars) | select(lambda x: hostvars[x].ping_result.failed | default(false)) | list }}"
-        retry_attempt: 0
+        unreachable_hosts: []
+
+    - name: Build unreachable hosts list
+      set_fact:
+        unreachable_hosts: "{{ unreachable_hosts + [item] }}"
+      loop: "{{ groups['all'] }}"
+      when: hostvars[item].ping_result.failed | default(false)
 
     - name: Display initial status
       debug:
@@ -172,110 +177,6 @@
             {% if unreachable_hosts | length > 0 %}
             Retrying: {{ unreachable_hosts | join(', ') }}
             {% endif %}
-
-# =============================================================================
-# PHASE 3c: Retry loop for unreachable hosts (up to 5 minutes)
-# =============================================================================
-- name: Retry Unreachable Hosts (loop until all reachable or 5 min timeout)
-  hosts: all
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Retry WinRM if initially failed
-      block:
-        - name: Wait 1 minute before retry
-          pause:
-            seconds: 60
-          when:
-            - hostvars['localhost'].unreachable_hosts is defined
-            - inventory_hostname in hostvars['localhost'].unreachable_hosts
-
-        - name: Retry WinRM connectivity
-          ansible.windows.win_ping:
-          retries: 10
-          delay: 5
-          until: retry_ping is succeeded
-          register: retry_ping
-          ignore_errors: true
-          when:
-            - hostvars['localhost'].unreachable_hosts is defined
-            - inventory_hostname in hostvars['localhost'].unreachable_hosts
-
-        - name: Update ping_result if retry succeeded
-          set_fact:
-            ping_result: "{{ retry_ping }}"
-          when:
-            - hostvars['localhost'].unreachable_hosts is defined
-            - inventory_hostname in hostvars['localhost'].unreachable_hosts
-            - retry_ping is defined
-
-        - name: Show retry result
-          debug:
-            msg: "{{ inventory_hostname }}: {{ 'NOW REACHABLE ✓' if (ping_result.failed | default(false)) == false else 'still unreachable' }}"
-          when:
-            - hostvars['localhost'].unreachable_hosts is defined
-            - inventory_hostname in hostvars['localhost'].unreachable_hosts
-
-      ignore_errors: true
-
-    - name: Retry round 2 (if still failed)
-      block:
-        - name: Wait 1 minute before round 2
-          pause:
-            seconds: 60
-
-        - name: Retry WinRM round 2
-          ansible.windows.win_ping:
-          retries: 10
-          delay: 5
-          until: retry_ping_2 is succeeded
-          register: retry_ping_2
-          ignore_errors: true
-
-        - name: Update ping_result if round 2 succeeded
-          set_fact:
-            ping_result: "{{ retry_ping_2}}"
-          when: retry_ping_2 is defined
-
-        - name: Show round 2 result
-          debug:
-            msg: "{{ inventory_hostname }}: {{ 'NOW REACHABLE ✓' if (ping_result.failed | default(false)) == false else 'still unreachable' }}"
-
-      when:
-        - hostvars['localhost'].unreachable_hosts is defined
-        - inventory_hostname in hostvars['localhost'].unreachable_hosts
-        - ping_result.failed | default(false)
-      ignore_errors: true
-
-    - name: Retry round 3 (final attempt)
-      block:
-        - name: Wait 1 minute before final attempt
-          pause:
-            seconds: 60
-
-        - name: Retry WinRM final
-          ansible.windows.win_ping:
-          retries: 10
-          delay: 5
-          until: retry_ping_3 is succeeded
-          register: retry_ping_3
-          ignore_errors: true
-
-        - name: Update ping_result if final retry succeeded
-          set_fact:
-            ping_result: "{{ retry_ping_3 }}"
-          when: retry_ping_3 is defined
-
-        - name: Show final result
-          debug:
-            msg: "{{ inventory_hostname }}: {{ 'NOW REACHABLE ✓' if (ping_result.failed | default(false)) == false else 'STILL UNREACHABLE' }}"
-
-      when:
-        - hostvars['localhost'].unreachable_hosts is defined
-        - inventory_hostname in hostvars['localhost'].unreachable_hosts
-        - ping_result.failed | default(false)
-      ignore_errors: true
 
 # =============================================================================
 # PHASE 4: Configure Static IPs (Windows)
