@@ -7,11 +7,10 @@
     is_dsp_inventory: "{{ 'dsp_infrastructure' in groups }}"
   delegate_to: localhost
 
-- name: Set project paths
+- name: Set project paths (from utility role)
   set_fact:
-    project_root: "{{ playbook_dir | dirname | dirname }}"
-    templates_dir: "{{ playbook_dir | dirname | dirname }}/templates"
-    files_dir: "{{ playbook_dir | dirname | dirname }}/files"
+    templates_dir: "{{ role_path }}/../../../templates"
+    files_dir: "{{ role_path }}/../../../files"
   delegate_to: localhost
 
 - name: Generate ADFR mRemoteNG (ADFR inventory detected)
