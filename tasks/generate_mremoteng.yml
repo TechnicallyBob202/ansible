@@ -1,105 +1,148 @@
 ---
-# Build lab_design from inventory
-- name: Seed lists
-  set_fact:
-    infrastructure_list: []
-    arbor_list: []
-    alpine_list: []
-    recovery_list: []
+# Generate mRemoteNG configuration - auto-detects ADFR vs DSP inventory
 
-- name: Collect Infrastructure VMs
+- name: Detect inventory type
   set_fact:
-    infrastructure_list: >-
-      {{ infrastructure_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': '' }
-        ] }}
-  loop: "{{ groups['infrastructure'] | default([]) }}"
+    is_adfr_inventory: "{{ 'adfr_infrastructure' in groups }}"
+    is_dsp_inventory: "{{ 'dsp_infrastructure' in groups }}"
+  delegate_to: localhost
 
-- name: Collect Arbor Forest root DCs
-  set_fact:
-    arbor_list: >-
-      {{ arbor_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': 'arbor.lab' }
-        ] }}
-  loop: >-
-    {{
-      (groups['arbor_forest_root_pdc'] | default([]))
-      + (groups['arbor_forest_root_replica'] | default([]))
-    }}
+- name: Generate ADFR mRemoteNG (ADFR inventory detected)
+  block:
+    - name: Build ADFR lab_design from inventory
+      set_fact:
+        lab_design:
+          adfr_infrastructure: >-
+            {{
+              groups.get('adfr_infrastructure', [])
+              | map('extract', hostvars)
+              | map(attribute='inventory_hostname')
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.role | default('')
+                })
+              | list
+            }}
+          adfr_recovery: >-
+            {{
+              groups.get('adfr_recovery', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.role | default('')
+                })
+              | list
+            }}
+          d1_dcs: >-
+            {{
+              groups.get('d1_dcs', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.dc_role | default('')
+                })
+              | list
+            }}
+          d2_parent_dcs: >-
+            {{
+              groups.get('d2_parent_dcs', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.dc_role | default('')
+                })
+              | list
+            }}
+          d21_child_dcs: >-
+            {{
+              groups.get('d21_child_dcs', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.dc_role | default('')
+                })
+              | list
+            }}
+          d22_child_dcs: >-
+            {{
+              groups.get('d22_child_dcs', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.dc_role | default('')
+                })
+              | list
+            }}
+      delegate_to: localhost
 
-- name: Collect Alpine Forest root DCs
-  set_fact:
-    alpine_list: >-
-      {{ alpine_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': 'alpine.lab' }
-        ] }}
-  loop: >-
-    {{
-      (groups['alpine_forest_root_pdc'] | default([]))
-      + (groups['alpine_forest_root_replica'] | default([]))
-    }}
+    - name: Generate ADFR mRemoteNG XML
+      template:
+        src: "{{ playbook_dir }}/../templates/adfr-mremoteng.xml.j2"
+        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        mode: '0644'
+      delegate_to: localhost
 
-- name: Collect MAUNA child DCs
-  set_fact:
-    alpine_list: >-
-      {{ alpine_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': 'mauna.alpine.lab' }
-        ] }}
-  loop: >-
-    {{
-      (groups['mauna_child_pdc'] | default([]))
-      + (groups['mauna_child_replica'] | default([]))
-    }}
+    - name: Display ADFR generation result
+      debug:
+        msg: "Generated ADFR mRemoteNG: files/adfr-lab-mremoteng.xml"
+      delegate_to: localhost
 
-- name: Collect RAINIER child DCs
-  set_fact:
-    alpine_list: >-
-      {{ alpine_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': 'rainier.alpine.lab' }
-        ] }}
-  loop: >-
-    {{
-      (groups['rainier_child_pdc'] | default([]))
-      + (groups['rainier_child_replica'] | default([]))
-    }}
+  when: is_adfr_inventory
 
-- name: Collect Recovery VMs
-  set_fact:
-    recovery_list: >-
-      {{ recovery_list + [
-          { 'hostname': item,
-            'ip': (hostvars[item].ansible_host | default(item)),
-            'role': (hostvars[item].role | default('')),
-            'domain': '' }
-        ] }}
-  loop: "{{ groups['recovery_vms'] | default([]) }}"
+- name: Generate DSP mRemoteNG (DSP inventory detected)
+  block:
+    - name: Build DSP lab_design from inventory
+      set_fact:
+        lab_design:
+          dsp_infrastructure: >-
+            {{
+              groups.get('dsp_infrastructure', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.role | default('')
+                })
+              | list
+            }}
+          d3_dcs: >-
+            {{
+              groups.get('d3_dcs', [])
+              | map('extract', hostvars)
+              | list
+              | map(lambda x: {
+                  'hostname': x.inventory_hostname,
+                  'ip': x.ansible_host | default(x.inventory_hostname),
+                  'role': x.dc_role | default('')
+                })
+              | list
+            }}
+      delegate_to: localhost
 
-- name: Build lab_design dict
-  set_fact:
-    lab_design:
-      infrastructure: "{{ infrastructure_list | sort(attribute='hostname') }}"
-      arbor_forest:   "{{ arbor_list | sort(attribute='hostname') }}"
-      alpine_forest:  "{{ alpine_list | sort(attribute='hostname') }}"
-      recovery_vms:   "{{ recovery_list | sort(attribute='hostname') }}"
+    - name: Generate DSP mRemoteNG XML
+      template:
+        src: "{{ playbook_dir }}/../templates/dsp-mremoteng.xml.j2"
+        dest: "{{ playbook_dir }}/../files/dsp-lab-mremoteng.xml"
+        mode: '0644'
+      delegate_to: localhost
 
-# Generate mRemoteNG XML configuration
-- name: Generate mRemoteNG config (template)
-  template:
-    src: "{{ playbook_dir }}/../templates/mremoteng.xml.j2"
-    dest: "{{ playbook_dir }}/../files/semperis-lab-mremoteng.xml"
-    mode: '0644'
+    - name: Display DSP generation result
+      debug:
+        msg: "Generated DSP mRemoteNG: files/dsp-lab-mremoteng.xml"
+      delegate_to: localhost
+
+  when: is_dsp_inventory

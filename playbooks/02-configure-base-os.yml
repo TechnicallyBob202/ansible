@@ -263,10 +263,7 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
     - name: Set hostname
-      include_role:
-        name: windows
-      vars:
-        windows_operation: set_hostname
+      include_tasks: ../roles/windows/tasks/set_hostname.yml
       register: hostname_result
 
     - name: Abort if hostname configuration failed
@@ -387,7 +384,32 @@
       when: vm_changed
 
 # =============================================================================
-# PHASE 11: Summary
+# PHASE 11: Generate mRemoteNG Configuration
+# =============================================================================
+- name: Generate mRemoteNG Configuration
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display mRemoteNG generation plan
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Generating mRemoteNG Configuration"
+          - "========================================="
+          - ""
+          - "Detecting inventory type and generating"
+          - "appropriate mRemoteNG connection file..."
+
+    - name: Generate mRemoteNG
+      include_tasks: tasks/generate_mremoteng.yml
+
+    - name: Commit mRemoteNG to git
+      include_tasks: tasks/git_commit_docs.yml
+
+# =============================================================================
+# PHASE 12: Summary (moved from Phase 11)
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -412,5 +434,6 @@
           - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
           - ""
           - "✓ AD-DS features installed on all domain controllers"
+          - "✓ mRemoteNG configuration generated and committed to git"
           - ""
           - "Next: Run playbooks/03-build-forests.yml to build AD forests"

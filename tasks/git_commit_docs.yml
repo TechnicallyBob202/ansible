@@ -1,41 +1,63 @@
 ---
 # Commit documentation files to git repository
+
 - name: Check if git repository exists
   stat:
     path: "{{ playbook_dir }}/../.git"
   register: git_repo
 
-- name: Add all documentation files to git
+- name: Check which mRemoteNG files exist
+  stat:
+    path: "{{ playbook_dir }}/../files/{{ item }}"
+  register: mremoteng_files
+  loop:
+    - adfr-lab-mremoteng.xml
+    - dsp-lab-mremoteng.xml
+
+- name: Build list of files to commit
+  set_fact:
+    files_to_commit: "{{ mremoteng_files.results | selectattr('stat.exists', 'equalto', true) | map(attribute='item') | map('regex_replace', '^', 'files/') | list }}"
+  delegate_to: localhost
+
+- name: Add mRemoteNG files to git
   shell: |
     cd {{ playbook_dir }}/..
-    git add files/forest-domain-sids.txt files/semperis-lab-mremoteng.xml
-  when: git_repo.stat.exists
+    git add {{ files_to_commit | join(' ') }}
+  when:
+    - git_repo.stat.exists
+    - files_to_commit | length > 0
+  delegate_to: localhost
 
-- name: Commit documentation files
+- name: Commit mRemoteNG files
   shell: |
     cd {{ playbook_dir }}/..
     git config user.email "ansible@semperis.lab" || true
     git config user.name "Ansible Automation" || true
-    git commit -m "Update lab documentation - {{ ansible_date_time.iso8601 }}" files/ || echo "No changes to commit"
-  when: git_repo.stat.exists
+    git commit -m "Update mRemoteNG configuration - {{ ansible_date_time.iso8601 }}" {{ files_to_commit | join(' ') }} || echo "No changes to commit"
+  when:
+    - git_repo.stat.exists
+    - files_to_commit | length > 0
   register: git_commit
   changed_when: "'No changes to commit' not in git_commit.stdout"
+  delegate_to: localhost
 
-- name: Push documentation to git
+- name: Push mRemoteNG files to git
   shell: |
     cd {{ playbook_dir }}/..
     git push origin main || git push origin master || echo "Push failed - check remote configuration"
   when:
     - git_repo.stat.exists
-    - git_commit.changed
+    - git_commit.changed | default(false)
   register: git_push
   ignore_errors: true
+  delegate_to: localhost
 
 - name: Display git status
   debug:
     msg:
-      - "Documentation files committed to git:"
-      - "  - files/forest-domain-sids.txt"
-      - "  - files/semperis-lab-mremoteng.xml"
-      - "Git commit: {{ 'Updated' if git_commit.changed else 'No changes' }}"
-      - "Git push: {{ 'Success' if git_push is succeeded else 'Failed or skipped' }}"
+      - "mRemoteNG files committed to git:"
+      - "{{ files_to_commit | to_nice_yaml }}"
+      - "Git commit: {{ 'Updated' if (git_commit.changed | default(false)) else 'No changes' }}"
+      - "Git push: {{ 'Success' if (git_push is succeeded) else 'Failed or skipped' }}"
+  delegate_to: localhost
+  when: files_to_commit | length > 0
