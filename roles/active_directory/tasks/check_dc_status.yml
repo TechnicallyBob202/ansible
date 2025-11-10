@@ -1,0 +1,272 @@
+---
+# Comprehensive DC status check: idempotency, operational readiness, replication health, FSMO roles
+# Sets facts and returns clear pass/fail
+
+# 1) Is AD DS feature installed? (informational)
+- name: Check if AD Domain Services feature is present (check-mode)
+  ansible.windows.win_feature:
+    name: AD-Domain-Services
+    state: present
+  check_mode: yes
+  register: adds_installed
+  changed_when: false
+  failed_when: false
+
+# 2) Is this machine ACTUALLY a DC?
+- name: Check if system is a domain controller
+  ansible.windows.win_shell: |
+    $CS = Get-WmiObject Win32_ComputerSystem
+    if ($CS.DomainRole -lt 4) {
+      Write-Output "NOT_DC: DomainRole=$($CS.DomainRole)"
+      exit 1
+    }
+    $NTDS = Get-Service -Name NTDS -ErrorAction SilentlyContinue
+    if (-not $NTDS) {
+      Write-Output "NOT_DC: NTDS service not found"
+      exit 1
+    }
+    if ($NTDS.Status -ne 'Running') {
+      Write-Output "NOT_DC: NTDS service not running (Status=$($NTDS.Status))"
+      exit 1
+    }
+    Write-Output "IS_DC: DomainRole=$($CS.DomainRole), NTDS=Running"
+    exit 0
+  register: is_dc_check
+  failed_when: false
+  changed_when: false
+
+# 3) Wait for critical services (reduces false negatives right after promotion)
+- name: Wait for Active Directory Web Services
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_service
+  retries: 20
+  delay: 30
+  until: adws_service.state == 'running'
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+- name: Wait for Netlogon service
+  ansible.windows.win_service:
+    name: Netlogon
+    state: started
+  register: netlogon_service
+  retries: 20
+  delay: 30
+  until: netlogon_service.state == 'running'
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+- name: Wait for DNS service
+  ansible.windows.win_service:
+    name: DNS
+    state: started
+  register: dns_service
+  retries: 20
+  delay: 30
+  until: dns_service.state == 'running'
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+# 4) Operational readiness checks
+- name: Wait for domain to be queryable
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+    Write-Output $domain.DNSRoot
+  register: domain_query
+  retries: 20
+  delay: 30
+  until: domain_query.rc == 0
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Test LDAP connectivity
+  ansible.windows.win_shell: |
+    $rootDSE = [ADSI]"LDAP://RootDSE"
+    if ($rootDSE.defaultNamingContext) {
+      Write-Output "OK"
+    } else {
+      throw "Cannot connect to LDAP"
+    }
+  register: ldap_test
+  retries: 20
+  delay: 30
+  until: ldap_test.rc == 0
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Verify SYSVOL replication is ready
+  ansible.windows.win_shell: |
+    $state = Get-WmiObject -Namespace root\microsoftdfs -Class dfsrreplicatedfolderinfo | Where-Object { $_.ReplicatedFolderName -eq "SYSVOL Share" }
+    if ($state.State -eq 4) {
+      Write-Output "SYSVOL Ready"
+    } else {
+      throw "SYSVOL not ready, state: $($state.State)"
+    }
+  register: sysvol_check
+  retries: 20
+  delay: 30
+  until: sysvol_check.rc == 0
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+# 5) Query domain/forest details when DC
+- name: Get domain information if DC
+  ansible.windows.win_shell: |
+    try {
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      $forest = Get-ADForest -Identity $domain.Forest -ErrorAction Stop
+      [PSCustomObject]@{
+        DomainName  = $domain.DNSRoot
+        NetBIOSName = $domain.NetBIOSName
+        DomainSID   = $domain.DomainSID.Value
+        ForestName  = $forest.Name
+        ForestMode  = $forest.ForestMode
+        DomainMode  = $domain.DomainMode
+        PDCEmulator = $domain.PDCEmulator
+      } | ConvertTo-Json
+    } catch {
+      Write-Output "DOMAIN_NOT_FOUND"
+      exit 1
+    }
+  register: domain_info_check
+  failed_when: false
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+# 6) Parse domain information
+- name: Parse domain information
+  set_fact:
+    domain_info: "{{ domain_info_check.stdout | from_json }}"
+  when:
+    - is_dc_check.rc == 0
+    - domain_info_check.rc == 0
+
+# 7) Get replication health
+- name: Get replication status
+  ansible.windows.win_shell: |
+    $ntds = Get-Service NTDS -ErrorAction SilentlyContinue
+    if (-not $ntds) {
+      Write-Output "NOT_A_DC"
+      exit 1
+    }
+
+    $partners = @()
+    try {
+      $partners = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -Scope Server -ErrorAction SilentlyContinue
+    } catch {
+    }
+
+    $failedCount = ($partners | Where-Object { $_.LastReplicationResult -ne 0 } | Measure-Object).Count
+    $partnerCount = ($partners | Measure-Object).Count
+
+    [PSCustomObject]@{
+      Status = if ($failedCount -gt 0) { "FAILED" } else { "OK" }
+      PartnerCount = $partnerCount
+      FailedCount = $failedCount
+    } | ConvertTo-Json
+  register: repl_status
+  retries: 3
+  delay: 30
+  until: (repl_status.stdout | from_json).Status in ["OK", "FAILED"]
+  changed_when: false
+  failed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Parse replication status
+  set_fact:
+    replication_info: "{{ repl_status.stdout | from_json }}"
+  when:
+    - is_dc_check.rc == 0
+    - repl_status.stdout | length > 0
+
+# 8) Get FSMO role placement
+- name: Get forest-wide FSMO roles
+  ansible.windows.win_shell: |
+    $forest = Get-ADForest
+    [PSCustomObject]@{
+      SchemaMaster = $forest.SchemaMaster
+      DomainNamingMaster = $forest.DomainNamingMaster
+    } | ConvertTo-Json
+  register: forest_fsmo
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Get domain-wide FSMO roles
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    [PSCustomObject]@{
+      PDCEmulator = $domain.PDCEmulator
+      RIDMaster = $domain.RIDMaster
+      InfrastructureMaster = $domain.InfrastructureMaster
+    } | ConvertTo-Json
+  register: domain_fsmo
+  changed_when: false
+  when: is_dc_check.rc == 0
+
+- name: Parse FSMO information
+  set_fact:
+    fsmo_roles: "{{ domain_fsmo.stdout | from_json }}"
+  when:
+    - is_dc_check.rc == 0
+    - domain_fsmo.stdout | length > 0
+
+# 9) Capture DC identity facts (FQDN/IP) and persist on localhost
+- name: Get this DC's FQDN
+  ansible.windows.win_shell: |
+    [System.Net.Dns]::GetHostByName(($env:COMPUTERNAME)).HostName
+  register: _thisdc_fqdn_cmd
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+- name: Get this DC's IPv4
+  ansible.windows.win_shell: |
+    (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias "*Ethernet*" | Where-Object {$_.IPAddress -notlike "169.*"} | Select-Object -First 1).IPAddress
+  register: _thisdc_ip_cmd
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+- name: Persist DC facts on localhost for later phases
+  set_fact:
+    forest_pdc_fqdn: "{{ _thisdc_fqdn_cmd.stdout | trim }}"
+    forest_pdc_ip:   "{{ _thisdc_ip_cmd.stdout   | trim }}"
+    "pdc_{{ domain_netbios | lower }}_fqdn": "{{ _thisdc_fqdn_cmd.stdout | trim }}"
+    "pdc_{{ domain_netbios | lower }}_ip":   "{{ _thisdc_ip_cmd.stdout   | trim }}"
+  delegate_to: localhost
+  delegate_facts: true
+  when: is_dc_check.rc == 0
+  changed_when: false
+
+# 10) Set comprehensive facts
+- name: Set domain status facts
+  set_fact:
+    is_domain_controller: "{{ is_dc_check.rc == 0 }}"
+    domain_exists: "{{ (domain_info_check.rc == 0) if (is_dc_check.rc == 0) else false }}"
+    domain_sid: "{{ domain_info.DomainSID if (domain_info is defined) else 'UNKNOWN' }}"
+    domain_netbios: "{{ (domain_info.NetBIOSName if domain_info is defined else netbios_name) }}"
+    replication_healthy: "{{ (replication_info.Status == 'OK') if (replication_info is defined) else false }}"
+    replication_failed_partners: "{{ replication_info.FailedCount | default(0) }}"
+  changed_when: false
+
+# 11) Comprehensive status output
+- name: Display comprehensive DC status
+  debug:
+    msg:
+      - "DC Status for {{ inventory_hostname }}:"
+      - "  Is DC: {{ is_domain_controller }}"
+      - "  Domain: {{ domain_info.DomainName | default('N/A') }}"
+      - "  SID: {{ domain_sid }}"
+      - "  Replication: {{ replication_info.Status | default('N/A') }} ({{ replication_info.PartnerCount | default(0) }} partners, {{ replication_info.FailedCount | default(0) }} failed)"
+      - "  FSMO PDC Emulator: {{ fsmo_roles.PDCEmulator | default('N/A') }}"
+      - "  FSMO RID Master: {{ fsmo_roles.RIDMaster | default('N/A') }}"
+      - "  FSMO Infrastructure Master: {{ fsmo_roles.InfrastructureMaster | default('N/A') }}"
+
+# 12) Fail if critical issues
+- name: Fail if replication has critical failures
+  fail:
+    msg: "Replication failures detected on {{ inventory_hostname }} ({{ replication_info.FailedCount }} failed partners)"
+  when:
+    - is_domain_controller
+    - replication_info is defined
+    - replication_info.FailedCount | int > 0

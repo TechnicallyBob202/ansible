@@ -3,7 +3,7 @@
 # FIX: Same approach as replica - promote without reboot, force replication to parent, verify secure channel BEFORE reboot
 
 - name: Check if already promoted
-  include_tasks: check_domain_status.yml
+  include_tasks: check_dc_status.yml
 
 - name: Wait for parent domain to be reachable
   ansible.windows.win_shell: |
@@ -127,56 +127,8 @@
     delay: 10
   when: child_promotion.changed | default(false)
 
-- name: Wait for ADWS after reboot
-  ansible.windows.win_service:
-    name: ADWS
-    state: started
-  register: adws_service
-  retries: 15
-  delay: 30
-  until: adws_service is succeeded
-  when: child_promotion.changed | default(false)
-
-- name: Wait for DNS service after reboot
-  ansible.windows.win_service:
-    name: DNS
-    state: started
-  register: dns_service
-  retries: 10
-  delay: 20
-  until: dns_service is succeeded
-  when: child_promotion.changed | default(false)
-
-- name: Verify child domain is operational post-reboot
-  ansible.windows.win_shell: |
-    $domain = Get-ADDomain -Identity "{{ domain_name }}"
-    Write-Output "Child domain operational: $($domain.DNSRoot)"
-  register: child_domain_verify
-  retries: 10
-  delay: 20
-  until: child_domain_verify.rc == 0
-  when: child_promotion.changed | default(false)
-
-- name: Get new domain SID post-promotion
-  ansible.windows.win_shell: |
-    $domain = Get-ADDomain -Identity "{{ domain_name }}"
-    Write-Output $domain.DomainSID.Value
-  register: new_domain_sid
-  retries: 5
-  delay: 30
-  until: new_domain_sid.rc == 0
-  when: child_promotion.changed | default(false)
-
-- name: Update domain SID fact
-  set_fact:
-    domain_sid: "{{ new_domain_sid.stdout | trim }}"
-  when: child_promotion.changed | default(false)
-
-- name: Save domain SID to localhost
-  copy:
-    content: "{{ domain_name }}={{ domain_sid }}\n"
-    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
-  delegate_to: localhost
+- name: Verify child domain PDC is fully ready after promotion
+  include_tasks: check_dc_status.yml
   when: child_promotion.changed | default(false)
 
 - name: Display promotion result
@@ -186,4 +138,3 @@
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
       - "  NetBIOS: {{ netbios_name }}"
-      - "  SID: {{ domain_sid | default('N/A') }}"

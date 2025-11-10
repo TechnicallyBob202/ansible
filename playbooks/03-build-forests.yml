@@ -17,30 +17,6 @@
           - "Duration: ~20-30 minutes"
 
 # =============================================================================
-# PHASE 0: Check if reboot is needed from snapshot rollback
-# =============================================================================
-- name: Check if reboot is necessary
-  hosts: domain_controllers
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check for pending reboots
-      include_role:
-        name: windows
-        tasks_from: check_reboot_needed.yml
-
-- name: Reboot only if necessary
-  hosts: domain_controllers
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Reboot to clear pending state if needed
-      ansible.windows.win_reboot:
-        reboot_timeout: 300
-        post_reboot_delay: 30
-      when: reboot_needed
-
-# =============================================================================
 # PHASE 1: Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
@@ -53,9 +29,9 @@
         vm_changed: true
 
 # =============================================================================
-# PHASE 2: Install AD Features + Configure DNS
+# PHASE 2: Install AD Features
 # =============================================================================
-- name: Install AD Features and Configure DNS
+- name: Install Active Directory Features
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
@@ -65,6 +41,14 @@
         name: active_directory
         tasks_from: install_ad_features.yml
 
+# =============================================================================
+# PHASE 3: Configure DNS to point to all forest DCs
+# =============================================================================
+- name: Configure DNS on Forest Root DCs
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
     - name: Map dns_servers to windows_dns_servers
       set_fact:
         windows_dns_servers: "{{ dns_servers }}"
@@ -75,7 +59,7 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs (parallel by domain)
+# PHASE 4: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
@@ -89,20 +73,6 @@
       when: dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Wait for PDCs to be fully online (critical before replica promo)
-# =============================================================================
-- name: Wait for PDCs to be fully operational
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Wait for DC to be fully ready (extended wait)
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: dc_role == 'pdc'
-
-# =============================================================================
 # PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
@@ -110,17 +80,12 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check current domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify forest root PDC is reachable (one-time check)
+    - name: Verify forest root PDC is reachable
       ansible.windows.win_shell: |
         $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
         Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
         Write-Output "OK"
-      retries: 5
+      retries: 30
       delay: 10
       until: pdc_reach.rc == 0
       register: pdc_reach
@@ -172,3 +137,4 @@
           - "✓ Snapshots created"
           - ""
           - "Next: Run playbooks/04-build-child-domains.yml"
+          - "       to build d21.d2.lab and d22.d2.lab"

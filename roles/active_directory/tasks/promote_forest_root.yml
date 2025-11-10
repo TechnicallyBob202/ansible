@@ -2,7 +2,7 @@
 # Promote server to forest root PDC (first DC in new forest)
 
 - name: Check if already promoted
-  include_tasks: check_domain_status.yml
+  include_tasks: check_dc_status.yml
 
 - name: Promote to forest root PDC (this will reboot the system)
   microsoft.ad.domain:
@@ -26,8 +26,8 @@
     delay: 60
   when: forest_promotion.changed | default(false)
 
-- name: Wait for DC to be fully ready after promotion
-  include_tasks: wait_for_dc_ready.yml
+- name: Verify DC is fully ready after promotion
+  include_tasks: check_dc_status.yml
   when: forest_promotion.changed | default(false)
 
 - name: Display promotion result

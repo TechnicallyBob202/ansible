@@ -1,206 +1,38 @@
 ---
-# Promote server to child domain controller in existing domain
-# Use raw PowerShell to ensure no automatic reboot happens
+# Promote server to forest root PDC (first DC in new forest)
 
-- name: Check if already a DC
-  include_tasks: check_domain_status.yml
+- name: Check if already promoted
+  include_tasks: check_dc_status.yml
 
-- name: Get PDC details
-  set_fact:
-    pdc_hostname: "{{ hostvars[groups[group_names[0]][0]].inventory_hostname }}"
-    pdc_ip: "{{ hostvars[groups[group_names[0]][0]].ansible_host }}"
+- name: Promote to forest root PDC (this will reboot the system)
+  microsoft.ad.domain:
+    dns_domain_name: "{{ domain_name }}"
+    safe_mode_password: "{{ ad_safe_mode_password }}"
+    database_path: "{{ ad_database_path }}"
+    sysvol_path: "{{ ad_sysvol_path }}"
+    log_path: "{{ ad_log_path }}"
+    install_dns: "{{ ad_install_dns }}"
+    domain_mode: "{{ ad_functional_level }}"
+    forest_mode: "{{ ad_functional_level }}"
+    create_dns_delegation: false
+    reboot: true
   when: not is_domain_controller
+  register: forest_promotion
+  timeout: 1200
 
-- name: Update DNS to point to PDC first, then self
-  ansible.windows.win_dns_client:
-    adapter_names: "*"
-    dns_servers:
-      - "{{ pdc_ip }}"
-      - "{{ ansible_host }}"
-  when: not is_domain_controller
-  register: dns_update
-
-- name: Wait for DNS propagation
-  pause:
-    seconds: 10
-  when:
-    - not is_domain_controller
-    - dns_update.changed
-
-- name: Test DNS resolution of domain
-  ansible.windows.win_shell: |
-    $result = Resolve-DnsName -Name "{{ domain_name }}" -Type A -ErrorAction SilentlyContinue
-    if ($result) {
-      Write-Output "OK: $($result.IPAddress -join ',')"
-    } else {
-      Write-Error "Failed to resolve {{ domain_name }}"
-      exit 1
-    }
-  register: dns_test
-  retries: 5
-  delay: 10
-  until: dns_test.rc == 0
-  when: not is_domain_controller
-
-- name: Promote to replica DC (using PowerShell with NoRebootOnCompletion)
-  ansible.windows.win_shell: |
-    $ErrorActionPreference = "Stop"
-    $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
-    $DomainCred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", $SecurePassword)
-
-    Install-ADDSDomainController `
-      -DomainName "{{ domain_name }}" `
-      -Credential $DomainCred `
-      -SafeModeAdministratorPassword $SecurePassword `
-      -DatabasePath "{{ ad_database_path }}" `
-      -SysvolPath "{{ ad_sysvol_path }}" `
-      -LogPath "{{ ad_log_path }}" `
-      -InstallDNS:${{ ad_install_dns | ternary('true', 'false') }} `
-      -Force `
-      -NoRebootOnCompletion:$true
-
-    Write-Output "Promotion complete, no reboot"
-  when: not is_domain_controller
-  register: replica_promotion
-  async: "{{ ad_promotion_timeout | default(1200) }}"
-  poll: 30
-
-- name: Wait for NTDS to be installed (but not necessarily running yet)
-  ansible.windows.win_shell: |
-    $ntds = Get-Service -Name NTDS -ErrorAction SilentlyContinue
-    if ($ntds) {
-      Write-Output "NTDS service exists (Status: $($ntds.Status))"
-      exit 0
-    } else {
-      Write-Error "NTDS service not found"
-      exit 1
-    }
-  register: ntds_check
-  retries: 10
-  delay: 10
-  until: ntds_check.rc == 0
-  when: replica_promotion.changed
-
-- name: Try to start NTDS (may fail initially, that's OK)
-  ansible.windows.win_service:
-    name: NTDS
-    state: started
-  register: ntds_start
-  failed_when: false
-  when: replica_promotion.changed
-
-- name: Force inbound replication from PDC
-  ansible.windows.win_shell: |
-    $pdc = "{{ pdc_hostname }}"
-
-    # Wait a moment for AD to initialize
-    Start-Sleep -Seconds 10
-
-    # Get domain DN
-    try {
-      $domain_nc = (Get-ADDomain -Identity "{{ domain_name }}" -Server $pdc).DistinguishedName
-      $config_nc = (Get-ADRootDSE -Server $pdc).configurationNamingContext
-
-      # Force pull from PDC
-      repadmin /replicate localhost $pdc $domain_nc /force 2>&1 | Out-String
-      Start-Sleep -Seconds 5
-      repadmin /replicate localhost $pdc $config_nc /force 2>&1 | Out-String
-
-      Write-Output "Replication forced from PDC"
-      exit 0
-    } catch {
-      Write-Output "Replication attempt: $_"
-      exit 1
-    }
-  register: repl_pull
-  retries: 5
-  delay: 15
-  until: repl_pull.rc == 0
-  when: replica_promotion.changed
-  failed_when: false
-
-- name: Ensure NTDS is running after replication
-  ansible.windows.win_service:
-    name: NTDS
-    state: started
-  register: ntds_final
-  retries: 10
-  delay: 10
-  until: ntds_final.state == 'running'
-  when: replica_promotion.changed
-
-- name: Test secure channel to PDC (pre-reboot)
-  ansible.windows.win_shell: |
-    $pdc = "{{ pdc_hostname }}"
-    $maxAttempts = 20
-    $attempt = 0
-
-    while ($attempt -lt $maxAttempts) {
-      try {
-        $result = Test-ComputerSecureChannel -Server $pdc -ErrorAction Stop
-        if ($result) {
-          Write-Output "Secure channel OK to $pdc"
-          exit 0
-        }
-      } catch {
-        $attempt++
-        if ($attempt -lt $maxAttempts) {
-          Start-Sleep -Seconds 15
-        }
-      }
-    }
-
-    Write-Error "Secure channel not established after $maxAttempts attempts"
-    exit 1
-  register: secure_channel_test
-  when: replica_promotion.changed
-
-- name: Reboot replica DC
-  ansible.windows.win_reboot:
-    reboot_timeout: "{{ ad_reboot_timeout | default(600) }}"
-    post_reboot_delay: 60
-  when: replica_promotion.changed
-
-- name: Wait for connection after reboot
+- name: Wait for reboot to complete
   wait_for_connection:
-    timeout: 600
-    delay: 30
-  when: replica_promotion.changed
+    timeout: "{{ ad_reboot_timeout }}"
+    delay: 60
+  when: forest_promotion.changed | default(false)
 
-- name: Wait for NTDS after reboot
-  ansible.windows.win_service:
-    name: NTDS
-    state: started
-  register: ntds_post_reboot
-  retries: 20
-  delay: 15
-  until: ntds_post_reboot.state == 'running'
-  when: replica_promotion.changed
-
-- name: Wait for ADWS after reboot
-  ansible.windows.win_service:
-    name: ADWS
-    state: started
-  register: adws_service
-  retries: 15
-  delay: 20
-  until: adws_service.state == 'running'
-  when: replica_promotion.changed
-
-- name: Verify replication post-reboot
-  ansible.windows.win_shell: |
-    $pdc = "{{ pdc_hostname }}"
-    repadmin /showrepl localhost
-    Test-ComputerSecureChannel -Server $pdc
-  register: post_reboot_verify
-  retries: 10
-  delay: 15
-  until: post_reboot_verify.rc == 0
-  when: replica_promotion.changed
+- name: Verify DC is fully ready after promotion
+  include_tasks: check_dc_status.yml
+  when: forest_promotion.changed | default(false)
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if (replica_promotion.changed | default(false)) else 'already exists' }}"
+      - "{{ inventory_hostname }} - Forest Root PDC {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
-      - "  PDC: {{ pdc_hostname }}"
+      - "  NetBIOS: {{ netbios_name }}"

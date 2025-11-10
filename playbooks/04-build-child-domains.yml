@@ -14,12 +14,11 @@
           - "  • d21.d2.lab (under d2.lab)"
           - "  • d22.d2.lab (under d2.lab)"
           - ""
-          - "NOTE: AD-DS features already installed in Stage 02"
           - "REQUIRES: d2.lab forest already built"
-          - "Duration: ~15-20 minutes"
+          - "Duration: ~20-30 minutes"
 
 # =============================================================================
-# PHASE 0: Initialize Change Tracking
+# PHASE 0: Initialize Change Tracking for All Child Domain VMs
 # =============================================================================
 - name: Initialize Change Tracking for All Child Domain VMs
   hosts: d21_child_dcs:d22_child_dcs
@@ -31,7 +30,25 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 1: Configure DNS on Child Domain DCs
+# PHASE 1: Install AD Features on Child Domain DCs
+# =============================================================================
+- name: Install Active Directory Features
+  hosts: d21_child_dcs:d22_child_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Install AD-DS features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+      register: features_result
+
+    - name: Mark VM as changed if features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 2: Configure DNS on Child Domain DCs
 # =============================================================================
 - name: Configure DNS on Child Domain DCs
   hosts: d21_child_dcs:d22_child_dcs
@@ -53,7 +70,7 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 2: Verify Parent Domain Health
+# PHASE 3: Verify Parent Domain Health
 # =============================================================================
 - name: Verify Parent Domain Health
   hosts: d2_parent_dcs
@@ -65,25 +82,20 @@
         seconds: 15
       run_once: true
 
-    - name: Verify parent domain replication health
+    - name: Verify parent domain is healthy
       include_role:
         name: active_directory
-        tasks_from: verify_replication.yml
+        tasks_from: check_dc_status.yml
       run_once: true
 
 # =============================================================================
-# PHASE 3: Promote Child Domain PDCs
+# PHASE 4: Promote Child Domain PDCs
 # =============================================================================
 - name: Promote Child Domain PDCs
   hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
     - name: Verify parent domain is reachable
       ansible.windows.win_shell: |
         $cred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
@@ -108,69 +120,6 @@
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Ensure DNS is configured and running
-      include_role:
-        name: active_directory
-        tasks_from: ensure_dns.yml
-      when: is_domain_controller
-
-    - name: Check FSMO roles
-      include_role:
-        name: active_directory
-        tasks_from: check_fsmo_roles.yml
-      when:
-        - is_domain_controller
-        - dc_role == 'pdc'
-
-# =============================================================================
-# PHASE 4: Wait for PDCs to be fully online
-# =============================================================================
-- name: Wait for Child Domain PDCs to be fully operational
-  hosts: d21_child_dcs:d22_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Wait for PDC to come back online after reboot
-      wait_for_connection:
-        timeout: 600
-        delay: 60
-      when: dc_role == 'pdc'
-
-    - name: Verify PDC is responsive
-      ansible.windows.win_ping:
-      retries: 10
-      delay: 15
-      until: ping_result is succeeded
-      register: ping_result
-      when: dc_role == 'pdc'
-
-    - name: Wait for ADWS on PDC
-      ansible.windows.win_service:
-        name: ADWS
-        state: started
-      register: adws_service
-      retries: 20
-      delay: 15
-      until: adws_service.state == 'running'
-      when: dc_role == 'pdc'
-
-    - name: Verify PDC domain is queryable
-      ansible.windows.win_shell: |
-        Get-ADDomain -Identity "{{ domain_name }}" | Out-Null
-        Write-Output "Domain queryable"
-      register: domain_check
-      retries: 20
-      delay: 15
-      until: domain_check.rc == 0
-      when: dc_role == 'pdc'
-      changed_when: false
-
 # =============================================================================
 # PHASE 5: Promote Child Domain Replica DCs
 # =============================================================================
@@ -179,11 +128,6 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
     - name: Verify child domain PDC is reachable
       ansible.windows.win_shell: |
         $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
@@ -208,39 +152,8 @@
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
-    - name: Wait for DC to be ready
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: promotion_result.changed | default(false)
-
-    - name: Verify replication
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-
 # =============================================================================
-# PHASE 6: Final Validation
-# =============================================================================
-- name: Final Validation
-  hosts: d21_child_dcs:d22_child_dcs
-  gather_facts: false
-  tasks:
-    - name: Verify all DCs are operational
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: is_domain_controller
-
-    - name: Verify replication health
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-
-# =============================================================================
-# PHASE 7: Snapshots (only for changed VMs)
+# PHASE 6: Snapshots (only for changed VMs)
 # =============================================================================
 - name: Snapshot after AD promotion
   hosts: d21_child_dcs:d22_child_dcs
@@ -263,7 +176,7 @@
       when: vm_changed
 
 # =============================================================================
-# PHASE 8: Summary
+# PHASE 7: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
