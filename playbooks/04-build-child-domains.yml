@@ -70,22 +70,16 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 3: Force Parent Domain Replication
+# PHASE 3: Verify Parent Domain Health
 # =============================================================================
-- name: Force Parent Domain Replication
+- name: Verify Parent Domain Health
   hosts: d2_parent_dcs
   gather_facts: false
   serial: 1
   tasks:
-    - name: Force immediate replication between parent DCs
-      ansible.windows.win_shell: |
-        repadmin /syncall /AdeP
-      register: sync_result
-      run_once: true
-
     - name: Wait for parent domain replication to stabilize
       pause:
-        seconds: 30
+        seconds: 15
       run_once: true
 
     - name: Verify parent domain replication health
