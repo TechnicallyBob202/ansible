@@ -4,6 +4,10 @@
 - name: Check if already promoted
   include_tasks: check_dc_status.yml
 
+- name: Verify parent domain is accessible
+  include_tasks: check_parent_domain.yml
+  when: not is_domain_controller
+
 - name: Get parent domain credentials
   set_fact:
     parent_netbios: "{{ parent_domain.split('.')[0] | upper }}"

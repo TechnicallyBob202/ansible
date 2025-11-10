@@ -1,0 +1,17 @@
+---
+# Verify parent domain is accessible and healthy before child domain promotion
+
+- name: Verify parent domain is reachable
+  ansible.windows.win_shell: |
+    $cred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
+    Get-ADDomain -Identity "{{ parent_domain }}" -Credential $cred -ErrorAction Stop | Out-Null
+    Write-Output "Parent domain reachable"
+  retries: 30
+  delay: 10
+  until: result.rc == 0
+  register: result
+  changed_when: false
+
+- name: Display parent domain verification result
+  debug:
+    msg: "{{ inventory_hostname }} - Parent domain {{ parent_domain }} is reachable"
