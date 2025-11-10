@@ -26,7 +26,9 @@
   serial: 0
   tasks:
     - name: Check for pending reboots
-      include_tasks: check_reboot_needed.yml
+      include_role:
+        name: windows
+        tasks_from: check_reboot_needed.yml
 
 - name: Reboot only if necessary
   hosts: domain_controllers
