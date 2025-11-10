@@ -1,0 +1,34 @@
+---
+# =============================================================================
+# Generate mRemoteNG Configuration
+# =============================================================================
+# Standalone playbook to generate mRemoteNG XML files from current inventory
+# Detects ADFR vs DSP inventory and generates appropriate configuration
+
+- name: Generate mRemoteNG Configuration
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display generation plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Generate mRemoteNG Configuration"
+          - "========================================="
+          - ""
+          - "Detecting inventory type and generating"
+          - "appropriate mRemoteNG connection file..."
+
+    - name: Generate mRemoteNG
+      include_tasks: ../roles/utility/tasks/generate_mremoteng.yml
+
+    - name: Display completion
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  mRemoteNG Generation Complete"
+          - "========================================="
+          - ""
+          - "Configuration file(s) generated and ready for use"
