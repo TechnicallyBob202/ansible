@@ -8,8 +8,8 @@
     Write-Output "Parent domain reachable"
   retries: 30
   delay: 10
-  until: result.rc == 0
-  register: result
+  until: parent_check.rc == 0
+  register: parent_check
   changed_when: false
 
 - name: Display parent domain verification result
