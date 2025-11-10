@@ -7,6 +7,13 @@
     is_dsp_inventory: "{{ 'dsp_infrastructure' in groups }}"
   delegate_to: localhost
 
+- name: Set project paths
+  set_fact:
+    project_root: "{{ playbook_dir | dirname | dirname }}"
+    templates_dir: "{{ playbook_dir | dirname | dirname }}/templates"
+    files_dir: "{{ playbook_dir | dirname | dirname }}/files"
+  delegate_to: localhost
+
 - name: Generate ADFR mRemoteNG (ADFR inventory detected)
   block:
     - name: Initialize ADFR lab_design
@@ -58,8 +65,8 @@
 
     - name: Generate ADFR mRemoteNG XML
       template:
-        src: "{{ playbook_dir }}/../../templates/adfr-mremoteng.xml.j2"
-        dest: "{{ playbook_dir }}/../../files/adfr-lab-mremoteng.xml"
+        src: "{{ templates_dir }}/adfr-mremoteng.xml.j2"
+        dest: "{{ files_dir }}/adfr-lab-mremoteng.xml"
         mode: '0644'
       delegate_to: localhost
 
@@ -93,8 +100,8 @@
 
     - name: Generate DSP mRemoteNG XML
       template:
-        src: "{{ playbook_dir }}/../../templates/dsp-mremoteng.xml.j2"
-        dest: "{{ playbook_dir }}/../../files/dsp-lab-mremoteng.xml"
+        src: "{{ templates_dir }}/dsp-mremoteng.xml.j2"
+        dest: "{{ files_dir }}/dsp-lab-mremoteng.xml"
         mode: '0644'
       delegate_to: localhost
 
