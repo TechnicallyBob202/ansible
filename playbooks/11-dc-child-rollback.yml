@@ -35,7 +35,7 @@
 - name: Stop All Domain Controllers
   hosts: domain_controllers
   gather_facts: false
-  serial: 2
+  serial: 0
 
   tasks:
     - name: Stop VM before revert
@@ -105,7 +105,7 @@
 - name: Start All Domain Controllers
   hosts: domain_controllers
   gather_facts: false
-  serial: 2
+  serial: 0
 
   tasks:
     - name: Start VM after revert
@@ -135,7 +135,7 @@
   tasks:
     - name: Wait for WinRM to be available
       ansible.windows.win_ping:
-      retries: 60
+      retries: 600
       delay: 10
       until: ping_result is succeeded
       register: ping_result

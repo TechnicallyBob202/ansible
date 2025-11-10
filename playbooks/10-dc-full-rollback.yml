@@ -26,7 +26,7 @@
 - name: Stop Domain Controllers
   hosts: domain_controllers
   gather_facts: false
-  serial: 2
+  serial: 0
 
   tasks:
     - name: Stop VM before revert
@@ -74,7 +74,7 @@
 - name: Start Domain Controllers
   hosts: domain_controllers
   gather_facts: false
-  serial: 2
+  serial: 0
 
   tasks:
     - name: Start VM after revert
