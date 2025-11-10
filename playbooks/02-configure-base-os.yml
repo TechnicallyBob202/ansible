@@ -230,6 +230,27 @@
   serial: 0
 
   tasks:
+    - name: Check if already a domain controller
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        if ($CS.DomainRole -ge 4) {
+          Write-Output "IS_DC"
+        } else {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+
+    - name: Set DNS servers to Cloudflare (if NOT a DC)
+      set_fact:
+        windows_dns_servers: "{{ ['1.1.1.1', '1.0.0.1'] }}"
+      when: dc_check.stdout | trim == 'NOT_DC'
+
+    - name: Set DNS servers to domain DNS (if IS a DC)
+      set_fact:
+        windows_dns_servers: "{{ dns_servers }}"
+      when: dc_check.stdout | trim == 'IS_DC'
+
     - name: Configure DNS servers
       include_tasks: ../roles/windows/tasks/set_dns.yml
       register: dns_result
