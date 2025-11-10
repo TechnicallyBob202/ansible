@@ -14,8 +14,7 @@
           - "  • d1.lab (2 DCs: D1-DC01 PDC, D1-DC02 replica)"
           - "  • d2.lab (2 DCs: D2-DC01 PDC, D2-DC02 replica)"
           - ""
-          - "NOTE: AD-DS features already installed in Stage 02"
-          - "Duration: ~15-20 minutes"
+          - "Duration: ~20-30 minutes"
 
 # =============================================================================
 # PHASE 0: Check if reboot is needed from snapshot rollback
@@ -54,14 +53,19 @@
         vm_changed: true
 
 # =============================================================================
-# PHASE 2: Configure DNS to point to all forest DCs (including future child domains)
+# PHASE 2: Install AD Features + Configure DNS
 # =============================================================================
-- name: Configure DNS on Forest Root DCs
+- name: Install AD Features and Configure DNS
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Map dns_servers to windows_dns_servers (includes all DCs for eventual resolution)
+    - name: Install AD-DS features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+
+    - name: Map dns_servers to windows_dns_servers
       set_fact:
         windows_dns_servers: "{{ dns_servers }}"
 
@@ -71,18 +75,13 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 3: Promote Forest Root PDCs
+# PHASE 3: Promote Forest Root PDCs (parallel by domain)
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check current domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
     - name: Promote to forest root PDC
       include_role:
         name: active_directory
@@ -90,7 +89,21 @@
       when: dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 4: Promote Forest Root Replica DCs
+# PHASE 4: Wait for PDCs to be fully online (critical before replica promo)
+# =============================================================================
+- name: Wait for PDCs to be fully operational
+  hosts: d1_dcs:d2_parent_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Wait for DC to be fully ready (extended wait)
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_dc_ready.yml
+      when: dc_role == 'pdc'
+
+# =============================================================================
+# PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -102,12 +115,12 @@
         name: active_directory
         tasks_from: check_domain_status.yml
 
-    - name: Verify forest root PDC is reachable
+    - name: Verify forest root PDC is reachable (one-time check)
       ansible.windows.win_shell: |
         $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
         Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
         Write-Output "OK"
-      retries: 30
+      retries: 5
       delay: 10
       until: pdc_reach.rc == 0
       register: pdc_reach
@@ -119,27 +132,6 @@
         name: active_directory
         tasks_from: promote_replica_dc.yml
       when: dc_role == 'replica'
-
-# =============================================================================
-# PHASE 5: Final Validation (once per domain)
-# =============================================================================
-- name: Final Validation - Forest Readiness
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 1
-  tasks:
-    - name: Wait for DC to be fully operational
-      include_role:
-        name: active_directory
-        tasks_from: wait_for_dc_ready.yml
-      when: is_domain_controller
-
-    - name: Verify replication health
-      include_role:
-        name: active_directory
-        tasks_from: verify_replication.yml
-      when: is_domain_controller
-      run_once: true
 
 # =============================================================================
 # PHASE 6: Snapshot Changed VMs
@@ -180,4 +172,3 @@
           - "✓ Snapshots created"
           - ""
           - "Next: Run playbooks/04-build-child-domains.yml"
-          - "       to build mauna.alpine.lab and rainier.alpine.lab"

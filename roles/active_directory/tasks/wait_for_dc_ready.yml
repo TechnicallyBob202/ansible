@@ -1,6 +1,11 @@
 ---
 # Wait for domain controller to be fully operational
 
+- name: Wait for system to be reachable
+  wait_for_connection:
+    timeout: 600
+    delay: 30
+
 - name: Wait for Active Directory Web Services
   ansible.windows.win_service:
     name: ADWS
