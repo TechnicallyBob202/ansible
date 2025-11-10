@@ -124,6 +124,12 @@
       debug:
         msg: "{{ inventory_hostname }} - started"
 
+    - name: Wait for VMs to boot (give them a head start)
+      pause:
+        seconds: 30
+      run_once: true
+      delegate_to: localhost
+
 # =============================================================================
 # PHASE 5: Wait for WinRM and Synchronize Time
 # =============================================================================
@@ -134,10 +140,14 @@
 
   tasks:
     - name: Wait for WinRM to be available
+      wait_for_connection:
+        timeout: 600
+        sleep: 10
+        delay: 30
+      register: connection_result
+
+    - name: Verify WinRM is responsive
       ansible.windows.win_ping:
-      retries: 600
-      delay: 10
-      until: ping_result is succeeded
       register: ping_result
 
     - name: Force time synchronization with NTP
@@ -146,6 +156,7 @@
         Start-Sleep -Seconds 5
         w32tm /query /status
       register: time_sync_result
+      ignore_errors: true
 
     - name: Display time sync result
       debug:
