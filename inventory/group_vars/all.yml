@@ -62,11 +62,6 @@ proxmox_template_linux_node2: 9022
 windows_gateway: 172.16.0.1
 windows_ip_prefix: 16
 
-# DNS servers (Cloudflare - used during Stage 2, before AD is built)
-windows_dns_servers:
-  - 1.1.1.1
-  - 1.0.0.1
-
 windows_dns_suffix: lab
 
 # Reboot timeouts
@@ -81,8 +76,7 @@ linux_gateway: 172.16.0.1
 linux_ip_prefix: 16
 
 linux_dns_servers:
-  - 1.1.1.1
-  - 1.0.0.1
+  - 172.13.50.11
 
 # ============================================================================
 # Active Directory Defaults (for Stage 3)

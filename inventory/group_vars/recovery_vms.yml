@@ -1,0 +1,6 @@
+---
+
+# DNS Configuration (includes both forests)
+dns_servers:
+  - 172.16.10.10
+  - 172.16.20.10
