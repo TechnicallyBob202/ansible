@@ -26,15 +26,51 @@
 # ============================================================================
 - name: Generate ADFR mRemoteNG (ADFR inventory detected)
   block:
-    - name: Build ADFR lab_design from inventory
+    - name: Build ADFR infrastructure list
+      set_fact:
+        adfr_infra_list: "{{ adfr_infra_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].role | default('')}] }}"
+      loop: "{{ groups.get('adfr_infrastructure', []) }}"
+      delegate_to: localhost
+
+    - name: Build ADFR recovery list
+      set_fact:
+        adfr_recovery_list: "{{ adfr_recovery_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].role | default('')}] }}"
+      loop: "{{ groups.get('adfr_recovery', []) }}"
+      delegate_to: localhost
+
+    - name: Build D1 DCs list
+      set_fact:
+        d1_dcs_list: "{{ d1_dcs_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role | default('')}] }}"
+      loop: "{{ groups.get('d1_dcs', []) }}"
+      delegate_to: localhost
+
+    - name: Build D2 parent DCs list
+      set_fact:
+        d2_parent_list: "{{ d2_parent_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role | default('')}] }}"
+      loop: "{{ groups.get('d2_parent_dcs', []) }}"
+      delegate_to: localhost
+
+    - name: Build D21 child DCs list
+      set_fact:
+        d21_list: "{{ d21_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role | default('')}] }}"
+      loop: "{{ groups.get('d21_child_dcs', []) }}"
+      delegate_to: localhost
+
+    - name: Build D22 child DCs list
+      set_fact:
+        d22_list: "{{ d22_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role | default('')}] }}"
+      loop: "{{ groups.get('d22_child_dcs', []) }}"
+      delegate_to: localhost
+
+    - name: Combine ADFR lab_design
       set_fact:
         lab_design:
-          adfr_infrastructure: "{{ groups.get('adfr_infrastructure', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'role']) | map('combine', {'ip': hostvars[item].ansible_host}) | list | sort(attribute='hostname') }}"
-          adfr_recovery: "{{ groups.get('adfr_recovery', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'role']) | map('combine', {'ip': hostvars[item].ansible_host}) | list | sort(attribute='hostname') }}"
-          d1_dcs: "{{ groups.get('d1_dcs', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'dc_role']) | map('combine', {'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role}) | list | sort(attribute='hostname') }}"
-          d2_parent_dcs: "{{ groups.get('d2_parent_dcs', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'dc_role']) | map('combine', {'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role}) | list | sort(attribute='hostname') }}"
-          d21_child_dcs: "{{ groups.get('d21_child_dcs', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'dc_role']) | map('combine', {'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role}) | list | sort(attribute='hostname') }}"
-          d22_child_dcs: "{{ groups.get('d22_child_dcs', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'dc_role']) | map('combine', {'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role}) | list | sort(attribute='hostname') }}"
+          adfr_infrastructure: "{{ adfr_infra_list | default([]) | sort(attribute='hostname') }}"
+          adfr_recovery: "{{ adfr_recovery_list | default([]) | sort(attribute='hostname') }}"
+          d1_dcs: "{{ d1_dcs_list | default([]) | sort(attribute='hostname') }}"
+          d2_parent_dcs: "{{ d2_parent_list | default([]) | sort(attribute='hostname') }}"
+          d21_child_dcs: "{{ d21_list | default([]) | sort(attribute='hostname') }}"
+          d22_child_dcs: "{{ d22_list | default([]) | sort(attribute='hostname') }}"
       delegate_to: localhost
 
     - name: Generate ADFR mRemoteNG XML
@@ -47,11 +83,13 @@
     - name: Display ADFR generation result
       debug:
         msg:
-          - "Generated ADFR mRemoteNG: {{ files_dir }}/adfr-lab-mremoteng.xml"
+          - "✓ Generated ADFR mRemoteNG: adfr-lab-mremoteng.xml"
           - "  Infrastructure: {{ lab_design.adfr_infrastructure | length }} VMs"
           - "  Recovery: {{ lab_design.adfr_recovery | length }} VMs"
           - "  D1.lab: {{ lab_design.d1_dcs | length }} DCs"
-          - "  D2.lab: {{ (lab_design.d2_parent_dcs | length) + (lab_design.d21_child_dcs | length) + (lab_design.d22_child_dcs | length) }} DCs"
+          - "  D2.lab parent: {{ lab_design.d2_parent_dcs | length }} DCs"
+          - "  D21.d2.lab: {{ lab_design.d21_child_dcs | length }} DCs"
+          - "  D22.d2.lab: {{ lab_design.d22_child_dcs | length }} DCs"
       delegate_to: localhost
 
   when: is_adfr_inventory
@@ -61,11 +99,29 @@
 # ============================================================================
 - name: Generate DSP mRemoteNG (DSP inventory detected)
   block:
-    - name: Build DSP lab_design from inventory
+    - name: Build DSP infrastructure list (Windows)
+      set_fact:
+        dsp_infra_list: "{{ dsp_infra_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].role | default('')}] }}"
+      loop: "{{ groups.get('dsp_infrastructure', []) }}"
+      delegate_to: localhost
+
+    - name: Build DSP infrastructure list (Linux)
+      set_fact:
+        dsp_infra_list: "{{ dsp_infra_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].role | default('')}] }}"
+      loop: "{{ groups.get('dsp_linux', []) }}"
+      delegate_to: localhost
+
+    - name: Build D3 DCs list
+      set_fact:
+        d3_dcs_list: "{{ d3_dcs_list | default([]) + [{'hostname': item, 'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role | default('')}] }}"
+      loop: "{{ groups.get('d3_dcs', []) }}"
+      delegate_to: localhost
+
+    - name: Combine DSP lab_design
       set_fact:
         lab_design:
-          dsp_infrastructure: "{{ (groups.get('dsp_infrastructure', []) + groups.get('dsp_linux', [])) | map('extract', hostvars, ['hostname', 'ansible_host', 'role']) | map('combine', {'ip': hostvars[item].ansible_host}) | list | sort(attribute='hostname') }}"
-          d3_dcs: "{{ groups.get('d3_dcs', []) | map('extract', hostvars, ['hostname', 'ansible_host', 'dc_role']) | map('combine', {'ip': hostvars[item].ansible_host, 'role': hostvars[item].dc_role}) | list | sort(attribute='hostname') }}"
+          dsp_infrastructure: "{{ dsp_infra_list | default([]) | sort(attribute='hostname') }}"
+          d3_dcs: "{{ d3_dcs_list | default([]) | sort(attribute='hostname') }}"
       delegate_to: localhost
 
     - name: Generate DSP mRemoteNG XML
@@ -78,7 +134,7 @@
     - name: Display DSP generation result
       debug:
         msg:
-          - "Generated DSP mRemoteNG: {{ files_dir }}/dsp-lab-mremoteng.xml"
+          - "✓ Generated DSP mRemoteNG: dsp-lab-mremoteng.xml"
           - "  Infrastructure: {{ lab_design.dsp_infrastructure | length }} VMs"
           - "  D3.lab: {{ lab_design.d3_dcs | length }} DCs"
       delegate_to: localhost
