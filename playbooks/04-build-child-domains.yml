@@ -135,28 +135,6 @@
       when: dc_role == 'replica'
 
 # =============================================================================
-# PHASE 6B: Force Replication in Child Domains
-# =============================================================================
-- name: Force Replication in Child Domains
-  hosts: d21_child_dcs:d22_child_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Force replication after child domain replicas promoted
-      ansible.windows.win_shell: |
-        $domain = "{{ domain_name }}"
-        $nc = "DC=$($domain -replace '\.',',DC=')"
-        repadmin /replicate $env:COMPUTERNAME $env:COMPUTERNAME $nc /force
-        Start-Sleep -Seconds 5
-        repadmin /showrepl
-      when: dc_role == 'replica'
-      changed_when: false
-      register: repl_force
-      retries: 3
-      delay: 10
-      until: repl_force.rc == 0
-
-# =============================================================================
 # PHASE 7: Final Validation
 # =============================================================================
 - name: Final Validation - Child Domains Operational

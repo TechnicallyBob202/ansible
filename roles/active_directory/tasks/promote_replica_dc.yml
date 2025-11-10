@@ -30,20 +30,8 @@
   include_tasks: wait_for_dc_ready.yml
   when: replica_promotion.changed
 
-- name: Force initial replication after promotion
-  ansible.windows.win_shell: |
-    $domain = "{{ domain_name }}"
-    $nc = "DC=$($domain -replace '\.',',DC=')"
-    repadmin /replicate $env:COMPUTERNAME $env:COMPUTERNAME $nc /force
-    Start-Sleep -Seconds 5
-    repadmin /showrepl
-  when: replica_promotion.changed
-  changed_when: false
-  register: repl_force
-
 - name: Display promotion result
   debug:
     msg:
       - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
-      - "  Replication: {{ 'forced' if replica_promotion.changed else 'already running' }}"
