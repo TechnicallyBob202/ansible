@@ -4,7 +4,7 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Promote to child domain PDC
+- name: Promote to child domain PDC (this will reboot the system)
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
@@ -21,55 +21,23 @@
       -LogPath "{{ ad_log_path }}" `
       -Force `
       -NoRebootOnCompletion:$false
-  when: not is_domain_controller and not domain_exists
+  when: not is_domain_controller
   register: child_promotion
-  async: "{{ ad_promotion_timeout }}"
-  poll: 30
+  timeout: 1200
 
 - name: Wait for child domain DC to reboot and come back
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
-    delay: 90
+    delay: 60
   when: child_promotion.changed
 
-- name: Wait for Active Directory Web Services
-  ansible.windows.win_service:
-    name: ADWS
-    state: started
-  register: adws_service
-  retries: 15
-  delay: 30
-  until: adws_service.state == 'running'
-  when: child_promotion.changed
-
-- name: Get new domain SID
-  ansible.windows.win_shell: |
-    Start-Sleep -Seconds 30
-    $domain = Get-ADDomain -Identity "{{ domain_name }}"
-    Write-Output $domain.DomainSID.Value
-  register: new_domain_sid
-  retries: 5
-  delay: 30
-  until: new_domain_sid.rc == 0
-  when: child_promotion.changed
-
-- name: Update domain SID fact
-  set_fact:
-    domain_sid: "{{ new_domain_sid.stdout | trim }}"
-  when: child_promotion.changed
-
-- name: Save domain SID to localhost
-  copy:
-    content: "{{ domain_name }}={{ domain_sid }}\n"
-    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
-  delegate_to: localhost
+- name: Wait for DC to be fully ready
+  include_tasks: wait_for_dc_ready.yml
   when: child_promotion.changed
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if child_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Child Domain PDC {{ 'promoted' if child_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
-      - "  NetBIOS: {{ netbios_name }}"
-      - "  SID: {{ domain_sid }}"

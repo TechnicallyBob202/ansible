@@ -1,30 +1,35 @@
 ---
 - name: Build Active Directory Forest Roots
   hosts: localhost
-  gather_facts: true
+  gather_facts: false
   tasks:
     - name: Display build plan
       debug:
         msg:
-          - "Building AD Forest Roots"
-          - "  Forest 1: d1.lab (2 DCs)"
-          - "  Forest 2: d2.lab (2 DCs)"
-          - "Total Duration: 20-30 minutes"
+          - "========================================="
+          - "  Stage 03: Build AD Forest Roots"
+          - "========================================="
+          - ""
+          - "Forests to build:"
+          - "  • d1.lab (2 DCs: D1-DC01 PDC, D1-DC02 replica)"
+          - "  • d2.lab (2 DCs: D2-DC01 PDC, D2-DC02 replica)"
+          - ""
+          - "Duration: ~20-30 minutes"
 
 # =============================================================================
-# PHASE 1: Initialize (always snapshot)
+# PHASE 1: Initialize Change Tracking
 # =============================================================================
-- name: Initialize
+- name: Initialize Change Tracking
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Set vm_changed to true (always snapshot)
+    - name: Set vm_changed to true (always snapshot after promotion)
       set_fact:
         vm_changed: true
 
 # =============================================================================
-# PHASE 2: Install AD Features on Forest Root DCs
+# PHASE 2: Install AD Features
 # =============================================================================
 - name: Install Active Directory Features
   hosts: d1_dcs:d2_parent_dcs
@@ -35,17 +40,16 @@
       include_role:
         name: active_directory
         tasks_from: install_ad_features.yml
-      register: features_result
 
 # =============================================================================
-# PHASE 3: Configure DNS on Forest Root DCs
+# PHASE 3: Configure DNS to point to all forest DCs (including future child domains)
 # =============================================================================
-- name: Set DNS to point to DC IPs
+- name: Configure DNS on Forest Root DCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Map dns_servers to windows_dns_servers
+    - name: Map dns_servers to windows_dns_servers (includes all DCs for eventual resolution)
       set_fact:
         windows_dns_servers: "{{ dns_servers }}"
 
@@ -53,17 +57,16 @@
       include_role:
         name: windows
         tasks_from: set_dns.yml
-      register: dns_result
 
 # =============================================================================
-# PHASE 4: Promote Forest Root PDCs (parallel both forests)
+# PHASE 4: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check domain status
+    - name: Check current domain status
       include_role:
         name: active_directory
         tasks_from: check_domain_status.yml
@@ -72,76 +75,17 @@
       include_role:
         name: active_directory
         tasks_from: promote_forest_root.yml
-      when:
-        - dc_role == 'pdc'
-      register: promotion_result
-
-# =============================================================================
-# PHASE 5: Comprehensive PDC Health Validation
-# =============================================================================
-- name: Validate PDCs are fully operational
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 1
-  tasks:
-    - name: Re-check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-      when: dc_role == 'pdc'
-
-    - name: Verify PDC can enumerate itself
-      ansible.windows.win_shell: |
-        $dc = Get-ADDomainController -Identity $env:COMPUTERNAME -ErrorAction Stop
-        $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-        [PSCustomObject]@{
-          Hostname = $dc.HostName
-          IsGC = $dc.IsGlobalCatalog
-          OperatingSystem = $dc.OperatingSystem
-          PDCEmulator = $domain.PDCEmulator
-          DomainMode = $domain.DomainMode
-        } | ConvertTo-Json
-      register: pdc_info
-      retries: 10
-      delay: 20
-      until: pdc_info.rc == 0
-      changed_when: false
-      when: dc_role == 'pdc'
-
-    - name: Parse PDC info
-      set_fact:
-        pdc_details: "{{ pdc_info.stdout | from_json }}"
-      when:
-        - dc_role == 'pdc'
-        - pdc_info.stdout is defined
-
-    - name: Display PDC health
-      debug:
-        msg:
-          - "{{ inventory_hostname }} - Forest Root PDC Health Check"
-          - "  Hostname: {{ pdc_details.Hostname }}"
-          - "  Global Catalog: {{ pdc_details.IsGC }}"
-          - "  PDC Emulator: {{ pdc_details.PDCEmulator }}"
-          - "  Domain Mode: {{ pdc_details.DomainMode }}"
-      when:
-        - dc_role == 'pdc'
-        - pdc_details is defined
-
-    - name: Check FSMO roles on PDC
-      include_role:
-        name: active_directory
-        tasks_from: check_fsmo_roles.yml
       when: dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 6: Promote Forest Root Replica DCs (parallel both forests)
+# PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check domain status
+    - name: Check current domain status
       include_role:
         name: active_directory
         tasks_from: check_domain_status.yml
@@ -150,11 +94,11 @@
       ansible.windows.win_shell: |
         $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
         Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
-        Write-Output "Forest root reachable"
+        Write-Output "OK"
       retries: 30
       delay: 10
-      until: result.rc == 0
-      register: result
+      until: pdc_reach.rc == 0
+      register: pdc_reach
       changed_when: false
       when: dc_role == 'replica'
 
@@ -163,22 +107,16 @@
         name: active_directory
         tasks_from: promote_replica_dc.yml
       when: dc_role == 'replica'
-      register: promotion_result
 
 # =============================================================================
-# PHASE 7: Final Validation
+# PHASE 6: Final Validation (once per domain)
 # =============================================================================
-- name: Final Domain Health Check
+- name: Final Validation - Forest Readiness
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 1
   tasks:
-    - name: Re-check domain status
-      include_role:
-        name: active_directory
-        tasks_from: check_domain_status.yml
-
-    - name: Verify DC is operational
+    - name: Wait for DC to be fully operational
       include_role:
         name: active_directory
         tasks_from: wait_for_dc_ready.yml
@@ -189,29 +127,12 @@
         name: active_directory
         tasks_from: verify_replication.yml
       when: is_domain_controller
-
-    - name: Final domain enumeration test
-      ansible.windows.win_shell: |
-        $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-        $dcs = Get-ADDomainController -Filter * -ErrorAction Stop
-        [PSCustomObject]@{
-          Domain = $domain.DNSRoot
-          DCCount = $dcs.Count
-          DCs = ($dcs.Name -join ", ")
-        } | ConvertTo-Json
-      register: final_check
-      changed_when: false
-
-    - name: Display final domain status
-      debug:
-        msg:
-          - "{{ inventory_hostname }} - Final Domain Status"
-          - "{{ final_check.stdout | from_json | to_nice_json }}"
+      run_once: true
 
 # =============================================================================
-# PHASE 8: Snapshots
+# PHASE 7: Snapshot Changed VMs
 # =============================================================================
-- name: Snapshot after AD promotion
+- name: Snapshot after Forest Root Promotion
   hosts: d1_dcs:d2_parent_dcs
   gather_facts: false
   serial: 2
@@ -224,4 +145,27 @@
           delegate_to: localhost
       vars:
         snapshot_name: "stage3-forest-roots-promoted"
-        snapshot_description: "After AD forest root promotion"
+        snapshot_description: "After forest root promotion (both forests ready)"
+
+# =============================================================================
+# Summary
+# =============================================================================
+- name: Stage 03 Complete
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Display completion summary
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Stage 03 Complete!"
+          - "========================================="
+          - ""
+          - "✓ d1.lab forest built and operational"
+          - "✓ d2.lab forest built and operational"
+          - "✓ All DCs promoted and replicating"
+          - "✓ Snapshots created"
+          - ""
+          - "Next: Run playbooks/04-build-child-domains.yml"
+          - "       to build mauna.alpine.lab and rainier.alpine.lab"

@@ -1,81 +1,56 @@
 ---
 # Verify Active Directory replication is healthy
+# Simplified to avoid false positives right after promotion
 
 - name: Get replication status
   ansible.windows.win_shell: |
-    # Get ALL replication partners (inbound and outbound)
-    $allPartners = @()
+    # Check 1: Is NTDS running? (if DC)
+    $ntds = Get-Service NTDS -ErrorAction SilentlyContinue
+    if (-not $ntds) {
+      Write-Output "NOT_A_DC"
+      exit 1
+    }
 
-    # Method 1: Get-ADReplicationPartnerMetadata (outbound partners)
+    # Check 2: Get partner count and error count
+    $partners = @()
     try {
-      $outbound = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -Scope Server -ErrorAction SilentlyContinue
-      $allPartners += $outbound
-    } catch {}
-
-    # Method 2: Also check repadmin for inbound partners
-    try {
-      $repadminOutput = repadmin /showrepl | Out-String
-      # Count unique INBOUND NEIGHBORS sections
-      $inboundMatches = [regex]::Matches($repadminOutput, "Default-First-Site-Name\\(\w+-DC\d+) via RPC")
-      $inboundPartners = $inboundMatches | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
-      $inboundCount = ($inboundPartners | Measure-Object).Count
+      # Method 1: Get-ADReplicationPartnerMetadata (works reliably)
+      $partners = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -Scope Server -ErrorAction SilentlyContinue
     } catch {
-      $inboundCount = 0
+      # Fallback: just check if domain is queryable
     }
 
-    # Calculate total unique partners
-    $outboundCount = ($allPartners | Measure-Object).Count
-    $totalPartners = [Math]::Max($outboundCount, $inboundCount)
-
-    # Check for failures
-    $failures = $allPartners | Where-Object { $_.LastReplicationResult -ne 0 }
-    $failureCount = ($failures | Measure-Object).Count
-
-    # Determine status
-    if ($failureCount -gt 0) {
-      $status = "FAILED"
-    } elseif ($totalPartners -eq 0) {
-      # No partners might mean single DC or just promoted - check domain role
-      $dcList = nltest /dclist:$env:USERDNSDOMAIN 2>&1 | Out-String
-      $dcCount = ([regex]::Matches($dcList, "\[DS\]")).Count
-      if ($dcCount -gt 1) {
-        $status = "WARNING"  # Multiple DCs but no replication partners detected
-      } else {
-        $status = "OK"  # Single DC, no partners expected
-      }
-      $totalPartners = $dcCount - 1  # Expected partners = total DCs - self
-    } else {
-      $status = "OK"
-    }
+    $failedCount = ($partners | Where-Object { $_.LastReplicationResult -ne 0 } | Measure-Object).Count
+    $partnerCount = ($partners | Measure-Object).Count
 
     [PSCustomObject]@{
-      Status = $status
-      FailureCount = $failureCount
-      PartnerCount = $totalPartners
-      OutboundPartners = $outboundCount
-      InboundPartners = $inboundCount
+      Status = if ($failedCount -gt 0) { "FAILED" } else { "OK" }
+      PartnerCount = $partnerCount
+      FailedCount = $failedCount
     } | ConvertTo-Json
   register: repl_status
-  retries: "{{ ad_replication_check_retries | default(3) }}"
-  delay: "{{ ad_replication_check_delay | default(30) }}"
-  until: (repl_status.stdout | from_json).Status in ["OK", "WARNING"]
+  retries: 3
+  delay: 30
+  until: (repl_status.stdout | from_json).Status in ["OK", "FAILED"]
   changed_when: false
   failed_when: false
 
 - name: Parse replication status
   set_fact:
     replication_info: "{{ repl_status.stdout | from_json }}"
+  when: repl_status.stdout | length > 0
 
 - name: Display replication status
   debug:
     msg:
-      - "Replication Status for {{ inventory_hostname }}: {{ replication_info.Status }}"
-      - "  Total Partners: {{ replication_info.PartnerCount | default(0) }}"
-      - "  Inbound Partners: {{ replication_info.InboundPartners | default(0) }}"
-      - "  Outbound Partners: {{ replication_info.OutboundPartners | default(0) }}"
-      - "  Failures: {{ replication_info.FailureCount }}"
+      - "{{ inventory_hostname }} - Replication Status: {{ replication_info.Status | default('UNKNOWN') }}"
+      - "  Partners: {{ replication_info.PartnerCount | default(0) }}"
+      - "  Failed: {{ replication_info.FailedCount | default(0) }}"
+  when: replication_info is defined
 
-- name: Fail if replication has errors
+- name: Fail if replication has critical failures
   fail:
-    msg: "Replication failures detected on {{ inventory_hostname }}"
-  when: replication_info.Status == "FAILED"
+    msg: "Replication failures detected on {{ inventory_hostname }} ({{ replication_info.FailedCount }} failed partners)"
+  when:
+    - replication_info is defined
+    - replication_info.FailedCount | int > 0

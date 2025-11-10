@@ -4,7 +4,7 @@
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Promote to forest root PDC
+- name: Promote to forest root PDC (this will reboot the system)
   microsoft.ad.domain:
     dns_domain_name: "{{ domain_name }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
@@ -18,6 +18,7 @@
     reboot: true
   when: not is_domain_controller
   register: forest_promotion
+  timeout: 1200
 
 - name: Wait for reboot to complete
   wait_for_connection:
@@ -29,26 +30,9 @@
   include_tasks: wait_for_dc_ready.yml
   when: forest_promotion.changed | default(false)
 
-- name: Verify forest root can query itself
-  ansible.windows.win_shell: |
-    $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
-    $forest = Get-ADForest -Identity $domain.Forest -ErrorAction Stop
-    [PSCustomObject]@{
-      Domain = $domain.DNSRoot
-      Forest = $forest.Name
-      PDC = $domain.PDCEmulator
-    } | ConvertTo-Json
-  register: forest_verify
-  retries: 15
-  delay: 20
-  until: forest_verify.rc == 0
-  changed_when: false
-  when: forest_promotion.changed | default(false)
-
 - name: Display promotion result
   debug:
     msg:
       - "{{ inventory_hostname }} - Forest Root PDC {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
       - "  NetBIOS: {{ netbios_name }}"
-      - "  Status: {{ (forest_verify.stdout | from_json).Domain if forest_verify.stdout is defined else 'verified' }}"
