@@ -1,5 +1,6 @@
 ---
-# Delete-then-create a stage-specific snapshot with proper spacing
+# Create or update a stage-specific snapshot
+# Logic: create if missing, replace only if vm_changed, skip if exists and unchanged
 
 - block:
     - name: Ensure default snapshot vars
@@ -8,26 +9,26 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
-    - name: Skip snapshot if VM didn't change
-      debug:
-        msg: "Skipping snapshot for {{ inventory_hostname }} - no changes made"
-      when: not (vm_changed | default(false))
-
-    - name: Check if VM exists
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        state: current
-      register: vm_exists
-      failed_when: false
+    - name: Check if snapshot exists
+      shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm snapshot {{ vmid }} --list" 2>&1 | grep -q "{{ snapshot_name }}" && echo "exists" || echo "missing"
+      delegate_to: localhost
+      register: snapshot_check
       changed_when: false
-      when: vm_changed | default(false)
+      failed_when: false
 
-    - name: Remove existing snapshot (if present)
+    - name: Determine snapshot action
+      set_fact:
+        snapshot_action: "{{ 'replace' if (vm_changed | default(false) and snapshot_check.stdout | trim == 'exists') else ('create' if snapshot_check.stdout | trim == 'missing' else 'skip') }}"
+
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - snapshot '{{ snapshot_name }}': {{ snapshot_action | upper }}"
+
+    - name: Remove existing snapshot (if replacing)
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -39,27 +40,17 @@
         state: absent
         force: true
         timeout: 300
-      when:
-        - vm_changed | default(false)
-        - vm_exists.status is defined
+      when: snapshot_action == 'replace'
       failed_when: false
       register: remove_snapshot_result
+      delegate_to: localhost
 
-    - name: Display removal result
-      debug:
-        msg: "{{ inventory_hostname }} - existing snapshot {{ 'removed' if (remove_snapshot_result.changed | default(false)) else 'did not exist' }}"
-      when:
-        - vm_changed | default(false)
-        - vm_exists.status is defined
-
-    - name: Wait for old snapshot deletion to complete
+    - name: Wait for removal to complete
       pause:
         seconds: 10
-      when:
-        - vm_changed | default(false)
-        - remove_snapshot_result.changed | default(false)
+      when: snapshot_action == 'replace' and remove_snapshot_result.changed | default(false)
 
-    - name: Create stage snapshot
+    - name: Create snapshot
       community.general.proxmox_snap:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -69,20 +60,19 @@
         vmid: "{{ vmid }}"
         snapname: "{{ snapshot_name }}"
         state: present
-        description: "Stage snapshot: {{ snapshot_name }}"
+        description: "{{ snapshot_description | default(snapshot_name) }}"
         vmstate: "{{ proxmox_snapshot_vmstate }}"
         timeout: 600
-      when:
-        - vm_changed | default(false)
-        - vm_exists.status is defined
+      when: snapshot_action in ['create', 'replace']
       register: snapshot_result
       retries: 3
       delay: 10
       until: snapshot_result is succeeded
+      delegate_to: localhost
 
-    - name: Display snapshot result
+    - name: Display result
       debug:
-        msg: "VM {{ inventory_hostname }} ({{ vmid }}) snapshot '{{ snapshot_name }}' {{ 'created' if snapshot_result.changed else 'skipped' }}"
-      when: vm_exists.status is defined
+        msg: "{{ inventory_hostname }} - snapshot '{{ snapshot_name }}' {{ snapshot_action | upper }}"
+      when: snapshot_action in ['create', 'replace']
 
   delegate_to: localhost

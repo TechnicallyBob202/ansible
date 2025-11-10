@@ -320,29 +320,23 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 10: Snapshot Changed VMs
+# PHASE 10: Snapshot All VMs (create if missing, replace only if changed)
 # =============================================================================
-- name: Snapshot Changed VMs
+- name: Snapshot All VMs
   hosts: all
   gather_facts: false
   serial: 2
 
   tasks:
-    - name: Display snapshot plan
-      debug:
-        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
-
-    - name: Create Proxmox snapshot
+    - name: Snapshot VM
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
         apply:
           delegate_to: localhost
       vars:
-        proxmox_operation: snapshot
         snapshot_name: "stage2-base-configured"
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
-      when: vm_changed
 
 # =============================================================================
 # PHASE 11: Generate mRemoteNG Configuration
