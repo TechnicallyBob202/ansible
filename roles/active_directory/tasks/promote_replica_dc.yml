@@ -38,7 +38,7 @@
   register: ntds_service
   retries: 10
   delay: 10
-  until: ntds_service.state == 'running'
+  until: ntds_service is succeeded
   when: replica_promotion.changed
 
 - name: Get PDC hostname for replication target
@@ -122,7 +122,7 @@
   register: adws_service
   retries: 15
   delay: 30
-  until: adws_service.state == 'running'
+  until: adws_service is succeeded
   when: replica_promotion.changed
 
 - name: Verify secure channel post-reboot
