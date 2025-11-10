@@ -1,10 +1,22 @@
 ---
 # Promote server to replica domain controller in existing domain
+# FIX: Promote WITHOUT reboot, force replication to PDC, verify secure channel BEFORE reboot
 
 - name: Check if already a DC
   include_tasks: check_domain_status.yml
 
-- name: Promote to replica DC
+- name: Wait for PDC to be fully operational
+  ansible.windows.win_shell: |
+    Test-ComputerSecureChannel -Server {{ hostvars[groups[group_names[0]][0]].inventory_hostname }} -ErrorAction Stop
+    Write-Output "OK"
+  register: pdc_test
+  retries: 20
+  delay: 30
+  until: pdc_test.rc == 0
+  failed_when: false
+  when: not is_domain_controller
+
+- name: Promote to replica DC (no immediate reboot)
   microsoft.ad.domain_controller:
     dns_domain_name: "{{ domain_name }}"
     domain_admin_user: "{{ netbios_name }}\\Administrator"
@@ -15,19 +27,112 @@
     domain_log_path: "{{ ad_log_path }}"
     install_dns: "{{ ad_install_dns }}"
     state: domain_controller
-    reboot: yes
+    reboot: no
   when: not is_domain_controller
   register: replica_promotion
-  timeout: 1200
 
-- name: Wait for replica to reboot and come back
-  wait_for_connection:
-    timeout: "{{ ad_reboot_timeout }}"
-    delay: 60
+- name: Wait for NTDS to stabilize after promotion
+  ansible.windows.win_service:
+    name: NTDS
+    state: started
+  register: ntds_service
+  retries: 10
+  delay: 10
+  until: ntds_service.state == 'running'
   when: replica_promotion.changed
 
-- name: Wait for DC to be fully ready
-  include_tasks: wait_for_dc_ready.yml
+- name: Get PDC hostname for replication target
+  set_fact:
+    pdc_hostname: "{{ hostvars[groups[group_names[0]][0]].inventory_hostname }}"
+  when: replica_promotion.changed
+
+- name: Force replication of new DC object to PDC (critical for secure channel)
+  ansible.windows.win_shell: |
+    $pdc = "{{ pdc_hostname }}"
+    $domain_nc = (Get-ADDomain -Identity "{{ domain_name }}").DistinguishedName
+
+    # Wait for local AD to be queryable
+    Start-Sleep -Seconds 5
+
+    # Force inbound replication from PDC (pull down any PDC changes)
+    repadmin /replicate localhost $pdc $domain_nc 2>&1 | Out-String
+    Start-Sleep -Seconds 3
+
+    # Force outbound replication to PDC (push new DC object up)
+    repadmin /replicate $pdc localhost $domain_nc 2>&1 | Out-String
+
+    Write-Output "Replication forced"
+  register: repl_force
+  retries: 5
+  delay: 10
+  until: repl_force.rc == 0
+  when: replica_promotion.changed
+
+- name: Wait for secure channel to establish with PDC (before reboot)
+  ansible.windows.win_shell: |
+    $pdc = "{{ pdc_hostname }}"
+    $maxRetries = 30
+    $attempt = 0
+
+    while ($attempt -lt $maxRetries) {
+      try {
+        Test-ComputerSecureChannel -Server $pdc -ErrorAction Stop | Out-Null
+        Write-Output "Secure channel established to $pdc"
+        exit 0
+      } catch {
+        $attempt++
+        if ($attempt -lt $maxRetries) {
+          Start-Sleep -Seconds 10
+        }
+      }
+    }
+
+    Write-Output "Failed to establish secure channel after $maxRetries attempts"
+    exit 1
+  register: secure_channel_wait
+  when: replica_promotion.changed
+  failed_when: false
+
+- name: Fail if secure channel not established before reboot
+  fail:
+    msg: |
+      Could not establish secure channel to PDC before reboot.
+      This would cause the same reboot-timing issue.
+      Run the rollback playbook and try again.
+  when:
+    - replica_promotion.changed
+    - secure_channel_wait.rc != 0
+
+- name: Now safe to reboot
+  ansible.windows.win_reboot:
+    reboot_timeout: "{{ ad_reboot_timeout }}"
+    post_reboot_delay: 60
+  when: replica_promotion.changed
+
+- name: Wait for connection after reboot
+  wait_for_connection:
+    timeout: 300
+    delay: 10
+  when: replica_promotion.changed
+
+- name: Wait for ADWS after reboot
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_service
+  retries: 15
+  delay: 30
+  until: adws_service.state == 'running'
+  when: replica_promotion.changed
+
+- name: Verify secure channel post-reboot
+  ansible.windows.win_shell: |
+    $pdc = "{{ pdc_hostname }}"
+    Test-ComputerSecureChannel -Server $pdc -Verbose | Out-String
+  register: post_reboot_channel
+  retries: 10
+  delay: 20
+  until: post_reboot_channel.rc == 0
   when: replica_promotion.changed
 
 - name: Display promotion result
@@ -35,3 +140,4 @@
     msg:
       - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
+      - "  Secure Channel: {{ 'OK' if post_reboot_channel.rc == 0 else 'WARNING' }}"
