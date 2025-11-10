@@ -140,7 +140,7 @@
   tasks:
     - name: Test WinRM connectivity (extended retry)
       ansible.windows.win_ping:
-      retries: 90
+      retries: 600
       delay: 10
       until: ping_result is succeeded
       register: ping_result
