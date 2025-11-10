@@ -81,9 +81,7 @@
       include_role:
         name: active_directory
         tasks_from: promote_child_domain.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'pdc'
+      when: dc_role == 'pdc'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -102,9 +100,7 @@
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when:
-        - not is_domain_controller
-        - dc_role == 'replica'
+      when: dc_role == 'replica'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -135,7 +131,7 @@
       when: vm_changed
 
 # =============================================================================
-# PHASE 7: Summary
+# PHASE 6: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
