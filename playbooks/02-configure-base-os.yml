@@ -8,6 +8,7 @@
 # - Configure static IPs
 # - Set DNS servers (Cloudflare during Stage 02)
 # - Set hostnames
+# - Install AD-DS features on domain controllers
 # - Reboot if needed
 # - Snapshot changed VMs
 
@@ -29,6 +30,7 @@
           - "  • Configure static IPs"
           - "  • Set DNS to Cloudflare (Stage 02)"
           - "  • Set hostnames"
+          - "  • Install AD-DS features (DCs only)"
           - "  • Reboot if needed"
           - "  • Snapshot changed VMs"
 
@@ -270,7 +272,26 @@
         vm_changed: "{{ vm_changed or (hostname_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 7: Reboot Windows Hosts
+# PHASE 7: Install AD-DS Features on Domain Controllers
+# =============================================================================
+- name: Install AD-DS Features (Domain Controllers Only)
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Install Active Directory Domain Services features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+      register: adds_install_result
+
+    - name: Mark VM as changed if AD-DS features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (adds_install_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 8: Reboot Windows Hosts
 # =============================================================================
 - name: Reboot Windows Hosts
   hosts: all
@@ -291,7 +312,7 @@
         vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 8: Validation
+# PHASE 9: Validation
 # =============================================================================
 - name: Validate Configuration (Windows)
   hosts: all
@@ -327,7 +348,7 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 9: Snapshot Changed VMs
+# PHASE 10: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot Changed VMs
   hosts: all
@@ -348,11 +369,11 @@
       vars:
         proxmox_operation: snapshot
         snapshot_name: "stage2-base-configured"
-        snapshot_description: "After base OS configuration (IP, DNS, hostname)"
+        snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
       when: vm_changed
 
 # =============================================================================
-# PHASE 10: Summary
+# PHASE 11: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -375,5 +396,7 @@
           - "VMs Configured: {{ changed_vms }}/{{ total_vms }}"
           - ""
           - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
+          - ""
+          - "✓ AD-DS features installed on all domain controllers"
           - ""
           - "Next: Run playbooks/03-build-forests.yml to build AD forests"

@@ -14,7 +14,8 @@
           - "  • d1.lab (2 DCs: D1-DC01 PDC, D1-DC02 replica)"
           - "  • d2.lab (2 DCs: D2-DC01 PDC, D2-DC02 replica)"
           - ""
-          - "Duration: ~20-30 minutes"
+          - "NOTE: AD-DS features already installed in Stage 02"
+          - "Duration: ~15-20 minutes"
 
 # =============================================================================
 # PHASE 0: Check if reboot is needed from snapshot rollback
@@ -51,20 +52,7 @@
         vm_changed: true
 
 # =============================================================================
-# PHASE 2: Install AD Features
-# =============================================================================
-- name: Install Active Directory Features
-  hosts: d1_dcs:d2_parent_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Install AD-DS features
-      include_role:
-        name: active_directory
-        tasks_from: install_ad_features.yml
-
-# =============================================================================
-# PHASE 3: Configure DNS to point to all forest DCs (including future child domains)
+# PHASE 2: Configure DNS to point to all forest DCs (including future child domains)
 # =============================================================================
 - name: Configure DNS on Forest Root DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -81,7 +69,7 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 4: Promote Forest Root PDCs
+# PHASE 3: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: d1_dcs:d2_parent_dcs
@@ -100,7 +88,7 @@
       when: dc_role == 'pdc'
 
 # =============================================================================
-# PHASE 5: Promote Forest Root Replica DCs
+# PHASE 4: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: d1_dcs:d2_parent_dcs
@@ -131,7 +119,7 @@
       when: dc_role == 'replica'
 
 # =============================================================================
-# PHASE 6: Final Validation (once per domain)
+# PHASE 5: Final Validation (once per domain)
 # =============================================================================
 - name: Final Validation - Forest Readiness
   hosts: d1_dcs:d2_parent_dcs
@@ -152,7 +140,7 @@
       run_once: true
 
 # =============================================================================
-# PHASE 7: Snapshot Changed VMs
+# PHASE 6: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot after Forest Root Promotion
   hosts: d1_dcs:d2_parent_dcs
