@@ -14,14 +14,11 @@
 # 2) Is this machine ACTUALLY a DC? (more robust check)
 - name: Check if system is a domain controller
   ansible.windows.win_shell: |
-    # Check 1: DomainRole must be 4 or 5
     $CS = Get-WmiObject Win32_ComputerSystem
     if ($CS.DomainRole -lt 4) {
       Write-Output "NOT_DC: DomainRole=$($CS.DomainRole)"
       exit 1
     }
-
-    # Check 2: NTDS service must exist and be running (this is the definitive test)
     $NTDS = Get-Service -Name NTDS -ErrorAction SilentlyContinue
     if (-not $NTDS) {
       Write-Output "NOT_DC: NTDS service not found"
@@ -31,8 +28,6 @@
       Write-Output "NOT_DC: NTDS service not running (Status=$($NTDS.Status))"
       exit 1
     }
-
-    # If we get here, it's a real DC
     Write-Output "IS_DC: DomainRole=$($CS.DomainRole), NTDS=Running"
     exit 0
   register: is_dc_check
