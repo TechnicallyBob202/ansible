@@ -1,5 +1,5 @@
 ---
-# Delete-then-create a stage-specific snapshot
+# Delete-then-create a stage-specific snapshot with proper spacing
 
 - block:
     - name: Ensure default snapshot vars
@@ -51,6 +51,13 @@
       when:
         - vm_changed | default(false)
         - vm_exists.status is defined
+
+    - name: Wait for old snapshot deletion to complete
+      pause:
+        seconds: 10
+      when:
+        - vm_changed | default(false)
+        - remove_snapshot_result.changed | default(false)
 
     - name: Create stage snapshot
       community.general.proxmox_snap:
