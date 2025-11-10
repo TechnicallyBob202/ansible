@@ -1,10 +1,23 @@
 ---
 # Promote server to first DC in child domain
+# FIX: Same approach as replica - promote without reboot, force replication to parent, verify secure channel BEFORE reboot
 
 - name: Check if already promoted
   include_tasks: check_domain_status.yml
 
-- name: Promote to child domain PDC (this will reboot the system)
+- name: Wait for parent domain to be reachable
+  ansible.windows.win_shell: |
+    $cred = New-Object System.Management.Automation.PSCredential("{{ parent_domain_netbios }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
+    Get-ADDomain -Identity "{{ parent_domain }}" -Credential $cred -ErrorAction Stop | Out-Null
+    Write-Output "Parent domain reachable"
+  retries: 30
+  delay: 10
+  until: result.rc == 0
+  register: result
+  changed_when: false
+  when: not is_domain_controller
+
+- name: Promote to child domain PDC (no immediate reboot)
   ansible.windows.win_shell: |
     $ErrorActionPreference = "Stop"
     $SecurePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
@@ -20,24 +33,157 @@
       -SysvolPath "{{ ad_sysvol_path }}" `
       -LogPath "{{ ad_log_path }}" `
       -Force `
-      -NoRebootOnCompletion:$false
-  when: not is_domain_controller
+      -NoRebootOnCompletion:$true
+  when: not is_domain_controller and not domain_exists
   register: child_promotion
-  timeout: 1200
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
 
-- name: Wait for child domain DC to reboot and come back
+- name: Wait for NTDS to stabilize after promotion
+  ansible.windows.win_service:
+    name: NTDS
+    state: started
+  register: ntds_service
+  retries: 10
+  delay: 10
+  until: ntds_service is succeeded
+  when: child_promotion.changed | default(false)
+
+- name: Get parent PDC hostname for replication
+  set_fact:
+    parent_pdc_hostname: "{{ parent_pdc_host }}"
+  when: child_promotion.changed | default(false)
+
+- name: Force replication of new domain to parent (critical for trust chain)
+  ansible.windows.win_shell: |
+    $parent_pdc = "{{ parent_pdc_hostname }}"
+    $domain_nc = "DC={{ domain_name.split('.')[0] }},{{ (Get-ADDomain -Identity '{{ parent_domain }}').DistinguishedName }}"
+    $config_nc = (Get-ADRootDSE).configurationNamingContext
+
+    # Wait for local AD to be queryable
+    Start-Sleep -Seconds 5
+
+    # Force inbound replication from parent (pull parent changes)
+    repadmin /replicate localhost $parent_pdc $domain_nc 2>&1 | Out-String
+    Start-Sleep -Seconds 3
+
+    # Force outbound replication to parent (push new domain object up)
+    repadmin /replicate $parent_pdc localhost $domain_nc 2>&1 | Out-String
+
+    # Also replicate config
+    repadmin /replicate $parent_pdc localhost $config_nc 2>&1 | Out-String
+
+    Write-Output "Replication forced to parent"
+  register: repl_force
+  retries: 5
+  delay: 10
+  until: repl_force.rc == 0
+  when: child_promotion.changed | default(false)
+
+- name: Wait for secure channel to parent (before reboot)
+  ansible.windows.win_shell: |
+    $parent_pdc = "{{ parent_pdc_hostname }}"
+    $maxRetries = 30
+    $attempt = 0
+
+    while ($attempt -lt $maxRetries) {
+      try {
+        Test-ComputerSecureChannel -Server $parent_pdc -ErrorAction Stop | Out-Null
+        Write-Output "Secure channel established to parent $parent_pdc"
+        exit 0
+      } catch {
+        $attempt++
+        if ($attempt -lt $maxRetries) {
+          Start-Sleep -Seconds 10
+        }
+      }
+    }
+
+    Write-Output "Failed to establish secure channel to parent after $maxRetries attempts"
+    exit 1
+  register: secure_channel_wait
+  when: child_promotion.changed | default(false)
+  failed_when: false
+
+- name: Fail if secure channel to parent not established before reboot
+  fail:
+    msg: |
+      Could not establish secure channel to parent domain before reboot.
+      This would cause trust relationship issues.
+      Run the rollback playbook and try again.
+  when:
+    - child_promotion.changed | default(false)
+    - secure_channel_wait.rc != 0
+
+- name: Now safe to reboot
+  ansible.windows.win_reboot:
+    reboot_timeout: "{{ ad_reboot_timeout }}"
+    post_reboot_delay: 90
+  when: child_promotion.changed | default(false)
+
+- name: Wait for connection after reboot
   wait_for_connection:
-    timeout: "{{ ad_reboot_timeout }}"
-    delay: 60
-  when: child_promotion.changed
+    timeout: 300
+    delay: 10
+  when: child_promotion.changed | default(false)
 
-- name: Wait for DC to be fully ready
-  include_tasks: wait_for_dc_ready.yml
-  when: child_promotion.changed
+- name: Wait for ADWS after reboot
+  ansible.windows.win_service:
+    name: ADWS
+    state: started
+  register: adws_service
+  retries: 15
+  delay: 30
+  until: adws_service is succeeded
+  when: child_promotion.changed | default(false)
+
+- name: Wait for DNS service after reboot
+  ansible.windows.win_service:
+    name: DNS
+    state: started
+  register: dns_service
+  retries: 10
+  delay: 20
+  until: dns_service is succeeded
+  when: child_promotion.changed | default(false)
+
+- name: Verify child domain is operational post-reboot
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output "Child domain operational: $($domain.DNSRoot)"
+  register: child_domain_verify
+  retries: 10
+  delay: 20
+  until: child_domain_verify.rc == 0
+  when: child_promotion.changed | default(false)
+
+- name: Get new domain SID post-promotion
+  ansible.windows.win_shell: |
+    $domain = Get-ADDomain -Identity "{{ domain_name }}"
+    Write-Output $domain.DomainSID.Value
+  register: new_domain_sid
+  retries: 5
+  delay: 30
+  until: new_domain_sid.rc == 0
+  when: child_promotion.changed | default(false)
+
+- name: Update domain SID fact
+  set_fact:
+    domain_sid: "{{ new_domain_sid.stdout | trim }}"
+  when: child_promotion.changed | default(false)
+
+- name: Save domain SID to localhost
+  copy:
+    content: "{{ domain_name }}={{ domain_sid }}\n"
+    dest: "/tmp/domain-sid-{{ domain_name | replace('.', '-') }}.txt"
+  delegate_to: localhost
+  when: child_promotion.changed | default(false)
 
 - name: Display promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Child Domain PDC {{ 'promoted' if child_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if (child_promotion.changed | default(false)) else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
+      - "  NetBIOS: {{ netbios_name }}"
+      - "  SID: {{ domain_sid | default('N/A') }}"
