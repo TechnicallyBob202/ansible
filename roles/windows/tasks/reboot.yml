@@ -13,14 +13,14 @@
   wait_for:
     host: "{{ ansible_host }}"
     port: 5985
-    timeout: "{{ windows_connection_timeout }}"
+    timeout: 1200
     delay: 30
   delegate_to: localhost
 
 - name: Verify system is responsive
   ansible.windows.win_ping:
   register: ping_result
-  retries: 3
+  retries: 30
   delay: 10
   until: ping_result is succeeded
 
