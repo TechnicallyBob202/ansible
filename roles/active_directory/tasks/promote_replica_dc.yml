@@ -1,5 +1,5 @@
 ---
-# Promote server to replica domain controller in existing domain
+# Promote server to child domain controller in existing domain
 # Use raw PowerShell to ensure no automatic reboot happens
 
 - name: Check if already a DC
@@ -11,11 +11,12 @@
     pdc_ip: "{{ hostvars[groups[group_names[0]][0]].ansible_host }}"
   when: not is_domain_controller
 
-- name: Update DNS to point to PDC
+- name: Update DNS to point to PDC first, then self
   ansible.windows.win_dns_client:
     adapter_names: "*"
     dns_servers:
       - "{{ pdc_ip }}"
+      - "{{ ansible_host }}"
   when: not is_domain_controller
   register: dns_update
 

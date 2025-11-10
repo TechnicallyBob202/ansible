@@ -60,17 +60,55 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 4: Verify Parent Forest is Healthy
+# PHASE 4: Force Parent Domain Replication and Wait
 # =============================================================================
-- name: Verify Parent Forest Replication
+- name: Force Parent Domain Replication
   hosts: d2_parent_dcs
   gather_facts: false
   serial: 0
   tasks:
+    - name: Force immediate replication between parent DCs
+      ansible.windows.win_shell: |
+        # Force replication of all partitions
+        repadmin /syncall /AdeP
+        Start-Sleep -Seconds 10
+
+        # Verify replication is healthy
+        $replSummary = repadmin /replsummary
+        Write-Output $replSummary
+      register: parent_repl_force
+      run_once: true
+
+    - name: Wait for parent domain replication to stabilize
+      pause:
+        seconds: 30
+      run_once: true
+
     - name: Verify parent domain replication health
       include_role:
         name: active_directory
         tasks_from: verify_replication.yml
+      run_once: true
+
+    - name: Verify Configuration partition is replicated
+      ansible.windows.win_shell: |
+        $config_nc = (Get-ADRootDSE).configurationNamingContext
+        $replStatus = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -Partition $config_nc
+
+        $hasPartner = ($replStatus | Measure-Object).Count -gt 0
+        $allGood = ($replStatus | Where-Object { $_.LastReplicationResult -eq 0 } | Measure-Object).Count -eq $replStatus.Count
+
+        if ($hasPartner -and $allGood) {
+          Write-Output "Configuration partition fully replicated"
+          exit 0
+        } else {
+          Write-Error "Configuration partition not fully replicated"
+          exit 1
+        }
+      register: config_repl_check
+      retries: 10
+      delay: 30
+      until: config_repl_check.rc == 0
       run_once: true
 
 # =============================================================================
@@ -79,7 +117,7 @@
 - name: Promote Child Domain PDCs
   hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
-  serial: 0
+  serial: 1
   tasks:
     - name: Check domain status
       include_role:
@@ -109,7 +147,7 @@
 - name: Promote Child Domain Replica DCs
   hosts: d21_child_dcs:d22_child_dcs
   gather_facts: false
-  serial: 0
+  serial: 1
   tasks:
     - name: Check domain status
       include_role:
@@ -153,7 +191,6 @@
         name: active_directory
         tasks_from: verify_replication.yml
       when: is_domain_controller
-      run_once: true
 
 # =============================================================================
 # PHASE 8: Snapshot Changed VMs
