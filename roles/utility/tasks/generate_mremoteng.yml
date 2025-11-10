@@ -9,8 +9,16 @@
 
 - name: Set project paths
   set_fact:
-    templates_dir: "{{ playbook_dir }}/../templates"
-    files_dir: "{{ playbook_dir }}/../files"
+    project_root: "{{ playbook_dir | dirname }}"
+    templates_dir: "{{ (playbook_dir | dirname) }}/templates"
+    files_dir: "{{ (playbook_dir | dirname) }}/files"
+  delegate_to: localhost
+
+- name: Ensure files directory exists
+  file:
+    path: "{{ files_dir }}"
+    state: directory
+    mode: '0755'
   delegate_to: localhost
 
 - name: Generate ADFR mRemoteNG (ADFR inventory detected)
