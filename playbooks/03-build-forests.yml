@@ -17,6 +17,19 @@
           - "Duration: ~20-30 minutes"
 
 # =============================================================================
+# PHASE 0: Clear pending reboots from snapshots
+# =============================================================================
+- name: Reboot DCs to clear pending reboot state
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Reboot to ensure clean state after snapshot rollback
+      ansible.windows.win_reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 30
+
+# =============================================================================
 # PHASE 1: Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
