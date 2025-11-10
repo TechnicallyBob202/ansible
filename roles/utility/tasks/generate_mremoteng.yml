@@ -58,8 +58,8 @@
 
     - name: Generate ADFR mRemoteNG XML
       template:
-        src: "{{ playbook_dir }}/../templates/adfr-mremoteng.xml.j2"
-        dest: "{{ playbook_dir }}/../files/adfr-lab-mremoteng.xml"
+        src: "{{ playbook_dir }}/../../templates/adfr-mremoteng.xml.j2"
+        dest: "{{ playbook_dir }}/../../files/adfr-lab-mremoteng.xml"
         mode: '0644'
       delegate_to: localhost
 
@@ -93,8 +93,8 @@
 
     - name: Generate DSP mRemoteNG XML
       template:
-        src: "{{ playbook_dir }}/../templates/dsp-mremoteng.xml.j2"
-        dest: "{{ playbook_dir }}/../files/dsp-lab-mremoteng.xml"
+        src: "{{ playbook_dir }}/../../templates/dsp-mremoteng.xml.j2"
+        dest: "{{ playbook_dir }}/../../files/dsp-lab-mremoteng.xml"
         mode: '0644'
       delegate_to: localhost
 
