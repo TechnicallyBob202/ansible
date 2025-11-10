@@ -4,6 +4,7 @@
 # =============================================================================
 # Purpose: Configure networking on all ADFR VMs (Windows)
 # - Discover current IPs from Proxmox
+# - Wait for VMs to fully boot
 # - Configure static IPs
 # - Set DNS servers (Cloudflare during Stage 02)
 # - Set hostnames
@@ -23,6 +24,7 @@
           - "========================================="
           - ""
           - "Configuring {{ groups['all'] | length }} VMs:"
+          - "  • Wait for VMs to fully boot"
           - "  • Discover current IPs"
           - "  • Configure static IPs"
           - "  • Set DNS to Cloudflare (Stage 02)"
@@ -44,7 +46,7 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 2: Discover Current IPs (Windows) - with Retries
+# PHASE 2: Discover Current IPs (with extended retries)
 # =============================================================================
 - name: Discover Current IPs (Windows)
   hosts: all
@@ -69,7 +71,7 @@
       rescue:
         - name: Wait before retry
           pause:
-            seconds: 10
+            seconds: 15
           delegate_to: localhost
 
         - name: Retry IP discovery (attempt 2)
@@ -84,7 +86,7 @@
 
         - name: Wait before final retry
           pause:
-            seconds: 10
+            seconds: 15
           when: ip_discovery_result.failed | default(false)
           delegate_to: localhost
 
@@ -126,7 +128,7 @@
         msg: "{{ inventory_hostname }}: {{ discovered_ip }} → {{ target_ip }} ({{ 'needs config' if needs_ip_config else 'already correct' }})"
 
 # =============================================================================
-# PHASE 3: Wait for WinRM on Discovered IPs
+# PHASE 3: Wait for WinRM on Discovered IPs (extended wait with retries)
 # =============================================================================
 - name: Wait for WinRM Availability
   hosts: all
@@ -134,12 +136,34 @@
   serial: 0
 
   tasks:
-    - name: Test WinRM connectivity
+    - name: Test WinRM connectivity (extended retry)
       ansible.windows.win_ping:
-      retries: 60
+      retries: 90
       delay: 10
       until: ping_result is succeeded
       register: ping_result
+      ignore_errors: true
+
+    - name: Show connection attempt results
+      debug:
+        msg: "{{ inventory_hostname }}: WinRM {{ 'reachable' if ping_result is succeeded else 'still unreachable' }}"
+
+    - name: Fail if WinRM never came online
+      fail:
+        msg: |
+          CRITICAL: {{ inventory_hostname }} WinRM is still unreachable after 15 minutes
+
+          Possible causes:
+          - Windows is still booting (very slow on first boot)
+          - Firewall blocking WinRM (port 5985)
+          - Credentials incorrect (ansible_user/ansible_password)
+          - qemu-guest-agent having issues with IP reporting
+
+          Try:
+          1. Wait another 5-10 minutes and retry
+          2. Check Proxmox console to verify Windows is fully booted
+          3. Verify credentials in all.yml (group_vars/all.yml)
+      when: ping_result is failed
 
 # =============================================================================
 # PHASE 4: Configure Static IPs (Windows)
@@ -155,7 +179,6 @@
         name: windows
       vars:
         windows_operation: set_static_ip
-      when: needs_ip_config
       register: ip_result
 
     - name: Abort if IP configuration failed
@@ -178,11 +201,27 @@
 
     - name: Wait for IP to settle
       pause:
-        seconds: 5
+        seconds: 10
       when: needs_ip_config
 
 # =============================================================================
-# PHASE 5: Configure DNS and Hostname (Windows)
+# PHASE 5: Verify WinRM on Static IPs
+# =============================================================================
+- name: Verify WinRM on Static IPs
+  hosts: all
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Test WinRM on static IP
+      ansible.windows.win_ping:
+      retries: 30
+      delay: 10
+      until: ping_result is succeeded
+      register: ping_result
+
+# =============================================================================
+# PHASE 6: Configure DNS and Hostname (Windows)
 # =============================================================================
 - name: Configure DNS and Hostname (Windows)
   hosts: all
@@ -231,7 +270,7 @@
         vm_changed: "{{ vm_changed or (hostname_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 6: Reboot Windows Hosts
+# PHASE 7: Reboot Windows Hosts
 # =============================================================================
 - name: Reboot Windows Hosts
   hosts: all
@@ -252,7 +291,7 @@
         vm_changed: "{{ vm_changed or (reboot_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 7: Validation
+# PHASE 8: Validation
 # =============================================================================
 - name: Validate Configuration (Windows)
   hosts: all
@@ -288,7 +327,7 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 8: Snapshot Changed VMs
+# PHASE 9: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot Changed VMs
   hosts: all
@@ -313,7 +352,7 @@
       when: vm_changed
 
 # =============================================================================
-# PHASE 9: Summary
+# PHASE 10: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -337,4 +376,4 @@
           - ""
           - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
           - ""
-          - "Next: Run playbooks/adfr-3-build-forests.yml to build AD forests"
+          - "Next: Run playbooks/03-build-forests.yml to build AD forests"
