@@ -14,7 +14,7 @@
     host: "{{ ansible_host }}"
     port: 5985
     timeout: "{{ windows_connection_timeout }}"
-    delay: 10
+    delay: 30
   delegate_to: localhost
 
 - name: Verify system is responsive

@@ -71,7 +71,7 @@ windows_dns_suffix: lab
 
 # Reboot timeouts
 windows_reboot_timeout: 600
-windows_connection_timeout: 30
+windows_connection_timeout: 600
 windows_post_reboot_delay: 30
 
 # ============================================================================

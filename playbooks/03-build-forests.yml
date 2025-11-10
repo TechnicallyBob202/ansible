@@ -17,17 +17,26 @@
           - "Duration: ~20-30 minutes"
 
 # =============================================================================
-# PHASE 0: Clear pending reboots from snapshots
+# PHASE 0: Check if reboot is needed from snapshot rollback
 # =============================================================================
-- name: Reboot DCs to clear pending reboot state
+- name: Check if reboot is necessary
   hosts: domain_controllers
   gather_facts: false
   serial: 0
   tasks:
-    - name: Reboot to ensure clean state after snapshot rollback
+    - name: Check for pending reboots
+      include_tasks: check_reboot_needed.yml
+
+- name: Reboot only if necessary
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Reboot to clear pending state if needed
       ansible.windows.win_reboot:
         reboot_timeout: 300
         post_reboot_delay: 30
+      when: reboot_needed
 
 # =============================================================================
 # PHASE 1: Initialize Change Tracking
