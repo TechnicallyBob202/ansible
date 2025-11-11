@@ -101,3 +101,12 @@ all:
         child_replicas:
           hosts:
             TCHILD-DC02:
+
+        # OS detection for Stage 2
+        windows:
+          children:
+            test_root_dcs:
+            test_child_dcs:
+
+        linux:
+          hosts: {}
