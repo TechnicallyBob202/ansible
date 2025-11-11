@@ -252,11 +252,6 @@
   serial: 0
 
   tasks:
-    - name: Update ansible_host to target IP
-      set_fact:
-        ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
-
     - name: Set static IP
       include_role:
         name: linux
@@ -266,6 +261,11 @@
     - name: Consolidate IP changes
       set_fact:
         vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+
+    - name: Update ansible_host to target IP
+      set_fact:
+        ansible_host: "{{ target_ip }}"
+      when: needs_ip_config
 
     - name: Wait for IP to settle
       pause:
