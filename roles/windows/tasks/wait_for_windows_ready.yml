@@ -1,20 +1,6 @@
 ---
 # Wait for Windows to be fully ready before attempting operations
-# Checks RPC port availability, then WinRM connectivity
-# Use this at the start of any task that needs Windows host connectivity
-
-- name: Wait for RPC endpoint (sign of OS boot)
-  ansible.builtin.wait_for:
-    host: "{{ ansible_host }}"
-    port: 135
-    state: started
-    timeout: 300
-    delay: 10
-  register: rpc_check
-  retries: 5
-  until: rpc_check is succeeded
-  ignore_errors: true
-  changed_when: false
+# Uses only WinRM/PowerShell - no Linux-based modules
 
 - name: Wait for WinRM to be available
   ansible.windows.win_ping:
@@ -23,17 +9,9 @@
   retries: 30
   delay: 10
   until: winrm_check is succeeded
-  ignore_errors: true
   changed_when: false
-
-- name: Fail if neither RPC nor WinRM available after timeout
-  fail:
-    msg: "{{ inventory_hostname }} ({{ ansible_host }}) not responding after 10 minutes. RPC: {{ not rpc_check.failed }}, WinRM: {{ not winrm_check.failed }}"
-  when:
-    - rpc_check.failed | default(false)
-    - winrm_check.failed | default(false)
 
 - name: Display Windows readiness status
   debug:
-    msg: "{{ inventory_hostname }} is ready (RPC: {{ not rpc_check.failed }}, WinRM: {{ not winrm_check.failed }})"
+    msg: "{{ inventory_hostname }} is ready (WinRM responsive)"
   changed_when: false
