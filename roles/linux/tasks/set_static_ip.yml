@@ -49,11 +49,14 @@
   register: network_config
   become: true
 
-- name: Debug nmcli result
-  debug:
-    msg:
-      - "Changed: {{ network_config.changed }}"
-      - "Result: {{ network_config }}"
+- name: Restart network connection to apply changes
+  ansible.builtin.command: nmcli connection up {{ linux_conn_name | default('ens18') }}
+  become: true
+  register: connection_restart
+
+- name: Wait for network to stabilize
+  pause:
+    seconds: 5
 
 - name: Switch ansible_ssh_host to new static IP for future tasks
   ansible.builtin.set_fact:
