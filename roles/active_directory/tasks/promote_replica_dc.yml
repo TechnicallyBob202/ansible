@@ -1,38 +1,71 @@
 ---
-# Promote server to forest root PDC (first DC in new forest)
+# Promote server to replica DC (additional DC in existing domain)
+# Does NOT require prior domain join - uses Install-ADDSDomainController directly
 
 - name: Check if already promoted
   include_tasks: check_dc_status.yml
 
-- name: Promote to forest root PDC (this will reboot the system)
-  microsoft.ad.domain:
-    dns_domain_name: "{{ domain_name }}"
-    safe_mode_password: "{{ ad_safe_mode_password }}"
-    database_path: "{{ ad_database_path }}"
-    sysvol_path: "{{ ad_sysvol_path }}"
-    log_path: "{{ ad_log_path }}"
-    install_dns: "{{ ad_install_dns }}"
-    domain_mode: "{{ ad_functional_level }}"
-    forest_mode: "{{ ad_functional_level }}"
-    create_dns_delegation: false
-    reboot: true
-  when: not is_domain_controller
-  register: forest_promotion
-  timeout: 1200
+- name: Promote to replica DC
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = "Stop"
 
-- name: Wait for reboot to complete
+    # Build credentials for domain admin account
+    $SafeModePassword = ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force
+    $DomainCreds = New-Object System.Management.Automation.PSCredential("{{ domain_netbios }}\Administrator", $SafeModePassword)
+
+    # Promote using Install-ADDSDomainController
+    # This cmdlet handles direct promotion without requiring a prior domain join
+    Install-ADDSDomainController `
+      -DomainName "{{ domain_name }}" `
+      -Credential $DomainCreds `
+      -SafeModeAdministratorPassword $SafeModePassword `
+      -DatabasePath "{{ ad_database_path }}" `
+      -SysvolPath "{{ ad_sysvol_path }}" `
+      -LogPath "{{ ad_log_path }}" `
+      -InstallDns:${{ ad_install_dns | ternary('true', 'false') }} `
+      -NoGlobalCatalog:$false `
+      -Force `
+      -NoRebootOnCompletion:$false
+  when: not is_domain_controller
+  register: replica_promotion
+  async: "{{ ad_promotion_timeout }}"
+  poll: 30
+  changed_when: "'was successful' in replica_promotion.stdout or replica_promotion.rc == 0"
+
+- name: Wait for reboot to complete after promotion
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: forest_promotion.changed | default(false)
+  when: replica_promotion.changed | default(false)
 
-- name: Verify DC is fully ready after promotion
+- name: Verify replica DC is fully ready after promotion
   include_tasks: check_dc_status.yml
-  when: forest_promotion.changed | default(false)
+  when: replica_promotion.changed | default(false)
 
-- name: Display promotion result
+- name: Verify replication connectivity to replication partners
+  ansible.windows.win_shell: |
+    $partners = Get-ADReplicationPartnerMetadata -Target $env:COMPUTERNAME -Scope Server -ErrorAction SilentlyContinue
+    if (-not $partners) {
+      Write-Output "No replication partners found yet"
+      exit 1
+    }
+    $failedCount = ($partners | Where-Object { $_.LastReplicationResult -ne 0 } | Measure-Object).Count
+    if ($failedCount -gt 0) {
+      Write-Output "WARNING: $failedCount replication partners have failures"
+      exit 1
+    }
+    Write-Output "OK: {{ inventory_hostname }} replicating with $($partners.Count) partners"
+  retries: 10
+  delay: 30
+  until: repl_verify.rc == 0
+  register: repl_verify
+  changed_when: false
+  when: replica_promotion.changed | default(false)
+
+- name: Display replica DC promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Forest Root PDC {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Replica DC {{ 'promoted' if replica_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
-      - "  NetBIOS: {{ netbios_name }}"
+      - "  NetBIOS: {{ domain_netbios }}"
+      - "  Global Catalog: enabled"

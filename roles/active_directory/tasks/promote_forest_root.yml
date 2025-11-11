@@ -1,10 +1,11 @@
 ---
 # Promote server to forest root PDC (first DC in new forest)
+# Enhanced with post-promotion verification of forest health, DNS records, and FSMO roles
 
 - name: Check if already promoted
   include_tasks: check_dc_status.yml
 
-- name: Promote to forest root PDC (this will reboot the system)
+- name: Promote to forest root PDC
   microsoft.ad.domain:
     dns_domain_name: "{{ domain_name }}"
     safe_mode_password: "{{ ad_safe_mode_password }}"
@@ -30,9 +31,138 @@
   include_tasks: check_dc_status.yml
   when: forest_promotion.changed | default(false)
 
-- name: Display promotion result
+- name: Verify forest was created successfully
+  ansible.windows.win_shell: |
+    try {
+      $forest = Get-ADForest -Identity "{{ domain_name }}" -ErrorAction Stop
+      Write-Output "Forest: $($forest.Name)"
+      Write-Output "Forest Mode: $($forest.ForestMode)"
+      Write-Output "Root Domain: $($forest.RootDomain)"
+      Write-Output "Schema Master: $($forest.SchemaMaster)"
+      Write-Output "Domain Naming Master: $($forest.DomainNamingMaster)"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Cannot query forest"
+      exit 1
+    }
+  retries: 10
+  delay: 30
+  until: forest_verify.rc == 0
+  register: forest_verify
+  changed_when: false
+  when: forest_promotion.changed | default(false)
+
+- name: Verify domain was created successfully
+  ansible.windows.win_shell: |
+    try {
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      Write-Output "Domain: $($domain.DNSRoot)"
+      Write-Output "NetBIOS: $($domain.NetBIOSName)"
+      Write-Output "Domain Mode: $($domain.DomainMode)"
+      Write-Output "PDC Emulator: $($domain.PDCEmulator)"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Cannot query domain"
+      exit 1
+    }
+  retries: 10
+  delay: 30
+  until: domain_verify.rc == 0
+  register: domain_verify
+  changed_when: false
+  when: forest_promotion.changed | default(false)
+
+- name: Verify critical DNS SRV records are registered
+  ansible.windows.win_shell: |
+    $domainSuffix = "{{ domain_name }}"
+    $errors = @()
+
+    # Check for critical SRV records
+    $srvRecords = @(
+      "_ldap._tcp.dc._msdcs.$domainSuffix",
+      "_ldap._tcp.$domainSuffix",
+      "_kerberos._tcp.dc._msdcs.$domainSuffix",
+      "_kerberos._tcp.$domainSuffix"
+    )
+
+    foreach ($srv in $srvRecords) {
+      try {
+        $records = Resolve-DnsName -Name $srv -Type SRV -ErrorAction Stop
+        if ($records) {
+          Write-Output "OK: $srv"
+        } else {
+          $errors += "MISSING: $srv"
+        }
+      } catch {
+        $errors += "FAILED: $srv - $_"
+      }
+    }
+
+    if ($errors.Count -gt 0) {
+      Write-Output "WARNING: Some SRV records missing:"
+      $errors | ForEach-Object { Write-Output "  $_" }
+      exit 1
+    }
+    Write-Output "All critical SRV records present"
+    exit 0
+  retries: 20
+  delay: 30
+  until: srv_verify.rc == 0
+  register: srv_verify
+  changed_when: false
+  when: forest_promotion.changed | default(false)
+
+- name: Verify FSMO roles are on forest root PDC
+  ansible.windows.win_shell: |
+    try {
+      $forest = Get-ADForest -Identity "{{ domain_name }}" -ErrorAction Stop
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      $thisdc = $env:COMPUTERNAME
+
+      $schemaOwner = ($forest.SchemaMaster -split "\.")[0]
+      $namingOwner = ($forest.DomainNamingMaster -split "\.")[0]
+      $pdcOwner = ($domain.PDCEmulator -split "\.")[0]
+
+      $errors = @()
+
+      if ($schemaOwner -ne $thisdc) {
+        $errors += "Schema Master on $schemaOwner (should be $thisdc)"
+      }
+      if ($namingOwner -ne $thisdc) {
+        $errors += "Domain Naming Master on $namingOwner (should be $thisdc)"
+      }
+      if ($pdcOwner -ne $thisdc) {
+        $errors += "PDC Emulator on $pdcOwner (should be $thisdc)"
+      }
+
+      if ($errors.Count -gt 0) {
+        Write-Output "ERROR: FSMO roles not optimal:"
+        $errors | ForEach-Object { Write-Output "  $_" }
+        exit 1
+      }
+
+      Write-Output "OK: All forest-wide FSMO roles on {{ inventory_hostname }}"
+      Write-Output "  Schema Master: $schemaOwner"
+      Write-Output "  Domain Naming Master: $namingOwner"
+      Write-Output "  PDC Emulator: $pdcOwner"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Cannot verify FSMO roles - $_"
+      exit 1
+    }
+  retries: 10
+  delay: 30
+  until: fsmo_verify.rc == 0
+  register: fsmo_verify
+  changed_when: false
+  when: forest_promotion.changed | default(false)
+
+- name: Display forest root PDC promotion result
   debug:
     msg:
       - "{{ inventory_hostname }} - Forest Root PDC {{ 'promoted' if forest_promotion.changed else 'already exists' }}"
+      - "  Forest: {{ domain_name }}"
       - "  Domain: {{ domain_name }}"
-      - "  NetBIOS: {{ netbios_name }}"
+      - "  Functional Level: {{ ad_functional_level }}"
+      - "  SRV Records: verified"
+      - "  FSMO Roles: verified on this DC"

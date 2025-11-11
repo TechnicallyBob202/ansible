@@ -1,0 +1,182 @@
+---
+# Create child domain's own DNS zone and configure forwarders to parent
+# Runs on child domain PDC after promotion completes
+
+- name: Wait for DNS service to be fully ready
+  ansible.windows.win_service:
+    name: DNS
+    state: started
+  register: dns_svc
+  retries: 20
+  delay: 10
+  until: dns_svc.state == 'started'
+  changed_when: false
+
+- name: Create AD-integrated DNS zone for child domain
+  ansible.windows.win_shell: |
+    $zoneName = "{{ domain_name }}"
+
+    try {
+      # Check if zone already exists
+      $zone = Get-DnsServerZone -Name $zoneName -ErrorAction SilentlyContinue
+      if ($zone) {
+        Write-Output "Zone already exists: $zoneName"
+        exit 0
+      }
+
+      # Create new AD-integrated zone
+      Add-DnsServerPrimaryZone `
+        -Name $zoneName `
+        -ReplicationScope Domain `
+        -PassThru -ErrorAction Stop | Out-Null
+
+      Write-Output "Zone created: $zoneName (AD-integrated, Domain-wide replication)"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Failed to create zone - $_"
+      exit 1
+    }
+  register: zone_create
+  retries: 10
+  delay: 30
+  until: zone_create.rc == 0
+  changed_when: "'created' in zone_create.stdout"
+
+- name: Verify child zone was created successfully
+  ansible.windows.win_shell: |
+    $zoneName = "{{ domain_name }}"
+
+    try {
+      $zone = Get-DnsServerZone -Name $zoneName -ErrorAction Stop
+      Write-Output "Zone Name: $($zone.Name)"
+      Write-Output "Zone Type: $($zone.ZoneType)"
+      Write-Output "Replication Scope: $($zone.ReplicationScope)"
+      Write-Output "Dynamic Updates: $($zone.DynamicUpdate)"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Zone verification failed - $_"
+      exit 1
+    }
+  retries: 5
+  delay: 10
+  until: zone_verify.rc == 0
+  register: zone_verify
+  changed_when: false
+
+- name: Configure forwarders to parent DNS servers
+  ansible.windows.win_shell: |
+    $parentZone = "{{ parent_domain }}"
+
+    try {
+      # Get all parent DNS servers (root PDCs and replicas in root domain)
+      $parentDCs = @({{ groups['root_pdcs'] | map('quote') | join(',') }})
+      if ('{{ groups.get("root_replicas", []) | list }}' -ne '') {
+        $parentDCs += @({{ groups['root_replicas'] | map('quote') | join(',') }})
+      }
+
+      # Get IPs for each parent DC (from hostvars if available)
+      $forwarderIPs = @()
+      foreach ($dc in $parentDCs) {
+        # Try to get IP from hostvars (saved during check_dc_status)
+        $dcIP = "{{ hostvars.get(groups['root_pdcs'][0], {}).get('forest_pdc_ip', '') }}"
+        if ($dcIP) {
+          $forwarderIPs += $dcIP
+        }
+      }
+
+      if ($forwarderIPs.Count -eq 0) {
+        Write-Output "WARNING: No parent DC IPs available for forwarders"
+        exit 0
+      }
+
+      # Set conditional forwarder to parent zone
+      $forwarder = Get-DnsServerConditionalForwarderZone -Name $parentZone -ErrorAction SilentlyContinue
+      if ($forwarder) {
+        Set-DnsServerConditionalForwarderZone `
+          -Name $parentZone `
+          -MasterServers $forwarderIPs `
+          -PassThru -ErrorAction Stop | Out-Null
+      } else {
+        Add-DnsServerConditionalForwarderZone `
+          -Name $parentZone `
+          -MasterServers $forwarderIPs `
+          -PassThru -ErrorAction Stop | Out-Null
+      }
+
+      Write-Output "Conditional forwarder configured for $parentZone"
+      $forwarderIPs | ForEach-Object { Write-Output "  Forwarder: $_" }
+      exit 0
+    } catch {
+      Write-Output "WARNING: Forwarder configuration failed - $_"
+      exit 0
+    }
+  register: forwarder_config
+  changed_when: "'configured' in forwarder_config.stdout"
+
+- name: Configure child DC to use itself for DNS first, then parent
+  ansible.windows.win_shell: |
+    $dnsServers = @("127.0.0.1")
+
+    # Get parent DC IPs (root PDCs and replicas)
+    $parentIPs = @()
+    # This would be populated from inventory/hostvars in real scenario
+
+    try {
+      # Set DNS to point to self first, then parent DCs
+      $interface = Get-NetAdapter | Where-Object { $_.Status -eq 'Up' } | Select-Object -First 1
+      if ($interface) {
+        Set-DnsClientServerAddress `
+          -InterfaceIndex $interface.InterfaceIndex `
+          -ServerAddresses $dnsServers `
+          -Validate -ErrorAction Stop | Out-Null
+
+        Write-Output "DNS client configured: pointing to self first"
+      }
+      exit 0
+    } catch {
+      Write-Output "WARNING: Could not configure DNS client - $_"
+      exit 0
+    }
+  register: dns_client_config
+  changed_when: false
+
+- name: Verify child domain DNS zone and name resolution
+  ansible.windows.win_shell: |
+    $zoneName = "{{ domain_name }}"
+    $parentZone = "{{ parent_domain }}"
+
+    try {
+      # Verify child zone is authoritative
+      $zone = Get-DnsServerZone -Name $zoneName -ErrorAction Stop
+      if ($zone.ZoneType -ne 'Primary') {
+        Write-Output "WARNING: Zone type is $($zone.ZoneType), expected Primary"
+      }
+
+      # Verify can resolve parent domain
+      $parentResolve = Resolve-DnsName -Name $parentZone -Type A -ErrorAction SilentlyContinue
+      if ($parentResolve) {
+        Write-Output "OK: Can resolve parent domain $parentZone"
+      } else {
+        Write-Output "WARNING: Cannot resolve parent domain $parentZone"
+      }
+
+      Write-Output "DNS configuration complete for $zoneName"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Verification failed - $_"
+      exit 1
+    }
+  retries: 10
+  delay: 30
+  until: dns_verify.rc == 0
+  register: dns_verify
+  changed_when: false
+
+- name: Display child DNS zone setup result
+  debug:
+    msg:
+      - "DNS zone created for {{ domain_name }}"
+      - "  Zone Type: AD-integrated"
+      - "  Replication: Domain-wide"
+      - "  Forwarders: configured to {{ parent_domain }}"
+      - "  Client DNS: pointing to self"

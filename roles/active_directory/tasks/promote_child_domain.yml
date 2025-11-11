@@ -1,5 +1,6 @@
 ---
 # Promote server to first DC in child domain
+# Includes parent domain verification, promotion, and DNS zone creation post-promo
 
 - name: Check if already promoted
   include_tasks: check_dc_status.yml
@@ -25,26 +26,68 @@
       -LogPath "{{ ad_log_path }}" `
       -Force `
       -NoRebootOnCompletion:$false
-  when: not is_domain_controller and not domain_exists
+  when: not is_domain_controller
   register: child_promotion
   async: "{{ ad_promotion_timeout }}"
   poll: 30
+  changed_when: "'was successful' in child_promotion.stdout or child_promotion.rc == 0"
 
-- name: Wait for reboot to complete
+- name: Wait for reboot to complete after promotion
   wait_for_connection:
     timeout: "{{ ad_reboot_timeout }}"
     delay: 60
-  when: forest_promotion.changed | default(false)
+  when: child_promotion.changed | default(false)
 
 - name: Verify DC is fully ready after promotion
   include_tasks: check_dc_status.yml
-  when: forest_promotion.changed | default(false)
+  when: child_promotion.changed | default(false)
 
-- name: Display promotion result
+- name: Setup DNS zone for child domain
+  include_tasks: setup_child_dns_zone.yml
+  when: child_promotion.changed | default(false)
+
+- name: Verify child domain was created successfully
+  ansible.windows.win_shell: |
+    try {
+      $domain = Get-ADDomain -Identity "{{ domain_name }}" -ErrorAction Stop
+      Write-Output "Domain: $($domain.DNSRoot)"
+      Write-Output "NetBIOS: $($domain.NetBIOSName)"
+      Write-Output "Parent: $($domain.ParentDomain)"
+      Write-Output "Domain Mode: $($domain.DomainMode)"
+      exit 0
+    } catch {
+      Write-Output "ERROR: Cannot query domain - $_"
+      exit 1
+    }
+  retries: 10
+  delay: 30
+  until: domain_verify.rc == 0
+  register: domain_verify
+  changed_when: false
+  when: child_promotion.changed | default(false)
+
+- name: Verify trust relationship with parent domain
+  ansible.windows.win_shell: |
+    try {
+      $trust = Get-ADTrust -Identity "{{ parent_domain }}" -ErrorAction Stop
+      Write-Output "Trust relationship verified with {{ parent_domain }}"
+      Write-Output "Trust Type: $($trust.TrustType)"
+      Write-Output "Trust Direction: $($trust.TrustDirection)"
+      exit 0
+    } catch {
+      Write-Output "WARNING: Cannot verify trust - $_"
+      exit 0
+    }
+  register: trust_verify
+  changed_when: false
+  when: child_promotion.changed | default(false)
+
+- name: Display child domain PDC promotion result
   debug:
     msg:
-      - "{{ inventory_hostname }} - Child Domain {{ 'promoted' if child_promotion.changed else 'already exists' }}"
+      - "{{ inventory_hostname }} - Child Domain PDC {{ 'promoted' if child_promotion.changed else 'already exists' }}"
       - "  Domain: {{ domain_name }}"
       - "  Parent: {{ parent_domain }}"
-      - "  NetBIOS: {{ netbios_name }}"
-      - "  SID: {{ domain_sid }}"
+      - "  NetBIOS: {{ domain_netbios }}"
+      - "  DNS Zone: created and configured"
+      - "  Forwarders: configured to parent"

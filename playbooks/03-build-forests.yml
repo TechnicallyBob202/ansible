@@ -11,13 +11,12 @@
           - "========================================="
           - ""
           - "Forests to build:"
-          - "  • d1.lab (2 DCs: D1-DC01 PDC, D1-DC02 replica)"
-          - "  • d2.lab (2 DCs: D2-DC01 PDC, D2-DC02 replica)"
+          - "  • {{ forest_domains | join(', ') }}"
           - ""
           - "Duration: ~20-30 minutes"
 
 # =============================================================================
-# PHASE 1: Initialize Change Tracking
+# Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
   hosts: forest_root_dcs
@@ -29,7 +28,7 @@
         vm_changed: true
 
 # =============================================================================
-# PHASE 2: Install AD Features
+# Install AD Features
 # =============================================================================
 - name: Install Active Directory Features
   hosts: forest_root_dcs
@@ -42,7 +41,7 @@
         tasks_from: install_ad_features.yml
 
 # =============================================================================
-# PHASE 3: Configure DNS to point to all forest DCs
+# Configure DNS
 # =============================================================================
 - name: Configure DNS on Forest Root DCs
   hosts: forest_root_dcs
@@ -59,7 +58,7 @@
         tasks_from: set_dns.yml
 
 # =============================================================================
-# PHASE 4: Promote Forest Root PDCs
+# Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
   hosts: root_pdcs
@@ -72,31 +71,20 @@
         tasks_from: promote_forest_root.yml
 
 # =============================================================================
-# PHASE 5: Promote Forest Root Replica DCs
+# Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: root_replicas
   gather_facts: false
   serial: 0
   tasks:
-    - name: Verify forest root PDC is reachable
-      ansible.windows.win_shell: |
-        $cred = New-Object System.Management.Automation.PSCredential("{{ netbios_name }}\Administrator", (ConvertTo-SecureString "{{ ad_safe_mode_password }}" -AsPlainText -Force))
-        Get-ADDomain -Identity "{{ domain_name }}" -Credential $cred | Out-Null
-        Write-Output "OK"
-      retries: 30
-      delay: 10
-      until: pdc_reach.rc == 0
-      register: pdc_reach
-      changed_when: false
-
     - name: Promote to replica DC
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
 
 # =============================================================================
-# PHASE 6: Snapshot Changed VMs
+# Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot after Forest Root Promotion
   hosts: forest_root_dcs
@@ -128,10 +116,10 @@
           - "  Stage 03 Complete!"
           - "========================================="
           - ""
-          - "✓ d1.lab forest built and operational"
-          - "✓ d2.lab forest built and operational"
+          - "✓ Forest roots built and operational"
           - "✓ All DCs promoted and replicating"
+          - "✓ DNS SRV records verified"
+          - "✓ FSMO roles verified"
           - "✓ Snapshots created"
           - ""
-          - "Next: Run playbooks/04-build-child-domains.yml"
-          - "       to build d21.d2.lab and d22.d2.lab"
+          - "Next: Run Stage 04 to build child domains"

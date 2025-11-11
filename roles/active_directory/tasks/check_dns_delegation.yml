@@ -1,0 +1,38 @@
+---
+# Verify DNS delegation exists in parent zone for child domain
+# Checks for NS records and glue records pointing to child DC
+
+- name: Check if DNS delegation already exists for {{ domain_name }}
+  ansible.windows.win_shell: |
+    $childZone = "{{ domain_name.split('.')[0] }}"
+    $parentZone = "{{ parent_domain }}"
+
+    try {
+      $delegation = Get-DnsServerZoneDelegation -ZoneName $parentZone -ChildZoneName $childZone -ErrorAction Stop
+      if ($delegation) {
+        Write-Output "Delegation exists for $childZone in $parentZone"
+        $delegation.NameServers | ForEach-Object { Write-Output "  NS: $_" }
+        exit 0
+      } else {
+        Write-Output "No delegation found"
+        exit 1
+      }
+    } catch {
+      Write-Output "Delegation does not exist or cannot be queried: $_"
+      exit 1
+    }
+  register: delegation_check
+  failed_when: false
+  changed_when: false
+  delegate_to: "{{ parent_pdc_hostname }}"
+  vars:
+    parent_pdc_hostname: "{{ groups['root_pdcs'][0] }}"
+
+- name: Set delegation_exists fact
+  set_fact:
+    delegation_exists: "{{ delegation_check.rc == 0 }}"
+  changed_when: false
+
+- name: Display delegation check result
+  debug:
+    msg: "DNS delegation for {{ domain_name }}: {{ 'EXISTS' if delegation_exists else 'MISSING' }}"

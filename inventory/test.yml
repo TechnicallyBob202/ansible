@@ -1,0 +1,103 @@
+---
+all:
+  children:
+    # ============================================
+    # Test Forest - lab.local (single domain)
+    # ============================================
+    test_forest:
+      children:
+        test_root_dcs:
+          hosts:
+            TROOT-DC01:
+              ansible_host: 172.16.100.10
+              dc_role: pdc
+              vmid: 10010
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "test"
+
+            TROOT-DC02:
+              ansible_host: 172.16.100.11
+              dc_role: replica
+              vmid: 10011
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "test"
+
+          vars:
+            domain_name: lab.local
+            netbios_name: LAB
+
+        test_child_dcs:
+          hosts:
+            TCHILD-DC01:
+              ansible_host: 172.16.101.10
+              dc_role: pdc
+              vmid: 10110
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "test"
+
+            TCHILD-DC02:
+              ansible_host: 172.16.101.11
+              dc_role: replica
+              vmid: 10111
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "test"
+
+          vars:
+            domain_name: child.lab.local
+            netbios_name: CHILD
+            parent_domain: lab.local
+            parent_domain_netbios: LAB
+
+    # ============================================
+    # Logical Groupings
+    # ============================================
+    domain_controllers:
+      children:
+        test_forest:
+
+        # Stage 03: Forest Root DCs
+        forest_root_dcs:
+          children:
+            test_root_dcs:
+
+        # Stage 04: Child Domain DCs
+        child_domain_dcs:
+          children:
+            test_child_dcs:
+
+        # Role-based groups for promotion phases
+        root_pdcs:
+          hosts:
+            TROOT-DC01:
+
+        root_replicas:
+          hosts:
+            TROOT-DC02:
+
+        child_pdcs:
+          hosts:
+            TCHILD-DC01:
+
+        child_replicas:
+          hosts:
+            TCHILD-DC02:

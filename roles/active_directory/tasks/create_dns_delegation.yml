@@ -1,0 +1,122 @@
+---
+# Create DNS delegation in parent zone for child domain
+# Creates NS records pointing to child DC hostnames/IPs and A records (glue)
+
+- name: Create DNS delegation for {{ domain_name }} in {{ parent_domain }}
+  block:
+    - name: Get child DC FQDN and IP from previous promotion facts
+      set_fact:
+        child_dc_fqdn: "{{ hostvars[groups['child_pdcs'][0]]['pdc_' + domain_netbios.lower() + '_fqdn'] | default('') }}"
+        child_dc_ip: "{{ hostvars[groups['child_pdcs'][0]]['pdc_' + domain_netbios.lower() + '_ip'] | default('') }}"
+      changed_when: false
+
+    - name: Validate child DC facts were captured
+      fail:
+        msg: "Child DC FQDN or IP not found. Promotion may have failed. FQDN={{ child_dc_fqdn }}, IP={{ child_dc_ip }}"
+      when: not child_dc_fqdn or not child_dc_ip
+
+    - name: Create delegation in parent DNS zone
+      ansible.windows.win_shell: |
+        $childZone = "{{ domain_name.split('.')[0] }}"
+        $parentZone = "{{ parent_domain }}"
+        $childDCFqdn = "{{ child_dc_fqdn }}"
+        $childDCIp = "{{ child_dc_ip }}"
+
+        try {
+          # Remove existing delegation if it exists (to handle reruns)
+          $existing = Get-DnsServerZoneDelegation -ZoneName $parentZone -ChildZoneName $childZone -ErrorAction SilentlyContinue
+          if ($existing) {
+            Remove-DnsServerZoneDelegation -ZoneName $parentZone -ChildZoneName $childZone -Force -ErrorAction SilentlyContinue
+          }
+
+          # Create new delegation with NS record and glue record
+          Add-DnsServerZoneDelegation `
+            -ZoneName $parentZone `
+            -ChildZoneName $childZone `
+            -NameServer $childDCFqdn `
+            -IPAddress $childDCIp `
+            -Passthru -ErrorAction Stop | Out-Null
+
+          Write-Output "Delegation created: $childZone -> $childDCFqdn ($childDCIp)"
+          exit 0
+        } catch {
+          Write-Output "ERROR: Failed to create delegation - $_"
+          exit 1
+        }
+      register: delegation_create
+      delegate_to: "{{ parent_pdc_hostname }}"
+      vars:
+        parent_pdc_hostname: "{{ groups['root_pdcs'][0] }}"
+      failed_when: delegation_create.rc != 0
+
+    - name: Verify delegation was created
+      ansible.windows.win_shell: |
+        $childZone = "{{ domain_name.split('.')[0] }}"
+        $parentZone = "{{ parent_domain }}"
+
+        try {
+          $delegation = Get-DnsServerZoneDelegation -ZoneName $parentZone -ChildZoneName $childZone -ErrorAction Stop
+          if ($delegation) {
+            Write-Output "Delegation verified: $childZone"
+            exit 0
+          } else {
+            Write-Output "Delegation not found after creation"
+            exit 1
+          }
+        } catch {
+          Write-Output "ERROR: Cannot verify delegation - $_"
+          exit 1
+        }
+      retries: 5
+      delay: 10
+      until: delegation_verify.rc == 0
+      register: delegation_verify
+      delegate_to: "{{ parent_pdc_hostname }}"
+      vars:
+        parent_pdc_hostname: "{{ groups['root_pdcs'][0] }}"
+      changed_when: false
+
+    - name: Wait for delegation to replicate across parent DNS servers
+      ansible.windows.win_shell: |
+        $childZone = "{{ domain_name.split('.')[0] }}"
+        $fullChildDomain = "$childZone.{{ parent_domain }}"
+
+        # Test delegation resolves from multiple parent DCs
+        $parentDCs = @({{ groups['root_pdcs'] | map('quote') | join(',') }})
+        $allResolved = $true
+
+        foreach ($dc in $parentDCs) {
+          try {
+            $records = Resolve-DnsName -Name $fullChildDomain -Type NS -Server $dc -ErrorAction Stop
+            if ($records) {
+              Write-Output "OK: $fullChildDomain resolves on $dc"
+            } else {
+              $allResolved = $false
+            }
+          } catch {
+            $allResolved = $false
+          }
+        }
+
+        if ($allResolved) {
+          Write-Output "Delegation replicated to all parent DNS servers"
+          exit 0
+        } else {
+          Write-Output "Delegation not yet replicated to all servers"
+          exit 1
+        }
+      retries: 20
+      delay: 30
+      until: delegation_replicate.rc == 0
+      register: delegation_replicate
+      changed_when: false
+
+    - name: Display delegation creation result
+      debug:
+        msg:
+          - "DNS delegation created for {{ domain_name }}"
+          - "  Parent Zone: {{ parent_domain }}"
+          - "  Child NS: {{ child_dc_fqdn }} ({{ child_dc_ip }})"
+          - "  Replicated: yes"
+
+  when: not delegation_exists
