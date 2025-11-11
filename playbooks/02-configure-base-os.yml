@@ -120,7 +120,9 @@
   serial: 0
   tasks:
     - name: Wait for Windows to be fully ready
-      include_tasks: wait_for_windows_ready.yml
+      include_role:
+        name: windows
+        tasks_from: wait_for_windows_ready.yml
 
 # =============================================================================
 # Wait for SSH Availability (Linux)
