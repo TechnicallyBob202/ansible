@@ -6,4 +6,6 @@ dsp_linux:
     ansible_ssh_private_key_file: /root/.ssh/semperis_admin
     ansible_port: 22
     ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=yes -o PasswordAuthentication=no'
-    ansible_ssh_pass: ''
+    ansible_become: yes
+    ansible_become_user: root
+    ansible_become_method: sudo
