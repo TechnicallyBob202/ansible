@@ -166,6 +166,14 @@
       delegate_to: localhost
       register: ssh_port_check
 
+    - name: Debug SSH variables
+      debug:
+        msg:
+          - "Key file: {{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
+          - "User: {{ hostvars[inventory_hostname].ansible_user }}"
+          - "Host: {{ discovered_ip }}"
+      delegate_to: localhost
+
     - name: Test SSH connectivity via local ssh command
       delegate_to: localhost
       ansible.builtin.shell: |
@@ -182,6 +190,7 @@
       until: ssh_raw_test is succeeded
       ignore_errors: true
       changed_when: false
+      timeout: 60
 
     - name: Show SSH connection result
       debug:
