@@ -1,6 +1,6 @@
 ---
 # Create or update a stage-specific snapshot
-# Logic: create if missing, replace only if vm_changed, skip if exists and unchanged
+# Logic: create if missing, replace if vm_changed=true, skip if exists and unchanged
 
 - block:
     - name: Ensure default snapshot vars
@@ -9,43 +9,36 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
-    - name: Debug vmid and proxmox_node
-      debug:
-        msg:
-          - "{{ inventory_hostname }}"
-          - "  vmid: {{ vmid | default('NOT SET') }}"
-          - "  proxmox_node: {{ proxmox_node | default('NOT SET') }}"
-          - "  proxmox_host: {{ proxmox_host | default('NOT SET') }}"
-
-    - name: Check if snapshot exists
-      shell: |
-        ssh -i /root/.ssh/ansible_key \
-          -o StrictHostKeyChecking=no \
-          root@{{ proxmox_host }} \
-          "qm snapshot {{ vmid }} --list" 2>&1 | grep -q "{{ snapshot_name }}" && echo "exists" || echo "missing"
+    - name: Get snapshot list via API
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: current
       delegate_to: localhost
-      register: snapshot_check
+      register: vm_current
       changed_when: false
       failed_when: false
 
-    - name: Debug snapshot check command
-      debug:
-        msg: "Command that will run: ssh root@{{ proxmox_host }} 'qm snapshot {{ vmid }} --list' | grep '{{ snapshot_name }}'"
-
-    - name: Debug snapshot check
-      debug:
-        msg:
-          - "{{ inventory_hostname }}"
-          - "  snapshot_check.stdout: '{{ snapshot_check.stdout | trim }}'"
-          - "  vm_changed: {{ vm_changed | default(false) }}"
+    - name: Check if snapshot exists
+      set_fact:
+        snapshot_exists: "{{ snapshot_name in (vm_current.snapshots | default([]) | map(attribute='name') | list) }}"
 
     - name: Determine snapshot action
       set_fact:
-        snapshot_action: "{{ 'replace' if (snapshot_check.stdout | trim == 'exists' and vm_changed | default(false)) else ('create' if snapshot_check.stdout | trim == 'missing' else 'skip') }}"
+        snapshot_action: >-
+          {%- if vm_changed | default(false) -%}
+            {%- if snapshot_exists -%}replace{%- else -%}create{%- endif -%}
+          {%- elif snapshot_exists -%}skip
+          {%- else -%}create
+          {%- endif -%}
 
     - name: Display snapshot plan
       debug:
-        msg: "{{ inventory_hostname }} - snapshot '{{ snapshot_name }}': {{ snapshot_action | upper }}"
+        msg: "{{ inventory_hostname }} - snapshot '{{ snapshot_name }}': {{ snapshot_action | upper }} (exists: {{ snapshot_exists }})"
 
     - name: Remove existing snapshot (if replacing)
       community.general.proxmox_snap:
