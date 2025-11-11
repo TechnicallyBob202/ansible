@@ -159,7 +159,7 @@
   tasks:
     - name: Wait for SSH port to be available
       wait_for:
-        host: "{{ ansible_host }}"
+        host: "{{ discovered_ip }}"
         port: 22
         delay: 5
         timeout: 300
@@ -176,7 +176,7 @@
 
     - name: Show SSH connection result
       debug:
-        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + ansible_host + ')' }}"
+        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + discovered_ip + ')' }}"
 
 # =============================================================================
 # PHASE 3c: Retry unreachable Windows hosts for up to 5 minutes
