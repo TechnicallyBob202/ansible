@@ -166,16 +166,22 @@
       delegate_to: localhost
       register: ssh_port_check
 
-    - name: Test SSH connectivity via raw command on discovered IP
-      ansible.builtin.raw: "whoami"
-      vars:
-        ansible_host: "{{ discovered_ip }}"
-        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=yes -o PasswordAuthentication=no"
+    - name: Test SSH connectivity via local ssh command
+      delegate_to: localhost
+      ansible.builtin.shell: |
+        ssh -i {{ ansible_ssh_private_key_file }} \
+          -o StrictHostKeyChecking=no \
+          -o UserKnownHostsFile=/dev/null \
+          -o PubkeyAuthentication=yes \
+          -o PasswordAuthentication=no \
+          -o ConnectTimeout=10 \
+          {{ ansible_user }}@{{ discovered_ip }} "echo 'SSH connection successful'"
+      register: ssh_raw_test
       retries: 30
       delay: 5
       until: ssh_raw_test is succeeded
-      register: ssh_raw_test
       ignore_errors: true
+      changed_when: false
 
     - name: Show SSH connection result
       debug:
