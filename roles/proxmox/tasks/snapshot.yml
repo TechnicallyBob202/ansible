@@ -9,6 +9,14 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
+    - name: Debug vmid and proxmox_node
+      debug:
+        msg:
+          - "{{ inventory_hostname }}"
+          - "  vmid: {{ vmid | default('NOT SET') }}"
+          - "  proxmox_node: {{ proxmox_node | default('NOT SET') }}"
+          - "  proxmox_host: {{ proxmox_host | default('NOT SET') }}"
+
     - name: Check if snapshot exists
       shell: |
         ssh -i /root/.ssh/ansible_key \
@@ -19,6 +27,10 @@
       register: snapshot_check
       changed_when: false
       failed_when: false
+
+    - name: Debug snapshot check command
+      debug:
+        msg: "Command that will run: ssh root@{{ proxmox_host }} 'qm snapshot {{ vmid }} --list' | grep '{{ snapshot_name }}'"
 
     - name: Debug snapshot check
       debug:
