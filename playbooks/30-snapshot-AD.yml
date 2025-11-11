@@ -1,13 +1,17 @@
 ---
 # =============================================================================
-# Snapshot AD VMs (create if missing, replace only if changed)
+# Snapshot AD VMs (replace if exist, create if missing)
 # =============================================================================
-- name: Snapshot All VMs
+- name: Snapshot All AD VMs
   hosts: domain_controllers
   gather_facts: false
   serial: 2
 
   tasks:
+    - name: Force replacement of existing snapshots
+      set_fact:
+        vm_changed: true
+
     - name: Snapshot VM
       include_role:
         name: proxmox
