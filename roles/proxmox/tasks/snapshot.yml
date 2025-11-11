@@ -20,17 +20,25 @@
       delegate_to: localhost
       register: vm_status
       changed_when: false
-      failed_when: false
+      ignore_errors: true
 
     - name: Debug API response
       debug:
         msg:
-          - "API Response keys: {{ vm_status.json.keys() | list }}"
-          - "Full snapshots data: {{ vm_status.json.snapshots | default('NO SNAPSHOTS KEY') }}"
+          - "API status: {{ vm_status.status | default('NO STATUS') }}"
+          - "API failed: {{ vm_status.failed | default(false) }}"
+          - "Response keys: {{ vm_status.json.keys() | list if vm_status.json is defined else 'NO JSON' }}"
+      when: vm_status.json is defined or vm_status.failed
 
     - name: Check if snapshot exists
       set_fact:
         snapshot_exists: "{{ snapshot_name in (vm_status.json.snapshots | default([]) | map(attribute='name') | list) }}"
+      when: vm_status.json is defined and not vm_status.failed
+
+    - name: Set snapshot_exists to false if API call failed
+      set_fact:
+        snapshot_exists: false
+      when: vm_status.failed or vm_status.json is not defined
 
     - name: Determine snapshot action
       set_fact:
