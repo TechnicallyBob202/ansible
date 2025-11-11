@@ -18,6 +18,9 @@
     ansible_connection: local
     ansible_python_interpreter: /usr/bin/python3
 
+- set_fact:
+    vm_is_present: "{{ (vm_exists is defined) and (vm_exists.status is defined) and (vm_exists.status == 'running' or vm_exists.status == 'stopped') }}"
+    
 - name: Stop VM before destruction
   community.general.proxmox_kvm:
     api_host: "{{ proxmox_host }}"
