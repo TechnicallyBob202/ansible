@@ -1,0 +1,58 @@
+---
+- name: Test SSH Connectivity
+  hosts: linux
+  gather_facts: false
+
+  tasks:
+    - name: Display connection info
+      debug:
+        msg:
+          - "Host: {{ inventory_hostname }}"
+          - "IP: {{ ansible_host }}"
+          - "User: {{ ansible_user }}"
+          - "Connection: {{ ansible_connection }}"
+          - "Port: {{ ansible_port }}"
+          - "Private Key: {{ ansible_ssh_private_key_file }}"
+          - "Become: {{ ansible_become }}"
+
+    - name: Test basic connectivity with ping
+      ansible.builtin.ping:
+      register: ping_result
+
+    - name: Show ping result
+      debug:
+        msg: "Ping result: {{ ping_result }}"
+
+    - name: Test whoami
+      ansible.builtin.command: whoami
+      register: whoami_result
+
+    - name: Show whoami result
+      debug:
+        msg: "Current user: {{ whoami_result.stdout }}"
+
+    - name: Test sudo access
+      ansible.builtin.command: sudo whoami
+      register: sudo_whoami_result
+
+    - name: Show sudo whoami result
+      debug:
+        msg: "Sudo user: {{ sudo_whoami_result.stdout }}"
+
+    - name: Test nmcli access
+      ansible.builtin.command: nmcli device show
+      register: nmcli_result
+
+    - name: Show nmcli result
+      debug:
+        msg: "nmcli output (first 10 lines):\n{{ nmcli_result.stdout_lines[:10] | join('\n') }}"
+
+    - name: Summary
+      debug:
+        msg:
+          - ""
+          - "✓ SSH connection successful"
+          - "✓ Ping works"
+          - "✓ Can run commands as {{ ansible_user }}"
+          - "✓ Can run sudo commands"
+          - "✓ nmcli is accessible"
