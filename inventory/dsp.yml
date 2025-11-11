@@ -60,7 +60,7 @@ all:
       vars:
         ansible_connection: ssh
         ansible_user: blyons
-        ansible_ssh_private_key_file: "{{ lookup('env', 'SEMAPHORE_KEY_SEMPERIS_ADMIN') }}"
+        ansible_ssh_private_key_file: ~/.ssh/semperis_admin
         ansible_port: 22
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
       hosts:

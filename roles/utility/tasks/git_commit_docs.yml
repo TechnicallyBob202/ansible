@@ -31,8 +31,8 @@
 - name: Commit mRemoteNG files
   shell: |
     cd {{ playbook_dir }}/..
-    git config user.email "ansible@semperis.lab" || true
-    git config user.name "Ansible Automation" || true
+    git config user.email "bob.lyons.202@gmail.com" || true
+    git config user.name "Bob Lyons" || true
     git commit -m "Update mRemoteNG configuration - {{ ansible_date_time.iso8601 }}" {{ files_to_commit | join(' ') }} || echo "No changes to commit"
   when:
     - git_repo.stat.exists
