@@ -26,6 +26,16 @@
     - (linux_conn_name is not defined or linux_ifname is not defined)
     - nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | length > 0
 
+- name: Debug nmcli configuration values
+  debug:
+    msg:
+      - "Connection name: {{ linux_conn_name | default('System eth0') }}"
+      - "Interface: {{ linux_ifname | default('eth0') }}"
+      - "Target IP: {{ target_ip }}"
+      - "IP Prefix: {{ linux_ip_prefix | default(24) }}"
+      - "Gateway: {{ linux_gateway | default('192.168.35.1') }}"
+      - "DNS Servers: {{ linux_dns_servers | default(['1.1.1.1','1.0.0.1']) }}"
+
 - name: Configure static IP via nmcli
   community.general.nmcli:
     conn_name: "{{ linux_conn_name | default('System eth0') }}"
@@ -38,6 +48,12 @@
     autoconnect: yes
   register: network_config
   become: true
+
+- name: Debug nmcli result
+  debug:
+    msg:
+      - "Changed: {{ network_config.changed }}"
+      - "Result: {{ network_config }}"
 
 - name: Switch ansible_ssh_host to new static IP for future tasks
   ansible.builtin.set_fact:
