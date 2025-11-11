@@ -24,7 +24,9 @@
   serial: 0
   tasks:
     - name: Wait for Windows to be fully ready
-      include_tasks: wait_for_windows_ready.yml
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_windows_ready.yml
 
 # =============================================================================
 # Initialize Change Tracking
@@ -90,7 +92,9 @@
   serial: 0
   tasks:
     - name: Wait for Windows to be ready before replica promotion
-      include_tasks: wait_for_windows_ready.yml
+      include_role:
+        name: active_directory
+        tasks_from: wait_for_windows_ready.yml
 
     - name: Promote to replica DC
       include_role:
