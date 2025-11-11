@@ -9,23 +9,22 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
-    - name: Get snapshot list via API
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
+    - name: Get snapshot list via REST API
+      ansible.builtin.uri:
+        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/status/current"
+        method: GET
+        user: "{{ proxmox_user }}"
+        password: "{{ proxmox_password }}"
         validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        state: current
+        force_basic_auth: yes
       delegate_to: localhost
-      register: vm_current
+      register: vm_status
       changed_when: false
       failed_when: false
 
     - name: Check if snapshot exists
       set_fact:
-        snapshot_exists: "{{ snapshot_name in (vm_current.snapshots | default([]) | map(attribute='name') | list) }}"
+        snapshot_exists: "{{ snapshot_name in (vm_status.json.snapshots | default([]) | map(attribute='name') | list) }}"
 
     - name: Determine snapshot action
       set_fact:
