@@ -257,6 +257,7 @@
         name: linux
         tasks_from: set_static_ip
       register: ip_result
+      when: needs_ip_config
 
     - name: Consolidate IP changes
       set_fact:
@@ -267,17 +268,29 @@
         ansible_host: "{{ target_ip }}"
       when: needs_ip_config
 
+    - name: Wait for IP to settle
+      pause:
+        seconds: 10
+      when: needs_ip_config
+
+    - name: Wait for connection to settle
+      pause:
+        seconds: 5
+      when: needs_ip_config
+
     - name: Configure DNS servers
       include_role:
         name: linux
         tasks_from: set_dns
       register: dns_result
+      when: needs_ip_config or vm_changed
 
     - name: Set hostname
       include_role:
         name: linux
         tasks_from: set_hostname
       register: hostname_result
+      when: needs_ip_config or vm_changed
 
     - name: Consolidate DNS and hostname changes
       set_fact:
