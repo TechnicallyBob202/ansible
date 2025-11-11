@@ -20,7 +20,7 @@
 # PHASE 1: Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: forest_root_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -32,7 +32,7 @@
 # PHASE 2: Install AD Features
 # =============================================================================
 - name: Install Active Directory Features
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: forest_root_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -45,7 +45,7 @@
 # PHASE 3: Configure DNS to point to all forest DCs
 # =============================================================================
 - name: Configure DNS on Forest Root DCs
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: forest_root_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -62,7 +62,7 @@
 # PHASE 4: Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: root_pdcs
   gather_facts: false
   serial: 0
   tasks:
@@ -70,13 +70,12 @@
       include_role:
         name: active_directory
         tasks_from: promote_forest_root.yml
-      when: dc_role == 'pdc'
 
 # =============================================================================
 # PHASE 5: Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: root_replicas
   gather_facts: false
   serial: 0
   tasks:
@@ -90,19 +89,17 @@
       until: pdc_reach.rc == 0
       register: pdc_reach
       changed_when: false
-      when: dc_role == 'replica'
 
     - name: Promote to replica DC
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when: dc_role == 'replica'
 
 # =============================================================================
 # PHASE 6: Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot after Forest Root Promotion
-  hosts: d1_dcs:d2_parent_dcs
+  hosts: forest_root_dcs
   gather_facts: false
   serial: 2
   tasks:

@@ -237,6 +237,39 @@ all:
         d1_forest:
         d2_forest:
 
+        # Stage 03: Forest Root DCs
+        forest_root_dcs:
+          children:
+            d1_dcs:
+            d2_parent_dcs:
+
+        # Stage 04: Child Domain DCs
+        child_domain_dcs:
+          children:
+            d21_child_dcs:
+            d22_child_dcs:
+
+        # Role-based groups for promotion phases
+        root_pdcs:
+          hosts:
+            D1-DC01:
+            D2-DC01:
+
+        root_replicas:
+          hosts:
+            D1-DC02:
+            D2-DC02:
+
+        child_pdcs:
+          hosts:
+            D21-DC01:
+            D22-DC01:
+
+        child_replicas:
+          hosts:
+            D21-DC02:
+            D22-DC02:
+
     infrastructure:
       children:
         adfr_infrastructure:

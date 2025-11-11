@@ -21,7 +21,7 @@
 # PHASE 0: Initialize Change Tracking for All Child Domain VMs
 # =============================================================================
 - name: Initialize Change Tracking for All Child Domain VMs
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_domain_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -33,7 +33,7 @@
 # PHASE 1: Install AD Features on Child Domain DCs
 # =============================================================================
 - name: Install Active Directory Features
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_domain_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -51,7 +51,7 @@
 # PHASE 2: Configure DNS on Child Domain DCs
 # =============================================================================
 - name: Configure DNS on Child Domain DCs
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_domain_dcs
   gather_facts: false
   serial: 0
   tasks:
@@ -73,7 +73,7 @@
 # PHASE 3: Promote Child Domain PDCs
 # =============================================================================
 - name: Promote Child Domain PDCs
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_pdcs
   gather_facts: false
   serial: 0
   tasks:
@@ -81,7 +81,6 @@
       include_role:
         name: active_directory
         tasks_from: promote_child_domain.yml
-      when: dc_role == 'pdc'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -92,7 +91,7 @@
 # PHASE 4: Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_replicas
   gather_facts: false
   serial: 0
   tasks:
@@ -100,7 +99,6 @@
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
-      when: dc_role == 'replica'
       register: promotion_result
 
     - name: Mark VM as changed if promoted
@@ -111,7 +109,7 @@
 # PHASE 5: Snapshots (only for changed VMs)
 # =============================================================================
 - name: Snapshot after AD promotion
-  hosts: d21_child_dcs:d22_child_dcs
+  hosts: child_domain_dcs
   gather_facts: false
   serial: 2
   tasks:

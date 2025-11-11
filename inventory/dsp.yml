@@ -1,99 +1,153 @@
 ---
-all:
-  children:
-    # ============================================
-    # D3.lab Forest - Single Domain
-    # ============================================
-    d3_forest:
-      children:
-        d3_dcs:
-          hosts:
-            D3-DC01:
-              ansible_host: 172.16.50.11
-              dc_role: pdc
-              vmid: 5011
-              proxmox_host: 192.168.33.22
-              proxmox_node: semperis-nuc-2
-              template_id: 9002
-              vm_cores: 2
-              vm_memory: 4096
-              vm_disk: 80G
-              proxmox_vm_tags: "dsp"
+- name: Build Active Directory Child Domains
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Display build plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Stage 04: Build AD Child Domains"
+          - "========================================="
+          - ""
+          - "Child domains to build:"
+          - "  • d21.d2.lab (under d2.lab)"
+          - "  • d22.d2.lab (under d2.lab)"
+          - ""
+          - "REQUIRES: d2.lab forest already built"
+          - "Duration: ~20-30 minutes"
 
-          vars:
-            domain_name: d3.lab
-            netbios_name: D3
+# =============================================================================
+# PHASE 0: Initialize Change Tracking for All Child Domain VMs
+# =============================================================================
+- name: Initialize Change Tracking for All Child Domain VMs
+  hosts: child_domain_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Initialize vm_changed flag
+      set_fact:
+        vm_changed: false
 
-    # ============================================
-    # DSP Infrastructure
-    # ============================================
-    dsp_infrastructure:
-      hosts:
-        DSP:
-          ansible_host: 172.16.50.10
-          vmid: 5010
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9011
-          vm_cores: 4
-          vm_memory: 8192
-          vm_disk: 100G
-          proxmox_vm_tags: "dsp"
-          role: "DSP Management Server"
+# =============================================================================
+# PHASE 1: Install AD Features on Child Domain DCs
+# =============================================================================
+- name: Install Active Directory Features
+  hosts: child_domain_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Install AD-DS features
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features.yml
+      register: features_result
 
-        SQL:
-          ansible_host: 172.16.50.13
-          vmid: 5013
-          proxmox_host: 192.168.33.22
-          proxmox_node: semperis-nuc-2
-          template_id: 9012
-          vm_cores: 4
-          vm_memory: 16384
-          vm_disk: 200G
-          proxmox_vm_tags: "dsp"
-          role: "SQL Server"
+    - name: Mark VM as changed if features were installed
+      set_fact:
+        vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
-    # ============================================
-    # DSP Linux Systems
-    # ============================================
-    dsp_linux:
+# =============================================================================
+# PHASE 2: Configure DNS on Child Domain DCs
+# =============================================================================
+- name: Configure DNS on Child Domain DCs
+  hosts: child_domain_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Map dns_servers to windows_dns_servers (includes all DCs for this domain)
+      set_fact:
+        windows_dns_servers: "{{ dns_servers }}"
+
+    - name: Configure DNS
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 3: Promote Child Domain PDCs
+# =============================================================================
+- name: Promote Child Domain PDCs
+  hosts: child_pdcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Promote to child domain PDC
+      include_role:
+        name: active_directory
+        tasks_from: promote_child_domain.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 4: Promote Child Domain Replica DCs
+# =============================================================================
+- name: Promote Child Domain Replica DCs
+  hosts: child_replicas
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Promote to replica DC
+      include_role:
+        name: active_directory
+        tasks_from: promote_replica_dc.yml
+      register: promotion_result
+
+    - name: Mark VM as changed if promoted
+      set_fact:
+        vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 5: Snapshots (only for changed VMs)
+# =============================================================================
+- name: Snapshot after AD promotion
+  hosts: child_domain_dcs
+  gather_facts: false
+  serial: 2
+  tasks:
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+    - name: Create Proxmox snapshot
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
       vars:
-        ansible_python_interpreter: /usr/bin/python3
-        ansible_connection: ssh
-        ansible_user: blyons
-        ansible_ssh_private_key_file: /root/.ssh/semperis_admin
-        ansible_port: 22
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
-      hosts:
-        IAS:
-          ansible_host: 172.16.50.12
-          vmid: 5012
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9021
-          vm_cores: 2
-          vm_memory: 4096
-          vm_disk: 80G
-          proxmox_vm_tags: "dsp"
-          role: "Identity Analytics Scanner"
+        snapshot_name: "stage4-child-domains-promoted"
+        snapshot_description: "After AD child domain promotion"
+      when: vm_changed
 
-    # ============================================
-    # Logical Groupings
-    # ============================================
-    domain_controllers:
-      children:
-        d3_forest:
+# =============================================================================
+# PHASE 6: Summary
+# =============================================================================
+- name: Display Summary
+  hosts: localhost
+  gather_facts: false
 
-    infrastructure:
-      children:
-        dsp_infrastructure:
-        dsp_linux:
-
-    windows:
-      children:
-        d3_forest:
-        dsp_infrastructure:
-
-    linux:
-      children:
-        dsp_linux:
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "Stage 04 Complete"
+          - "========================================="
+          - ""
+          - "Child domains built:"
+          - "  • d21.d2.lab"
+          - "  • d22.d2.lab"
+          - ""
+          - "All DCs promoted and replicating"
+          - ""
+          - "Next: Run Stage 05 to create OUs and populate dummy data"
