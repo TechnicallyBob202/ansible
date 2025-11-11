@@ -15,6 +15,9 @@
           - ""
           - "Duration: ~20-30 minutes"
 
+# =============================================================================
+# Ensure Windows Ready
+# =============================================================================
 - name: Ensure Windows is Ready
   hosts: forest_root_dcs
   gather_facts: false
@@ -23,6 +26,9 @@
     - name: Wait for Windows to be fully ready
       include_tasks: wait_for_windows_ready.yml
 
+# =============================================================================
+# Initialize Change Tracking
+# =============================================================================
 - name: Initialize Change Tracking
   hosts: forest_root_dcs
   gather_facts: false
@@ -32,6 +38,9 @@
       set_fact:
         vm_changed: true
 
+# =============================================================================
+# Install AD Features
+# =============================================================================
 - name: Install Active Directory Features
   hosts: forest_root_dcs
   gather_facts: false
@@ -42,6 +51,9 @@
         name: active_directory
         tasks_from: install_ad_features.yml
 
+# =============================================================================
+# Configure DNS
+# =============================================================================
 - name: Configure DNS on Forest Root DCs
   hosts: forest_root_dcs
   gather_facts: false
@@ -56,6 +68,9 @@
         name: windows
         tasks_from: set_dns.yml
 
+# =============================================================================
+# Promote Forest Root PDCs
+# =============================================================================
 - name: Promote Forest Root PDCs
   hosts: root_pdcs
   gather_facts: false
@@ -66,6 +81,9 @@
         name: active_directory
         tasks_from: promote_forest_root.yml
 
+# =============================================================================
+# Promote Forest Root Replica DCs
+# =============================================================================
 - name: Promote Forest Root Replica DCs
   hosts: root_replicas
   gather_facts: false
@@ -79,6 +97,9 @@
         name: active_directory
         tasks_from: promote_replica_dc.yml
 
+# =============================================================================
+# Snapshot Changed VMs
+# =============================================================================
 - name: Snapshot after Forest Root Promotion
   hosts: forest_root_dcs
   gather_facts: false
@@ -94,6 +115,9 @@
         snapshot_name: "stage3-forest-roots-promoted"
         snapshot_description: "After forest root promotion"
 
+# =============================================================================
+# Summary
+# =============================================================================
 - name: Stage 03 Complete
   hosts: localhost
   gather_facts: false
