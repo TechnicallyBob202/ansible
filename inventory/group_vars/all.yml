@@ -4,23 +4,6 @@
 # ============================================================================
 
 # ============================================================================
-# Connection Settings (inherited by all hosts unless overridden)
-# ============================================================================
-
-# Windows connection defaults
-ansible_connection: winrm
-ansible_winrm_transport: ntlm
-ansible_winrm_server_cert_validation: ignore
-ansible_port: 5985
-ansible_user: Administrator
-ansible_password: "{{ lookup('env', 'WINDOWS_PASSWORD') }}"
-
-# Linux connection defaults (for DSP)
-linux_user: blyons
-linux_password: "{{ lookup('env', 'LINUX_PASSWORD') }}"
-linux_port: 22
-
-# ============================================================================
 # Proxmox API Credentials (REQUIRED for Stage 1)
 # ============================================================================
 proxmox_user: root@pam
