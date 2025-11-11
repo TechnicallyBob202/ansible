@@ -157,7 +157,7 @@
   serial: 0
 
   tasks:
-    - name: Wait for SSH port to be available
+    - name: Wait for SSH port to be available on discovered IP
       wait_for:
         host: "{{ discovered_ip }}"
         port: 22
@@ -166,18 +166,20 @@
       delegate_to: localhost
       register: ssh_port_check
 
-    - name: Test SSH connectivity with ansible.builtin.ping
-      ansible.builtin.ping:
+    - name: Test SSH connectivity via raw command on discovered IP
+      ansible.builtin.raw: "whoami"
+      vars:
+        ansible_host: "{{ discovered_ip }}"
       retries: 30
       delay: 5
-      until: ping_result is succeeded
-      register: ping_result
+      until: ssh_raw_test is succeeded
+      register: ssh_raw_test
       ignore_errors: true
 
     - name: Show SSH connection result
       debug:
-        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + discovered_ip + ')' }}"
-
+        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ssh_raw_test is succeeded else 'unreachable (at ' + discovered_ip + ')' }}"
+        
 # =============================================================================
 # PHASE 3c: Retry unreachable Windows hosts for up to 5 minutes
 # =============================================================================
