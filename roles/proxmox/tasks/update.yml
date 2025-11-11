@@ -1,0 +1,13 @@
+---
+# Update system packages on Linux
+
+- name: Update system packages
+  ansible.builtin.dnf:
+    name: '*'
+    state: latest
+  become: true
+  register: update_result
+
+- name: Display update result
+  debug:
+    msg: "{{ inventory_hostname }} - System packages {{ 'updated' if update_result.changed else 'already up to date' }}"

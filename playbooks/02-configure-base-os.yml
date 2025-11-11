@@ -349,6 +349,17 @@
   serial: 0
 
   tasks:
+    - name: Update ansible_host to target IP before reboot
+      set_fact:
+        ansible_host: "{{ target_ip }}"
+      when: needs_ip_config
+
+    - name: Update system packages
+      include_role:
+        name: linux
+        tasks_from: update
+      when: vm_changed
+
     - name: Reboot if changes were made
       include_role:
         name: linux
@@ -398,10 +409,6 @@
   hosts: linux
   gather_facts: false
   serial: 0
-  vars:
-    ansible_connection: ssh
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_port: 22
 
   tasks:
     - name: Validate network configuration
