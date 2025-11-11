@@ -250,6 +250,8 @@
   hosts: linux
   gather_facts: false
   serial: 0
+  vars:
+    ansible_connection: ssh
 
   tasks:
     - name: Set static IP
@@ -347,6 +349,8 @@
   hosts: linux
   gather_facts: false
   serial: 0
+  vars:
+    ansible_connection: ssh
 
   tasks:
     - name: Reboot if changes were made
@@ -398,6 +402,8 @@
   hosts: linux
   gather_facts: false
   serial: 0
+  vars:
+    ansible_connection: ssh
 
   tasks:
     - name: Validate network configuration
