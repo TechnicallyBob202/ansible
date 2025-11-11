@@ -22,6 +22,12 @@
       changed_when: false
       failed_when: false
 
+    - name: Debug API response
+      debug:
+        msg:
+          - "API Response keys: {{ vm_status.json.keys() | list }}"
+          - "Full snapshots data: {{ vm_status.json.snapshots | default('NO SNAPSHOTS KEY') }}"
+
     - name: Check if snapshot exists
       set_fact:
         snapshot_exists: "{{ snapshot_name in (vm_status.json.snapshots | default([]) | map(attribute='name') | list) }}"
