@@ -1,4 +1,16 @@
----
+# =============================================================================
+# Validate Linux Configuration
+# =============================================================================
+- name: Validate Linux Configuration
+  hosts: linux
+  gather_facts: false
+  serial: 0
+  vars:
+    ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_port: 22
+
+  tasks:---
 # =============================================================================
 # Stage 02: Configure Base OS
 # =============================================================================
@@ -252,6 +264,8 @@
   serial: 0
   vars:
     ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_port: 22
 
   tasks:
     - name: Set static IP
@@ -351,6 +365,8 @@
   serial: 0
   vars:
     ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_port: 22
 
   tasks:
     - name: Reboot if changes were made
@@ -404,6 +420,7 @@
   serial: 0
   vars:
     ansible_connection: ssh
+    ansible_python_interpreter: /usr/bin/python3
 
   tasks:
     - name: Validate network configuration
