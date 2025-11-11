@@ -1,21 +1,7 @@
 ---
-# =============================================================================
-# Stage 02: Configure Base OS
-# =============================================================================
-# Purpose: Configure all VMs (Windows and Linux)
-# - Discover current IPs from Proxmox
-# - Wait for VMs to fully boot
-# - Configure static IPs
-# - Set DNS servers
-# - Set hostnames
-# - Install AD-DS features on domain controllers
-# - Reboot if needed
-# - Snapshot changed VMs
-
 - name: Stage 02 - Configure Base OS
   hosts: localhost
   gather_facts: false
-
   tasks:
     - name: Display stage introduction
       debug:
@@ -24,7 +10,7 @@
           - "  Stage 02: Configure Base OS"
           - "========================================="
           - ""
-          - "Configuring {{ groups['all'] | length }} VMs:"
+          - "Configuring VMs:"
           - "  • Wait for VMs to fully boot"
           - "  • Discover current IPs"
           - "  • Configure static IPs"
@@ -38,450 +24,163 @@
 # Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
-  hosts: all
+  hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
     - name: Initialize vm_changed flag
       set_fact:
         vm_changed: false
 
 # =============================================================================
-# Discover Current IPs from Proxmox
+# Discover Current IPs
 # =============================================================================
 - name: Discover Current IPs
-  hosts: all
+  hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
     - name: Save target static IP
       set_fact:
-        target_ip: "{{ ansible_host }}"
+        target_static_ip: "{{ ansible_host }}"
+      changed_when: false
 
-    - name: Discover current IP from Proxmox (with retries)
-      block:
-        - name: Include IP discovery role
-          include_role:
-            name: proxmox
-            apply:
-              delegate_to: localhost
-          vars:
-            proxmox_operation: discover_ip
-          register: ip_discovery_result
-      rescue:
-        - name: Wait before retry
-          pause:
-            seconds: 15
-          delegate_to: localhost
-
-        - name: Retry IP discovery (attempt 2)
-          include_role:
-            name: proxmox
-            apply:
-              delegate_to: localhost
-          vars:
-            proxmox_operation: discover_ip
-          register: ip_discovery_result
-          ignore_errors: true
-
-        - name: Wait before final retry
-          pause:
-            seconds: 15
-          when: ip_discovery_result.failed | default(false)
-          delegate_to: localhost
-
-        - name: Retry IP discovery (attempt 3)
-          include_role:
-            name: proxmox
-            apply:
-              delegate_to: localhost
-          vars:
-            proxmox_operation: discover_ip
-          register: ip_discovery_result
-          when: ip_discovery_result.failed | default(false)
-
-    - name: Abort if IP discovery failed after retries
-      fail:
-        msg: |
-          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }}) after 3 attempts
-
-          This usually means:
-          - VM is not running
-          - qemu-guest-agent is not installed or not running
-          - VM is still booting (wait a few minutes and try again)
-
-          Manual intervention required before continuing.
-      when: ip_discovery_result.failed | default(false)
+    - name: Include IP discovery role
+      include_role:
+        name: proxmox
+        tasks_from: discover_ip.yml
 
     - name: Check if IP already matches
       set_fact:
-        needs_ip_config: "{{ discovered_ip != target_ip }}"
+        ip_needs_config: "{{ current_ip != target_static_ip }}"
+      changed_when: false
 
     - name: Update ansible_host to discovered IP
       set_fact:
-        ansible_host: "{{ discovered_ip }}"
+        ansible_host: "{{ current_ip }}"
+      changed_when: false
 
     - name: Display IP status
       debug:
-        msg: "{{ inventory_hostname }}: {{ discovered_ip }} → {{ target_ip }} ({{ 'needs config' if needs_ip_config else 'already correct' }})"
-
-# =============================================================================
-# Wait for WinRM Availability (Windows)
-# =============================================================================
-- name: Wait for WinRM Availability (Windows)
-  hosts: windows
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Test WinRM connectivity
-      ansible.windows.win_ping:
-      retries: 60
-      delay: 5
-      until: ping_result is succeeded
-      register: ping_result
-      ignore_errors: true
-
-    - name: Show WinRM connection result
-      debug:
-        msg: "{{ inventory_hostname }}: WinRM {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + ansible_host + ')' }}"
-
-# =============================================================================
-# Wait for SSH Availability (Linux)
-# =============================================================================
-- name: Wait for SSH Availability (Linux)
-  hosts: linux
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Wait for SSH port to be available on discovered IP
-      wait_for:
-        host: "{{ discovered_ip }}"
-        port: 22
-        delay: 5
-        timeout: 300
-      delegate_to: localhost
-      register: ssh_port_check
-
-    - name: Show SSH port is available
-      debug:
-        msg: "{{ inventory_hostname }}: SSH port available at {{ discovered_ip }}"
-
-# =============================================================================
-# Configure Static IPs and Network (Windows)
-# =============================================================================
-- name: Configure Windows Network
-  hosts: windows
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Check if already a domain controller
-      ansible.windows.win_shell: |
-        $CS = Get-WmiObject Win32_ComputerSystem
-        if ($CS.DomainRole -ge 4) {
-          Write-Output "IS_DC"
-        } else {
-          Write-Output "NOT_DC"
-        }
-      register: dc_check
+        msg: "{{ inventory_hostname }}: {{ current_ip }} → {{ target_static_ip }} ({{ 'needs config' if ip_needs_config else 'already correct' }})"
       changed_when: false
 
-    - name: Set DNS servers to Cloudflare (if NOT a DC)
-      set_fact:
-        windows_dns_servers: "{{ ['1.1.1.1', '1.0.0.1'] }}"
-      when: dc_check.stdout | trim == 'NOT_DC'
-
-    - name: Set DNS servers to domain DNS (if IS a DC)
-      set_fact:
-        windows_dns_servers: "{{ dns_servers }}"
-      when: dc_check.stdout | trim == 'IS_DC'
-
-    - name: Set static IP
-      include_role:
-        name: windows
-        tasks_from: set_static_ip
-      register: ip_result
-
-    - name: Consolidate IP changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
-
-    - name: Update ansible_host to target IP
-      set_fact:
-        ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
-
-    - name: Wait for IP to settle
-      pause:
-        seconds: 10
-      when: needs_ip_config
-
-    - name: Configure DNS servers
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      register: dns_result
-
-    - name: Set hostname
-      include_role:
-        name: windows
-        tasks_from: set_hostname
-      register: hostname_result
-
-    - name: Consolidate DNS and hostname changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
-
-    - name: Test WinRM on static IP
-      ansible.windows.win_ping:
-      retries: 30
-      delay: 10
-      until: ping_result is succeeded
-      register: ping_result
-
 # =============================================================================
-# Configure Static IPs and Network (Linux)
+# Wait for Windows to be Ready
 # =============================================================================
-- name: Configure Linux Network
-  hosts: linux
+- name: Wait for Windows Ready
+  hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
-    - name: Set static IP
-      include_role:
-        name: linux
-        tasks_from: set_static_ip
-      register: ip_result
-      when: needs_ip_config
-
-    - name: Consolidate IP changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
-
-    - name: Update ansible_host to target IP
-      set_fact:
-        ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
-
-    - name: Wait for IP to settle
-      pause:
-        seconds: 10
-      when: needs_ip_config
-
-    - name: Wait for connection to settle
-      pause:
-        seconds: 5
-      when: needs_ip_config
-
-    - name: Configure DNS servers
-      include_role:
-        name: linux
-        tasks_from: set_dns
-      register: dns_result
-      when: needs_ip_config or vm_changed
-
-    - name: Set hostname
-      include_role:
-        name: linux
-        tasks_from: set_hostname
-      register: hostname_result
-      when: needs_ip_config or vm_changed
-
-    - name: Consolidate DNS and hostname changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
+    - name: Wait for Windows to be fully ready
+      include_tasks: wait_for_windows_ready.yml
 
 # =============================================================================
-# Install AD-DS Features (Domain Controllers Only)
+# Install AD-DS Features on Domain Controllers
 # =============================================================================
 - name: Install AD-DS Features on Domain Controllers
   hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
     - name: Install Active Directory Domain Services features
       include_role:
         name: active_directory
-        tasks_from: install_ad_features
-      register: adds_install_result
+        tasks_from: install_ad_features.yml
+      register: features_install
 
-    - name: Consolidate AD-DS changes
+    - name: Mark VM as changed if features were installed
       set_fact:
-        vm_changed: "{{ vm_changed or (adds_install_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or (features_install.changed | default(false)) }}"
 
 # =============================================================================
-# Check for Pending Reboots (Windows)
+# Configure Network
 # =============================================================================
-- name: Check if reboot is necessary (Windows)
-  hosts: windows
+- name: Configure Windows Network
+  hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
-    - name: Check for pending reboots
+    - name: Configure static IP
       include_role:
         name: windows
-        tasks_from: check_reboot_needed
+        tasks_from: configure_network.yml
+      register: network_config
+
+    - name: Mark VM as changed if network was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (network_config.changed | default(false)) }}"
+
+    - name: Set hostname
+      include_role:
+        name: windows
+        tasks_from: set_hostname.yml
+      register: hostname_config
+
+    - name: Mark VM as changed if hostname was set
+      set_fact:
+        vm_changed: "{{ vm_changed or (hostname_config.changed | default(false)) }}"
+
+    - name: Set DNS servers
+      include_role:
+        name: windows
+        tasks_from: set_dns.yml
+      register: dns_config
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_config.changed | default(false)) }}"
 
 # =============================================================================
-# Reboot Windows Hosts if Needed
+# Reboot if needed
 # =============================================================================
-- name: Reboot Windows Hosts
-  hosts: windows
+- name: Reboot if Configuration Changed
+  hosts: domain_controllers
   gather_facts: false
   serial: 0
-
   tasks:
-    - name: Reboot to clear pending state if needed
+    - name: Reboot if VM was changed
       ansible.windows.win_reboot:
-        reboot_timeout: 300
-        post_reboot_delay: 30
-      when: reboot_needed
-
-# =============================================================================
-# Reboot Linux Hosts if Needed
-# =============================================================================
-- name: Reboot Linux Hosts
-  hosts: linux
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Update ansible_host to target IP before reboot
-      set_fact:
-        ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
-
-    - name: Update system packages
-      include_role:
-        name: linux
-        tasks_from: update
+        msg: "Rebooting due to configuration changes"
+        reboot_timeout: 600
       when: vm_changed
 
-    - name: Reboot if changes were made
-      include_role:
-        name: linux
-        tasks_from: reboot
+    - name: Wait for Windows after reboot
+      include_tasks: wait_for_windows_ready.yml
       when: vm_changed
 
 # =============================================================================
-# Validate Windows Configuration
+# Snapshot Changed VMs
 # =============================================================================
-- name: Validate Windows Configuration
-  hosts: windows
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Get network configuration
-      ansible.windows.win_shell: |
-        $adapter = Get-NetAdapter | Where-Object {$_.Status -eq "Up"} | Select-Object -First 1
-        $ip = Get-NetIPAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-        $dns = Get-DnsClientServerAddress -InterfaceAlias $adapter.Name -AddressFamily IPv4
-
-        [PSCustomObject]@{
-          Hostname = $env:COMPUTERNAME
-          IPAddress = $ip.IPAddress
-          DNS = $dns.ServerAddresses -join ","
-        } | ConvertTo-Json
-      register: network_info
-      changed_when: false
-
-    - name: Parse network information
-      set_fact:
-        network_config: "{{ network_info.stdout | from_json }}"
-
-    - name: Validate configuration
-      debug:
-        msg:
-          - "{{ inventory_hostname }}:"
-          - "  IP: {{ network_config.IPAddress }} ✓"
-          - "  Hostname: {{ network_config.Hostname }} ✓"
-          - "  DNS: {{ network_config.DNS }}"
-          - "  Changed: {{ vm_changed }}"
-
-# =============================================================================
-# Validate Linux Configuration
-# =============================================================================
-- name: Validate Linux Configuration
-  hosts: linux
-  gather_facts: false
-  serial: 0
-
-  tasks:
-    - name: Validate network configuration
-      include_role:
-        name: linux
-        tasks_from: validate
-
-# =============================================================================
-# Snapshot All VMs
-# =============================================================================
-- name: Snapshot All VMs
-  hosts: all
+- name: Snapshot Changed VMs
+  hosts: domain_controllers
   gather_facts: false
   serial: 2
-
   tasks:
-    - name: Snapshot VM
+    - name: Display snapshot plan
+      debug:
+        msg: "{{ inventory_hostname }} - Will {{ 'SNAPSHOT' if vm_changed else 'SKIP snapshot' }}"
+
+    - name: Create Proxmox snapshot
       include_role:
         name: proxmox
-        tasks_from: snapshot
+        tasks_from: snapshot.yml
         apply:
           delegate_to: localhost
       vars:
-        snapshot_name: "stage2-base-configured"
-        snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
-
-# =============================================================================
-# Generate mRemoteNG Configuration
-# =============================================================================
-- name: Generate mRemoteNG Configuration
-  hosts: localhost
-  gather_facts: false
-
-  tasks:
-    - name: Display mRemoteNG generation plan
-      debug:
-        msg:
-          - ""
-          - "========================================="
-          - "  Generating mRemoteNG Configuration"
-          - "========================================="
-          - ""
-          - "Detecting inventory type and generating"
-          - "appropriate mRemoteNG connection file..."
-
-    - name: Generate mRemoteNG
-      include_role:
-        name: utility
-        tasks_from: generate_mremoteng
-
-    - name: Commit mRemoteNG to git
-      include_role:
-        name: utility
-        tasks_from: git_commit_docs
+        snapshot_name: "stage2-base-os-configured"
+        snapshot_description: "After base OS configuration"
+      when: vm_changed
 
 # =============================================================================
 # Summary
 # =============================================================================
-- name: Display Summary
+- name: Stage 02 Complete
   hosts: localhost
   gather_facts: false
-
   tasks:
-    - name: Count changed VMs
-      set_fact:
-        changed_vms: "{{ groups['all'] | map('extract', hostvars, 'vm_changed') | select('equalto', true) | list | length }}"
-        total_vms: "{{ groups['all'] | length }}"
-
-    - name: Display summary
+    - name: Display completion message
       debug:
         msg:
           - ""
@@ -489,12 +188,11 @@
           - "Stage 02 Complete"
           - "========================================="
           - ""
-          - "VMs Configured: {{ changed_vms }}/{{ total_vms }}"
+          - "✓ All VMs booted and reachable"
+          - "✓ Static IPs configured"
+          - "✓ Hostnames set"
+          - "✓ DNS configured"
+          - "✓ AD-DS features installed"
+          - "✓ Snapshots created"
           - ""
-          - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
-          - ""
-          - "✓ All Windows/Linux configurations applied"
-          - "✓ AD-DS features installed on all domain controllers"
-          - "✓ mRemoteNG configuration generated and committed to git"
-          - ""
-          - "Next: Run playbooks/03-build-forests.yml to build AD forests"
+          - "Next: Run Stage 03 to build forest roots"
