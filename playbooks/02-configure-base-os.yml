@@ -170,6 +170,7 @@
       ansible.builtin.raw: "whoami"
       vars:
         ansible_host: "{{ discovered_ip }}"
+        ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=yes -o PasswordAuthentication=no"
       retries: 30
       delay: 5
       until: ssh_raw_test is succeeded
