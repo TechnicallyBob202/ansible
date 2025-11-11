@@ -1,0 +1,19 @@
+---
+# =============================================================================
+# Snapshot AD VMs (create if missing, replace only if changed)
+# =============================================================================
+- name: Snapshot All VMs
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Snapshot VM
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        snapshot_name: "clean-ad-config"
+        snapshot_description: "After AD is fully configured"

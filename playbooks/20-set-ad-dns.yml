@@ -3,7 +3,7 @@
 # =============================================================================
 # Configure DNS to point to all forest DCs
 # =============================================================================
-- name: Configure DNS on Forest Root DCs
+- name: Configure DNS 
   hosts: domain_controllers:infrastructure:recovery_vms
   gather_facts: false
   serial: 0
