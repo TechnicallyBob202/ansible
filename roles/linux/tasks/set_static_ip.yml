@@ -31,19 +31,20 @@
     conn_name: "{{ linux_conn_name | default('System eth0') }}"
     ifname: "{{ linux_ifname | default('eth0') }}"
     type: ethernet
-    ip4: "{{ ansible_host }}/{{ linux_ip_prefix | default(24) }}"
+    ip4: "{{ target_ip }}/{{ linux_ip_prefix | default(24) }}"
     gw4: "{{ linux_gateway | default('192.168.35.1') }}"
     dns4: "{{ linux_dns_servers | default(['1.1.1.1','1.0.0.1']) | join(',') }}"
     state: present
     autoconnect: yes
   register: network_config
+  become: true
 
 - name: Switch ansible_ssh_host to new static IP for future tasks
   ansible.builtin.set_fact:
-    ansible_ssh_host: "{{ ansible_host }}"
+    ansible_ssh_host: "{{ target_ip }}"
     cacheable: true
   when: network_config.changed
 
 - name: Display result
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if network_config.changed else 'already set to' }} {{ ansible_host }}"
+    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if network_config.changed else 'already set to' }} {{ target_ip }}"
