@@ -6,11 +6,13 @@
     name: NetworkManager
     state: started
     enabled: yes
+  become: true
 
 - name: Get active ethernet connections
   ansible.builtin.command: nmcli -t -f NAME,TYPE,DEVICE,STATE c show --active
   register: nmcli_active
   changed_when: false
+  become: true
 
 - name: Debug active connections
   ansible.builtin.debug:
