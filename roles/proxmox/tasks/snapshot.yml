@@ -20,13 +20,6 @@
       changed_when: false
       ignore_errors: true
 
-    - name: Debug qm output
-      debug:
-        msg:
-          - "VMID: {{ vmid }}"
-          - "Full output:"
-          - "{{ qm_output.stdout_lines }}"
-
     - name: Check if snapshot exists by parsing qm output
       set_fact:
         snapshot_exists: "{{ qm_output.stdout is regex('.*' + snapshot_name + '.*') }}"
