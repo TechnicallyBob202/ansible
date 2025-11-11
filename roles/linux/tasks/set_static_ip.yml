@@ -53,6 +53,9 @@
   ansible.builtin.command: nmcli connection up {{ linux_conn_name | default('ens18') }}
   become: true
   register: connection_restart
+  ignore_errors: true
+  async: 10
+  poll: 0
 
 - name: Wait for network to stabilize
   pause:
