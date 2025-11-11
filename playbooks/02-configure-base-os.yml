@@ -1,18 +1,18 @@
 ---
 # =============================================================================
-# Stage 02: Configure Base OS - ADFR Lab
+# Stage 02: Configure Base OS
 # =============================================================================
-# Purpose: Configure networking on all ADFR VMs (Windows)
+# Purpose: Configure all VMs (Windows and Linux)
 # - Discover current IPs from Proxmox
 # - Wait for VMs to fully boot
 # - Configure static IPs
-# - Set DNS servers (Cloudflare during Stage 02)
+# - Set DNS servers
 # - Set hostnames
 # - Install AD-DS features on domain controllers
 # - Reboot if needed
 # - Snapshot changed VMs
 
-- name: Stage 02 - Configure Base OS (ADFR)
+- name: Stage 02 - Configure Base OS
   hosts: localhost
   gather_facts: false
 
@@ -21,14 +21,14 @@
       debug:
         msg:
           - "========================================="
-          - "  Stage 02: Configure Base OS - ADFR"
+          - "  Stage 02: Configure Base OS"
           - "========================================="
           - ""
           - "Configuring {{ groups['all'] | length }} VMs:"
           - "  • Wait for VMs to fully boot"
           - "  • Discover current IPs"
           - "  • Configure static IPs"
-          - "  • Set DNS to Cloudflare (Stage 02)"
+          - "  • Set DNS servers"
           - "  • Set hostnames"
           - "  • Install AD-DS features (DCs only)"
           - "  • Reboot if needed"
@@ -48,9 +48,9 @@
         vm_changed: false
 
 # =============================================================================
-# PHASE 2: Discover Current IPs (with extended retries)
+# PHASE 2: Discover Current IPs
 # =============================================================================
-- name: Discover Current IPs (Windows)
+- name: Discover Current IPs
   hosts: all
   gather_facts: false
   serial: 0
@@ -113,9 +113,7 @@
           - VM is still booting (wait a few minutes and try again)
 
           Manual intervention required before continuing.
-      when:
-        - ip_discovery_result is defined
-        - ip_discovery_result.failed | default(false)
+      when: ip_discovery_result.failed | default(false)
 
     - name: Check if IP already matches
       set_fact:
@@ -130,10 +128,10 @@
         msg: "{{ inventory_hostname }}: {{ discovered_ip }} → {{ target_ip }} ({{ 'needs config' if needs_ip_config else 'already correct' }})"
 
 # =============================================================================
-# PHASE 3: Wait for WinRM on Discovered IPs (with collective retry loop)
+# PHASE 3: Wait for WinRM on Discovered IPs (Windows only)
 # =============================================================================
-- name: Wait for WinRM Availability
-  hosts: all
+- name: Wait for WinRM Availability (Windows)
+  hosts: windows
   gather_facts: false
   serial: 0
 
@@ -151,38 +149,57 @@
         msg: "{{ inventory_hostname }}: WinRM {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + ansible_host + ')' }}"
 
 # =============================================================================
-# PHASE 3b: Retry unreachable hosts for up to 5 minutes
+# PHASE 3b: Wait for SSH on Discovered IPs (Linux only)
 # =============================================================================
-- name: Retry Unreachable VMs
+- name: Wait for SSH Availability (Linux)
+  hosts: linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Test SSH connectivity
+      wait_for_connection:
+        delay: 5
+        timeout: 300
+      register: ssh_result
+
+    - name: Show connection attempt results
+      debug:
+        msg: "{{ inventory_hostname }}: SSH reachable"
+
+# =============================================================================
+# PHASE 3c: Retry unreachable Windows hosts for up to 5 minutes
+# =============================================================================
+- name: Retry Unreachable Windows VMs
   hosts: localhost
   gather_facts: false
 
   tasks:
-    - name: Collect initially unreachable hosts
+    - name: Collect initially unreachable Windows hosts
       set_fact:
-        unreachable_hosts: []
+        unreachable_windows_hosts: []
 
     - name: Build unreachable hosts list
       set_fact:
-        unreachable_hosts: "{{ unreachable_hosts + [item] }}"
-      loop: "{{ groups['all'] }}"
+        unreachable_windows_hosts: "{{ unreachable_windows_hosts + [item] }}"
+      loop: "{{ groups.get('windows', []) }}"
       when: hostvars[item].ping_result.failed | default(false)
 
     - name: Display initial status
       debug:
         msg: |
           Initial WinRM Status:
-            Reachable: {{ (groups['all'] | length) - (unreachable_hosts | length) }}/{{ groups['all'] | length }}
-            Unreachable: {{ unreachable_hosts | length }}/{{ groups['all'] | length }}
-            {% if unreachable_hosts | length > 0 %}
-            Retrying: {{ unreachable_hosts | join(', ') }}
+            Reachable: {{ (groups.get('windows', []) | length) - (unreachable_windows_hosts | length) }}/{{ groups.get('windows', []) | length }}
+            Unreachable: {{ unreachable_windows_hosts | length }}/{{ groups.get('windows', []) | length }}
+            {% if unreachable_windows_hosts | length > 0 %}
+            Retrying: {{ unreachable_windows_hosts | join(', ') }}
             {% endif %}
 
 # =============================================================================
-# PHASE 4: Configure Static IPs (Windows)
+# PHASE 4: Configure Static IPs (Windows only)
 # =============================================================================
 - name: Configure Static IPs (Windows)
-  hosts: all
+  hosts: windows
   gather_facts: false
   serial: 0
 
@@ -206,10 +223,37 @@
       when: needs_ip_config
 
 # =============================================================================
-# PHASE 5: Verify WinRM on Static IPs
+# PHASE 4b: Configure Static IPs (Linux only)
+# =============================================================================
+- name: Configure Static IPs (Linux)
+  hosts: linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Set static IP
+      include_tasks: ../roles/linux/tasks/set_static_ip.yml
+      register: ip_result
+
+    - name: Consolidate IP changes
+      set_fact:
+        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+
+    - name: Update ansible_host to target IP
+      set_fact:
+        ansible_host: "{{ target_ip }}"
+      when: needs_ip_config
+
+    - name: Wait for IP to settle
+      pause:
+        seconds: 10
+      when: needs_ip_config
+
+# =============================================================================
+# PHASE 5: Verify WinRM on Static IPs (Windows only)
 # =============================================================================
 - name: Verify WinRM on Static IPs
-  hosts: all
+  hosts: windows
   gather_facts: false
   serial: 0
 
@@ -222,10 +266,10 @@
       register: ping_result
 
 # =============================================================================
-# PHASE 6: Configure DNS and Hostname (Windows)
+# PHASE 6: Configure DNS and Hostname (Windows only)
 # =============================================================================
 - name: Configure DNS and Hostname (Windows)
-  hosts: all
+  hosts: windows
   gather_facts: false
   serial: 0
 
@@ -264,7 +308,28 @@
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 7: Install AD-DS Features on Domain Controllers
+# PHASE 6b: Configure DNS and Hostname (Linux only)
+# =============================================================================
+- name: Configure DNS and Hostname (Linux)
+  hosts: linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Configure DNS servers
+      include_tasks: ../roles/linux/tasks/set_dns.yml
+      register: dns_result
+
+    - name: Set hostname
+      include_tasks: ../roles/linux/tasks/set_hostname.yml
+      register: hostname_result
+
+    - name: Consolidate DNS and hostname changes
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
+
+# =============================================================================
+# PHASE 7: Install AD-DS Features on Domain Controllers (Windows only)
 # =============================================================================
 - name: Install AD-DS Features (Domain Controllers Only)
   hosts: domain_controllers
@@ -281,22 +346,27 @@
         vm_changed: "{{ vm_changed or (adds_install_result.changed | default(false)) }}"
 
 # =============================================================================
-# PHASE 8: Reboot Windows Hosts
+# PHASE 8: Check if reboot is necessary (Windows only)
 # =============================================================================
-- name: Check if reboot is necessary
-  hosts: all
+- name: Check if reboot is necessary (Windows)
+  hosts: windows
   gather_facts: false
   serial: 0
+
   tasks:
     - name: Check for pending reboots
       include_role:
         name: windows
         tasks_from: check_reboot_needed.yml
 
-- name: Reboot only if necessary
-  hosts: all
+# =============================================================================
+# PHASE 9: Reboot Windows Hosts
+# =============================================================================
+- name: Reboot only if necessary (Windows)
+  hosts: windows
   gather_facts: false
   serial: 0
+
   tasks:
     - name: Reboot to clear pending state if needed
       ansible.windows.win_reboot:
@@ -305,10 +375,10 @@
       when: reboot_needed
 
 # =============================================================================
-# PHASE 9: Validation
+# PHASE 10: Validation (Windows)
 # =============================================================================
 - name: Validate Configuration (Windows)
-  hosts: all
+  hosts: windows
   gather_facts: false
   serial: 0
 
@@ -341,7 +411,41 @@
           - "  Changed: {{ vm_changed }}"
 
 # =============================================================================
-# PHASE 10: Snapshot All VMs (create if missing, replace only if changed)
+# PHASE 10b: Validation (Linux)
+# =============================================================================
+- name: Validate Configuration (Linux)
+  hosts: linux
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Get network configuration
+      shell: |
+        hostname -I | awk '{print $1}'
+      register: linux_ip
+      changed_when: false
+
+    - name: Get hostname
+      shell: hostname
+      register: linux_hostname
+      changed_when: false
+
+    - name: Get DNS configuration
+      shell: cat /etc/resolv.conf | grep nameserver | awk '{print $2}' | tr '\n' ',' | sed 's/,$//'
+      register: linux_dns
+      changed_when: false
+
+    - name: Validate configuration
+      debug:
+        msg:
+          - "{{ inventory_hostname }}:"
+          - "  IP: {{ linux_ip.stdout }} ✓"
+          - "  Hostname: {{ linux_hostname.stdout }} ✓"
+          - "  DNS: {{ linux_dns.stdout }}"
+          - "  Changed: {{ vm_changed }}"
+
+# =============================================================================
+# PHASE 11: Snapshot All VMs
 # =============================================================================
 - name: Snapshot All VMs
   hosts: all
@@ -360,7 +464,7 @@
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
 
 # =============================================================================
-# PHASE 11: Generate mRemoteNG Configuration
+# PHASE 12: Generate mRemoteNG Configuration (Windows only)
 # =============================================================================
 - name: Generate mRemoteNG Configuration
   hosts: localhost
@@ -385,7 +489,7 @@
       include_tasks: ../roles/utility/tasks/git_commit_docs.yml
 
 # =============================================================================
-# PHASE 12: Summary (moved from Phase 11)
+# PHASE 13: Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
@@ -409,6 +513,7 @@
           - ""
           - "{{ (total_vms | int) - (changed_vms | int) }} VMs were already configured"
           - ""
+          - "✓ All Windows/Linux configurations applied"
           - "✓ AD-DS features installed on all domain controllers"
           - "✓ mRemoteNG configuration generated and committed to git"
           - ""
