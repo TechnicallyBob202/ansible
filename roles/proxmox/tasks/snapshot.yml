@@ -20,9 +20,16 @@
       changed_when: false
       failed_when: false
 
+    - name: Debug snapshot check
+      debug:
+        msg:
+          - "{{ inventory_hostname }}"
+          - "  snapshot_check.stdout: '{{ snapshot_check.stdout | trim }}'"
+          - "  vm_changed: {{ vm_changed | default(false) }}"
+
     - name: Determine snapshot action
       set_fact:
-        snapshot_action: "{{ 'replace' if (vm_changed | default(false) and snapshot_check.stdout | trim == 'exists') else ('create' if snapshot_check.stdout | trim == 'missing' else 'skip') }}"
+        snapshot_action: "{{ 'replace' if (snapshot_check.stdout | trim == 'exists' and vm_changed | default(false)) else ('create' if snapshot_check.stdout | trim == 'missing' else 'skip') }}"
 
     - name: Display snapshot plan
       debug:
