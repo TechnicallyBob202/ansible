@@ -14,6 +14,14 @@
   register: current_dns
   changed_when: false
 
+- name: Check current DNS suffix
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    (Get-DnsClient -InterfaceAlias $adapter).ConnectionSpecificSuffix
+  register: current_suffix
+  changed_when: false
+  when: windows_dns_suffix is defined
+
 - name: Set DNS servers
   ansible.windows.win_shell: |
     $adapter = "{{ adapter_name.stdout | trim }}"
@@ -24,7 +32,9 @@
 - name: Set DNS suffix
   ansible.windows.win_shell: |
     Set-DnsClient -InterfaceAlias "{{ adapter_name.stdout | trim }}" -ConnectionSpecificSuffix "{{ windows_dns_suffix }}"
-  when: windows_dns_suffix is defined
+  when:
+    - windows_dns_suffix is defined
+    - current_suffix.stdout | trim != windows_dns_suffix
   register: suffix_change
 
 - name: Set changed flag
