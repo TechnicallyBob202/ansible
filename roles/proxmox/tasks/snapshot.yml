@@ -9,36 +9,28 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
-    - name: Get snapshot list via REST API
-      ansible.builtin.uri:
-        url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/status/current"
-        method: GET
-        user: "{{ proxmox_user }}"
-        password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        force_basic_auth: yes
+    - name: Get snapshot list via qm command
+      ansible.builtin.shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm snapshot {{ vmid }} --list" 2>&1
       delegate_to: localhost
-      register: vm_status
+      register: qm_output
       changed_when: false
       ignore_errors: true
 
-    - name: Debug API response
+    - name: Debug qm output
       debug:
         msg:
-          - "API status: {{ vm_status.status | default('NO STATUS') }}"
-          - "API failed: {{ vm_status.failed | default(false) }}"
-          - "Response keys: {{ vm_status.json.keys() | list if vm_status.json is defined else 'NO JSON' }}"
-      when: vm_status.json is defined or vm_status.failed
+          - "VMID: {{ vmid }}"
+          - "Full output:"
+          - "{{ qm_output.stdout_lines }}"
 
-    - name: Check if snapshot exists
+    - name: Check if snapshot exists by parsing qm output
       set_fact:
-        snapshot_exists: "{{ snapshot_name in (vm_status.json.snapshots | default([]) | map(attribute='name') | list) }}"
-      when: vm_status.json is defined and not vm_status.failed
-
-    - name: Set snapshot_exists to false if API call failed
-      set_fact:
-        snapshot_exists: false
-      when: vm_status.failed or vm_status.json is not defined
+        snapshot_exists: "{{ qm_output.stdout is regex('.*' + snapshot_name + '.*') }}"
+      when: qm_output.rc == 0
 
     - name: Determine snapshot action
       set_fact:
