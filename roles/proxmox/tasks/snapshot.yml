@@ -9,12 +9,12 @@
         proxmox_snapshot_vmstate: "{{ proxmox_snapshot_vmstate | default(false) }}"
       delegate_facts: false
 
-    - name: Get snapshot list via qm command
+    - name: Get snapshot list via qm listsnapshot command
       ansible.builtin.shell: |
         ssh -i /root/.ssh/ansible_key \
           -o StrictHostKeyChecking=no \
           root@{{ proxmox_host }} \
-          "qm snapshot {{ vmid }} --list" 2>&1
+          "qm listsnapshot {{ vmid }}" 2>&1
       delegate_to: localhost
       register: qm_output
       changed_when: false
@@ -31,6 +31,11 @@
       set_fact:
         snapshot_exists: "{{ qm_output.stdout is regex('.*' + snapshot_name + '.*') }}"
       when: qm_output.rc == 0
+
+    - name: Set snapshot_exists to false if command failed
+      set_fact:
+        snapshot_exists: false
+      when: qm_output.rc != 0
 
     - name: Determine snapshot action
       set_fact:
