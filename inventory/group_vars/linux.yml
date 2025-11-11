@@ -1,12 +1,10 @@
-dsp_linux:
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
-    ansible_connection: ssh
-    ansible_user: blyons
-    ansible_ssh_private_key_file: /root/.ssh/semperis_admin
-    ansible_port: 22
-    ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=yes -o PasswordAuthentication=no'
-    ansible_become: yes
-    ansible_become_user: blyons
-    ansible_become_method: sudo
-    ansible_become_password: ""
+---
+ansible_connection: ssh
+ansible_python_interpreter: /usr/bin/python3
+ansible_port: 22
+ansible_ssh_private_key_file: /root/.ssh/semperis_admin
+ansible_user: blyons
+ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o PubkeyAuthentication=yes -o PasswordAuthentication=no'
+ansible_become: yes
+ansible_become_user: root
+ansible_become_method: sudo
