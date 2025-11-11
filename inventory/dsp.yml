@@ -57,6 +57,8 @@ all:
     # DSP Linux Systems
     # ============================================
     dsp_linux:
+      vars:
+        ansible_python_interpreter: /usr/bin/python3
       hosts:
         IAS:
           ansible_host: 172.16.50.12

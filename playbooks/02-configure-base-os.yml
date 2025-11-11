@@ -157,17 +157,26 @@
   serial: 0
 
   tasks:
-    - name: Test SSH connectivity with debug
-      ansible.builtin.command: ssh -v -i {{ ansible_ssh_private_key_file }} -o StrictHostKeyChecking=no {{ ansible_user }}@{{ ansible_host }} echo "SSH connection successful"
-      register: ssh_test
-      changed_when: false
+    - name: Wait for SSH port to be available
+      wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        delay: 5
+        timeout: 300
+      delegate_to: localhost
+      register: ssh_port_check
+
+    - name: Test SSH connectivity with ansible.builtin.ping
+      ansible.builtin.ping:
+      retries: 30
+      delay: 5
+      until: ping_result is succeeded
+      register: ping_result
       ignore_errors: true
 
     - name: Show SSH connection result
       debug:
-        msg:
-          - "{{ inventory_hostname }}: SSH test result"
-          - "{{ ssh_test }}"
+        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ping_result is succeeded else 'unreachable (at ' + ansible_host + ')' }}"
 
 # =============================================================================
 # PHASE 3c: Retry unreachable Windows hosts for up to 5 minutes
