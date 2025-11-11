@@ -87,3 +87,12 @@ all:
       children:
         dsp_infrastructure:
         dsp_linux:
+
+    windows:
+      children:
+        d3_forest:
+        dsp_infrastructure:
+
+    linux:
+      children:
+        dsp_linux:
