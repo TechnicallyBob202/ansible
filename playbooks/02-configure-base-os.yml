@@ -166,35 +166,9 @@
       delegate_to: localhost
       register: ssh_port_check
 
-    - name: Debug SSH variables
+    - name: Show SSH port is available
       debug:
-        msg:
-          - "Key file: {{ hostvars[inventory_hostname].ansible_ssh_private_key_file }}"
-          - "User: {{ hostvars[inventory_hostname].ansible_user }}"
-          - "Host: {{ discovered_ip }}"
-      delegate_to: localhost
-
-    - name: Test SSH connectivity via local ssh command
-      delegate_to: localhost
-      ansible.builtin.shell: |
-        ssh -i {{ hostvars[inventory_hostname].ansible_ssh_private_key_file }} \
-          -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          -o PubkeyAuthentication=yes \
-          -o PasswordAuthentication=no \
-          -o ConnectTimeout=10 \
-          {{ hostvars[inventory_hostname].ansible_user }}@{{ discovered_ip }} "echo 'SSH connection successful'"
-      register: ssh_raw_test
-      retries: 30
-      delay: 5
-      until: ssh_raw_test is succeeded
-      ignore_errors: true
-      changed_when: false
-      timeout: 60
-
-    - name: Show SSH connection result
-      debug:
-        msg: "{{ inventory_hostname }}: SSH {{ 'reachable' if ssh_raw_test is succeeded else 'unreachable (at ' + discovered_ip + ')' }}"
+        msg: "{{ inventory_hostname }}: SSH port available at {{ discovered_ip }}"
 
 # =============================================================================
 # Configure Static IPs and Network (Windows)
@@ -227,7 +201,9 @@
       when: dc_check.stdout | trim == 'IS_DC'
 
     - name: Set static IP
-      include_tasks: ../roles/windows/tasks/set_static_ip.yml
+      include_role:
+        name: windows
+        tasks_from: set_static_ip
       register: ip_result
 
     - name: Consolidate IP changes
@@ -245,11 +221,15 @@
       when: needs_ip_config
 
     - name: Configure DNS servers
-      include_tasks: ../roles/windows/tasks/set_dns.yml
+      include_role:
+        name: windows
+        tasks_from: set_dns
       register: dns_result
 
     - name: Set hostname
-      include_tasks: ../roles/windows/tasks/set_hostname.yml
+      include_role:
+        name: windows
+        tasks_from: set_hostname
       register: hostname_result
 
     - name: Consolidate DNS and hostname changes
@@ -273,7 +253,9 @@
 
   tasks:
     - name: Set static IP
-      include_tasks: ../roles/linux/tasks/set_static_ip.yml
+      include_role:
+        name: linux
+        tasks_from: set_static_ip
       register: ip_result
 
     - name: Consolidate IP changes
@@ -290,29 +272,20 @@
         seconds: 10
       when: needs_ip_config
 
-    - name: Test SSH on static IP via local ssh command
-      delegate_to: localhost
-      ansible.builtin.shell: |
-        ssh -i {{ hostvars[inventory_hostname].ansible_ssh_private_key_file }} \
-          -o StrictHostKeyChecking=no \
-          -o UserKnownHostsFile=/dev/null \
-          -o PubkeyAuthentication=yes \
-          -o PasswordAuthentication=no \
-          -o ConnectTimeout=10 \
-          {{ hostvars[inventory_hostname].ansible_user }}@{{ ansible_host }} "echo 'SSH connection successful'"
-      register: ssh_static_test
-      retries: 30
-      delay: 10
-      until: ssh_static_test is succeeded
-      ignore_errors: true
-      changed_when: false
+    - name: Wait for connection to settle
+      pause:
+        seconds: 5
 
     - name: Configure DNS servers
-      include_tasks: ../roles/linux/tasks/set_dns.yml
+      include_role:
+        name: linux
+        tasks_from: set_dns
       register: dns_result
 
     - name: Set hostname
-      include_tasks: ../roles/linux/tasks/set_hostname.yml
+      include_role:
+        name: linux
+        tasks_from: set_hostname
       register: hostname_result
 
     - name: Consolidate DNS and hostname changes
@@ -329,7 +302,9 @@
 
   tasks:
     - name: Install Active Directory Domain Services features
-      include_tasks: ../roles/active_directory/tasks/install_ad_features.yml
+      include_role:
+        name: active_directory
+        tasks_from: install_ad_features
       register: adds_install_result
 
     - name: Consolidate AD-DS changes
@@ -375,7 +350,9 @@
 
   tasks:
     - name: Reboot if changes were made
-      include_tasks: ../roles/linux/tasks/reboot.yml
+      include_role:
+        name: linux
+        tasks_from: reboot
       when: vm_changed
 
 # =============================================================================
@@ -424,7 +401,10 @@
 
   tasks:
     - name: Validate network configuration
-      include_tasks: ../roles/linux/tasks/validate.yml
+      include_role:
+        name: linux
+        tasks_from: validate
+      register: validate_result
 
 # =============================================================================
 # Snapshot All VMs
@@ -465,10 +445,14 @@
           - "appropriate mRemoteNG connection file..."
 
     - name: Generate mRemoteNG
-      include_tasks: ../roles/utility/tasks/generate_mremoteng.yml
+      include_role:
+        name: utility
+        tasks_from: generate_mremoteng
 
     - name: Commit mRemoteNG to git
-      include_tasks: ../roles/utility/tasks/git_commit_docs.yml
+      include_role:
+        name: utility
+        tasks_from: git_commit_docs
 
 # =============================================================================
 # Summary
