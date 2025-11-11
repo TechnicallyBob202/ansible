@@ -57,15 +57,14 @@ all:
     # DSP Linux Systems
     # ============================================
     dsp_linux:
-      vars:
-        ansible_connection: ssh
-        ansible_user: blyons
-        ansible_ssh_private_key_file: /root/.ssh/semperis_admin
-        ansible_port: 22
-        ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
       hosts:
         IAS:
           ansible_host: 172.16.50.12
+          ansible_connection: ssh
+          ansible_user: blyons
+          ansible_ssh_private_key_file: ~/.ssh/semperis_admin
+          ansible_port: 22
+          ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
           vmid: 5012
           proxmox_host: 192.168.33.21
           proxmox_node: semperis-nuc-1
