@@ -11,6 +11,15 @@
   ansible.builtin.set_fact:
     linux_ifname: "{{ detected_interface.stdout | trim }}"
 
+- name: Ensure netplan directory exists
+  ansible.builtin.file:
+    path: /etc/netplan
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  become: true
+
 - name: Generate netplan configuration
   ansible.builtin.template:
     src: netplan.yaml.j2
