@@ -405,33 +405,33 @@
         snapshot_name: "stage2-base-configured"
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
 
-# =============================================================================
-# Generate mRemoteNG Configuration
-# =============================================================================
-- name: Generate mRemoteNG Configuration
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Display mRemoteNG generation plan
-      debug:
-        msg:
-          - ""
-          - "========================================="
-          - "  Generating mRemoteNG Configuration"
-          - "========================================="
-          - ""
-          - "Detecting inventory type and generating"
-          - "appropriate mRemoteNG connection file..."
+# # =============================================================================
+# # Generate mRemoteNG Configuration
+# # =============================================================================
+# - name: Generate mRemoteNG Configuration
+#   hosts: localhost
+#   gather_facts: false
+#   tasks:
+#     - name: Display mRemoteNG generation plan
+#       debug:
+#         msg:
+#           - ""
+#           - "========================================="
+#           - "  Generating mRemoteNG Configuration"
+#           - "========================================="
+#           - ""
+#           - "Detecting inventory type and generating"
+#           - "appropriate mRemoteNG connection file..."
 
-    - name: Generate mRemoteNG
-      include_role:
-        name: utility
-        tasks_from: generate_mremoteng
+#     - name: Generate mRemoteNG
+#       include_role:
+#         name: utility
+#         tasks_from: generate_mremoteng
 
-    - name: Commit mRemoteNG to git
-      include_role:
-        name: utility
-        tasks_from: git_commit_docs
+#     - name: Commit mRemoteNG to git
+#       include_role:
+#         name: utility
+#         tasks_from: git_commit_docs
 
 # =============================================================================
 # Summary
