@@ -54,7 +54,18 @@
   when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
   async: 10
   poll: 0
-  
+
+- name: Wait for network to stabilize
+  pause:
+    seconds: 5
+  when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
+
+- name: Display result
+  ansible.builtin.debug:
+    msg:
+      - "{{ inventory_hostname }} - Primary IP {{ 'configured to' if netplan_config.changed else 'already set to' }} {{ target_ip }}"
+      - "{{ inventory_hostname }} - Secondary IP {{ secondary_ip if (secondary_ip is defined and linux_secondary_ifname is defined) else 'not configured' }}"
+
 - name: Verify secondary NIC configuration
   ansible.builtin.command: "ip addr show {{ linux_secondary_ifname }}"
   register: secondary_nic_status
@@ -66,13 +77,3 @@
   ansible.builtin.debug:
     var: secondary_nic_status.stdout_lines
   when: secondary_ip is defined and linux_secondary_ifname is defined
-- name: Wait for network to stabilize
-  pause:
-    seconds: 5
-  when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
-
-- name: Display result
-  ansible.builtin.debug:
-    msg:
-      - "{{ inventory_hostname }} - Primary IP {{ 'configured to' if netplan_config.changed else 'already set to' }} {{ target_ip }}"
-      - "{{ inventory_hostname }} - Secondary IP {{ secondary_ip if (secondary_ip is defined and linux_secondary_ifname is defined) else 'not configured' }}"

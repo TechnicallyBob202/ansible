@@ -8,10 +8,17 @@ network:
         - {{ target_ip }}/24
       gateway4: {{ default_gateway | default('192.168.1.1') }}
       nameservers:
-        addresses: {{ dns_servers | default(['8.8.8.8', '8.8.4.4']) | to_nice_yaml | indent(10) | trim }}
+        addresses:
+          - {{ dns_servers[0] | default('8.8.8.8') }}
+          - {{ dns_servers[1] | default('8.8.4.4') }}
 {% if secondary_ip is defined and linux_secondary_ifname is defined %}
     {{ linux_secondary_ifname }}:
       dhcp4: false
       addresses:
         - {{ secondary_ip }}/24
+      optional: true
+      routes:
+        - to: 0.0.0.0/0
+          via: {{ default_gateway | default('192.168.1.1') }}
+          metric: 100
 {% endif %}
