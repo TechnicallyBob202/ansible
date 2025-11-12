@@ -1,72 +1,44 @@
 ---
-# Configure static IP on Linux using NetworkManager
+# Configure static IP on Ubuntu using netplan
 
-- name: Ensure NetworkManager is running
-  ansible.builtin.service:
-    name: NetworkManager
-    state: started
-    enabled: yes
-  become: true
-
-- name: Get active ethernet connections
-  ansible.builtin.command: nmcli -t -f NAME,TYPE,DEVICE,STATE c show --active
-  register: nmcli_active
+- name: Detect network interface
+  ansible.builtin.shell: |
+    ip -o link show | awk -F': ' '{print $2}' | grep -E '^(eth|ens|enp)' | head -1
+  register: detected_interface
   changed_when: false
-  become: true
 
-- name: Debug active connections
-  ansible.builtin.debug:
-    msg: "Active connections: {{ nmcli_active.stdout_lines }}"
-
-- name: Determine connection name and interface
+- name: Set interface fact
   ansible.builtin.set_fact:
-    linux_conn_name: "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | first)[0] }}"
-    linux_ifname: "{{ (nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | first)[2] }}"
-  when:
-    - (linux_conn_name is not defined or linux_ifname is not defined)
-    - nmcli_active.stdout_lines | map('split', ':') | selectattr(1, 'search', 'ethernet') | list | length > 0
+    linux_ifname: "{{ detected_interface.stdout | trim }}"
 
-- name: Debug nmcli configuration values
-  debug:
-    msg:
-      - "Connection name: {{ linux_conn_name | default('System eth0') }}"
-      - "Interface: {{ linux_ifname | default('eth0') }}"
-      - "Target IP: {{ target_ip }}"
-      - "IP Prefix: {{ linux_ip_prefix | default(24) }}"
-      - "Gateway: {{ linux_gateway | default('192.168.35.1') }}"
-      - "DNS Servers: {{ linux_dns_servers | default(['1.1.1.1','1.0.0.1']) }}"
-
-- name: Configure static IP via nmcli
-  community.general.nmcli:
-    conn_name: "{{ linux_conn_name | default('System eth0') }}"
-    ifname: "{{ linux_ifname | default('eth0') }}"
-    type: ethernet
-    ip4: "{{ target_ip }}/{{ linux_ip_prefix | default(24) }}"
-    gw4: "{{ linux_gateway | default('192.168.35.1') }}"
-    dns4: "{{ linux_dns_servers | default(['1.1.1.1','1.0.0.1']) | join(',') }}"
-    state: present
-    autoconnect: yes
-  register: network_config
+- name: Generate netplan configuration
+  ansible.builtin.template:
+    src: netplan.yaml.j2
+    dest: /etc/netplan/01-netcfg.yaml
+    owner: root
+    group: root
+    mode: '0600'
   become: true
+  register: netplan_config
 
-- name: Restart network connection to apply changes
-  ansible.builtin.command: nmcli connection up {{ linux_conn_name | default('ens18') }}
+- name: Apply netplan configuration
+  ansible.builtin.command: netplan apply
   become: true
-  register: connection_restart
-  ignore_errors: true
+  when: netplan_config.changed
   async: 10
   poll: 0
+  register: netplan_apply
 
 - name: Wait for network to stabilize
   pause:
     seconds: 5
+  when: netplan_config.changed
 
-- name: Switch ansible_ssh_host to new static IP for future tasks
+- name: Update ansible connection to new IP
   ansible.builtin.set_fact:
-    ansible_ssh_host: "{{ target_ip }}"
-    cacheable: true
-  when: network_config.changed
+    ansible_host: "{{ target_ip }}"
+  when: netplan_config.changed
 
 - name: Display result
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if network_config.changed else 'already set to' }} {{ target_ip }}"
+    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if netplan_config.changed else 'already set to' }} {{ target_ip }}"

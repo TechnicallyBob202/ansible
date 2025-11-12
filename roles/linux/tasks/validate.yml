@@ -12,9 +12,16 @@
   changed_when: false
 
 - name: Get DNS configuration
-  ansible.builtin.command: nmcli -f IP4.DNS device show
+  ansible.builtin.command: resolvectl status
   register: dns_info
   changed_when: false
+  ignore_errors: true
+
+- name: Fallback DNS check
+  ansible.builtin.command: cat /etc/resolv.conf
+  register: dns_fallback
+  changed_when: false
+  when: dns_info.failed | default(false)
 
 - name: Get hostname
   ansible.builtin.command: hostname
@@ -30,5 +37,5 @@
       - "  Default Gateway:"
       - "{{ route_info.stdout }}"
       - "  DNS Servers:"
-      - "{{ dns_info.stdout_lines | join('\n') }}"
+      - "{{ (dns_info.stdout_lines if not dns_info.failed else dns_fallback.stdout_lines) | join('\n') }}"
       - "  Hostname: {{ hostname_info.stdout }}"

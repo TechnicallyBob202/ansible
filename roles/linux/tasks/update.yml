@@ -1,10 +1,15 @@
 ---
-# Update system packages on Linux
+# Update system packages on Ubuntu
 
-- name: Update system packages
-  ansible.builtin.dnf:
-    name: '*'
-    state: latest
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: yes
+    cache_valid_time: 3600
+  become: true
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
   become: true
   register: update_result
 
