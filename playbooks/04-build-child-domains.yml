@@ -152,6 +152,11 @@
         tasks_from: promote_replica_dc.yml
       register: promotion_result
 
+    - name: Wait for Windows after replica promotion
+      include_role:
+        name: windows
+        tasks_from: wait_for_windows_ready.yml
+
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
