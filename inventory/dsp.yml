@@ -9,12 +9,12 @@ all:
         d3_dcs:
           hosts:
             D3-DC01:
-              ansible_host: 172.16.50.11
+              ansible_host: 172.16.50.12
               dc_role: pdc
-              vmid: 5011
-              proxmox_host: 192.168.33.22
-              proxmox_node: semperis-nuc-2
-              template_id: 9002
+              vmid: 5012
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
               vm_cores: 2
               vm_memory: 4096
               vm_disk: 80G
@@ -66,11 +66,11 @@ all:
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
       hosts:
         IAS:
-          ansible_host: 172.16.50.12
-          vmid: 5012
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9021
+          ansible_host: 172.16.50.11
+          vmid: 5011
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9022
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 80G
