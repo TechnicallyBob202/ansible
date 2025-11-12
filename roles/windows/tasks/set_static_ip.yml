@@ -7,14 +7,6 @@
   register: adapter_name
   changed_when: false
 
-- name: Remove existing IP configuration
-  ansible.windows.win_shell: |
-    $adapter = "{{ adapter_name.stdout | trim }}"
-    Remove-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -Confirm:$false
-    Remove-NetRoute -InterfaceAlias $adapter -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
-  when: needs_ip_config
-  failed_when: false
-
 - name: Set static IP address
   ansible.windows.win_shell: |
     $adapter = "{{ adapter_name.stdout | trim }}"
