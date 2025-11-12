@@ -55,7 +55,9 @@
           - "This must complete before child domain promotions"
 
     - name: Check and create delegations for each child domain
-      include_tasks: check_dns_delegation.yml
+      include_role:
+        name: active_directory
+        tasks_from: check_dns_delegation.yml
       loop: "{{ groups['child_pdcs'] }}"
       loop_control:
         loop_var: child_pdc_host
@@ -65,7 +67,9 @@
         domain_netbios: "{{ hostvars[child_pdc_host].domain_netbios }}"
 
     - name: Create delegations for missing child domains
-      include_tasks: create_dns_delegation.yml
+      include_role:
+        name: active_directory
+        tasks_from: create_dns_delegation.yml
       loop: "{{ groups['child_pdcs'] }}"
       loop_control:
         loop_var: child_pdc_host
