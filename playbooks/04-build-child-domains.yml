@@ -60,25 +60,6 @@
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
 
 # =============================================================================
-# Configure DNS
-# =============================================================================
-- name: Configure DNS on Child Domain DCs
-  hosts: child_domain_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Update DNS to post-promotion settings
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      vars:
-        windows_dns_servers: "{{ dns_servers_post_promo }}"
-
-    - name: Mark VM as changed if DNS was configured
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
-
-# =============================================================================
 # Promote Child Domain PDCs
 # =============================================================================
 - name: Promote Child Domain PDCs
@@ -95,6 +76,27 @@
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+
+# =============================================================================
+# Update DNS on Child PDCs After Promotion
+# =============================================================================
+- name: Update DNS on Child PDCs
+  hosts: child_pdcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Update DNS to post-promotion settings
+      include_role:
+        name: windows
+        tasks_from: set_dns
+      vars:
+        windows_dns_servers: "{{ dns_servers_post_promo }}"
+      when: dns_servers_post_promo is defined
+      register: dns_result
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
 
 # =============================================================================
 # Promote Child Domain Replica DCs

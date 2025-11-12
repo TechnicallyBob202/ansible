@@ -54,26 +54,6 @@
         tasks_from: install_ad_features.yml
 
 # =============================================================================
-# Configure DNS
-# =============================================================================
-- name: Configure DNS on Forest Root DCs
-  hosts: forest_root_dcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Update DNS to post-promotion settings
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      vars:
-        windows_dns_servers: "{{ dns_servers_post_promo }}"
-
-    - name: Configure DNS
-      include_role:
-        name: windows
-        tasks_from: set_dns.yml
-
-# =============================================================================
 # Promote Forest Root PDCs
 # =============================================================================
 - name: Promote Forest Root PDCs
@@ -85,6 +65,22 @@
       include_role:
         name: active_directory
         tasks_from: promote_forest_root.yml
+
+# =============================================================================
+# Update DNS on Root PDCs After Promotion
+# =============================================================================
+- name: Update DNS on Root PDCs
+  hosts: root_pdcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Update DNS to post-promotion settings
+      include_role:
+        name: windows
+        tasks_from: set_dns
+      vars:
+        windows_dns_servers: "{{ dns_servers_post_promo }}"
+      when: dns_servers_post_promo is defined
 
 # =============================================================================
 # Promote Forest Root Replica DCs
