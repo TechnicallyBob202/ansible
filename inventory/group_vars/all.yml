@@ -39,19 +39,6 @@ proxmox_network_bridge: vmbr0
 proxmox_network_vlan: 10
 
 # ============================================================================
-# Proxmox Template IDs (by node)
-# ============================================================================
-# Node 1 templates
-proxmox_template_dc_node1: 9001
-proxmox_template_server_node1: 9011
-proxmox_template_linux_node1: 9021
-
-# Node 2 templates
-proxmox_template_dc_node2: 9002
-proxmox_template_server_node2: 9012
-proxmox_template_linux_node2: 9022
-
-# ============================================================================
 # Windows Defaults (for Stage 2)
 # ============================================================================
 windows_gateway: 172.16.0.1
