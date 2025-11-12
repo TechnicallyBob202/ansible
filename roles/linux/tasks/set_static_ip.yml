@@ -1,15 +1,29 @@
 ---
 # Configure static IP on Ubuntu using netplan
 
-- name: Detect network interface
+- name: Detect primary network interface
   ansible.builtin.shell: |
     ip -o link show | awk -F': ' '{print $2}' | grep -E '^(eth|ens|enp)' | head -1
   register: detected_interface
   changed_when: false
 
-- name: Set interface fact
+- name: Set primary interface fact
   ansible.builtin.set_fact:
     linux_ifname: "{{ detected_interface.stdout | trim }}"
+
+- name: Detect secondary network interface (if exists)
+  ansible.builtin.shell: |
+    ip -o link show | awk -F': ' '{print $2}' | grep -E '^(eth|ens|enp)' | sed -n '2p'
+  register: detected_secondary_interface
+  changed_when: false
+  when: secondary_ip is defined
+
+- name: Set secondary interface fact
+  ansible.builtin.set_fact:
+    linux_secondary_ifname: "{{ detected_secondary_interface.stdout | trim }}"
+  when:
+    - secondary_ip is defined
+    - detected_secondary_interface.stdout | length > 0
 
 - name: Ensure netplan directory exists
   ansible.builtin.file:
@@ -55,4 +69,6 @@
 
 - name: Display result
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if (netplan_config.changed and needs_ip_config) else 'already set to' }} {{ target_ip }}"
+    msg:
+      - "{{ inventory_hostname }} - Primary IP {{ 'configured to' if (netplan_config.changed and needs_ip_config) else 'already set to' }} {{ target_ip }}"
+      - "{{ inventory_hostname }} - Secondary IP {{ secondary_ip if (secondary_ip is defined and linux_secondary_ifname is defined) else 'not configured' }}"

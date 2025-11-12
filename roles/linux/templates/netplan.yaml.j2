@@ -1,15 +1,1 @@
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    {{ linux_ifname }}:
-      addresses:
-        - {{ target_ip }}/{{ linux_ip_prefix | default(16) }}
-      routes:
-        - to: default
-          via: {{ linux_gateway }}
-      nameservers:
-        addresses:
-{% for dns in linux_dns_servers | default(['1.1.1.1', '1.0.0.1']) %}
-          - {{ dns }}
-{% endfor %}
+          secondary_ip: 172.16.50.15  # Second NIC

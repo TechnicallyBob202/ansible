@@ -79,6 +79,8 @@ all:
       hosts:
         IAS:
           ansible_host: 172.16.50.11
+          secondary_ip: 172.16.50.15  # Second NIC
+          secondary_nic: tru
           vmid: 5011
           proxmox_host: 192.168.33.22
           proxmox_node: semperis-nuc-2

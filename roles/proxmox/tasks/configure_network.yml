@@ -1,20 +1,64 @@
 ---
 # Configure VM network settings
 
-- name: Configure VM VLAN tag
-  community.general.proxmox_nic:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    interface: net0
-    bridge: "{{ proxmox_network_bridge }}"
-    tag: "{{ proxmox_network_vlan }}"
-  register: network_config
-  when: not vm_preexisted
+- name: Ensure Network Interfaces
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Configure secondary NIC if requested
+      when: secondary_nic is defined and secondary_nic | bool
+      block:
+        - name: Get current network interface count
+          ansible.builtin.uri:
+            url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/config"
+            method: GET
+            headers:
+              Authorization: "PVEAPIToken={{ proxmox_api_user }}={{ proxmox_api_token }}"
+            validate_certs: false
+          register: vm_config
+          delegate_to: localhost
 
-- name: Display network configuration result
-  debug:
-    msg: "VM {{ inventory_hostname }} - Network configured (VLAN {{ proxmox_network_vlan }})"
-  when: network_config is defined and network_config.changed
+        - name: Parse network interfaces
+          set_fact:
+            current_nics: "{{ vm_config.json.data.keys() | select('match', '^net\\d+$') | list }}"
+
+        - name: Display current NIC count
+          debug:
+            msg: "{{ inventory_hostname }} currently has {{ current_nics | length }} NIC(s)"
+
+        - name: Add second network interface if needed
+          ansible.builtin.uri:
+            url: "https://{{ proxmox_host }}:8006/api2/json/nodes/{{ proxmox_node }}/qemu/{{ vmid }}/config"
+            method: POST
+            headers:
+              Authorization: "PVEAPIToken={{ proxmox_api_user }}={{ proxmox_api_token }}"
+            body_format: form-urlencoded
+            body:
+              net1: "virtio,bridge=vmbr0"
+            validate_certs: false
+          register: nic_add_result
+          delegate_to: localhost
+          when: current_nics | length < 2
+
+        - name: Display NIC addition result
+          debug:
+            msg: "{{ inventory_hostname }} - Second NIC {{ 'added' if (nic_add_result.changed | default(false)) else 'already present' }}"
+
+    - name: Configure VM VLAN tag
+      community.general.proxmox_nic:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        interface: net0
+        bridge: "{{ proxmox_network_bridge }}"
+        tag: "{{ proxmox_network_vlan }}"
+      register: network_config
+      when: not vm_preexisted
+
+    - name: Display network configuration result
+      debug:
+        msg: "VM {{ inventory_hostname }} - Network configured (VLAN {{ proxmox_network_vlan }})"
+      when: network_config is defined and network_config.changed
