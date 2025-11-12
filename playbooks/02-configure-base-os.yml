@@ -182,7 +182,7 @@
 
     - name: Consolidate IP changes
       set_fact:
-        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or needs_ip_config }}"
 
     - name: Update ansible_host to target IP
       set_fact:
@@ -208,7 +208,7 @@
 
     - name: Consolidate DNS and hostname changes
       set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or (dns_change.changed | default(false)) or (suffix_change.changed | default(false)) or (hostname_change.changed | default(false)) }}"
 
     - name: Test WinRM on static IP
       ansible.windows.win_ping:
@@ -234,7 +234,7 @@
 
     - name: Consolidate IP changes
       set_fact:
-        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or (netplan_config.changed | default(false) and needs_ip_config) }}"
 
     - name: Update ansible_host to target IP
       set_fact:
@@ -251,19 +251,11 @@
         seconds: 5
       when: needs_ip_config
 
-    - name: Configure DNS servers
-      include_role:
-        name: linux
-        tasks_from: set_dns
-      register: dns_result
-      when: needs_ip_config or vm_changed
-
     - name: Set hostname
       include_role:
         name: linux
         tasks_from: set_hostname
       register: hostname_result
-      when: needs_ip_config or vm_changed
 
     - name: Consolidate DNS and hostname changes
       set_fact:

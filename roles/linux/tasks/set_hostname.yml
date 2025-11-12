@@ -1,17 +1,18 @@
 ---
 # Set hostname on Linux system
 
-- name: Ensure NetworkManager is running
-  ansible.builtin.service:
-    name: NetworkManager
-    state: started
-    enabled: yes
+- name: Get current hostname
+  ansible.builtin.command: hostname
+  register: current_hostname
+  changed_when: false
 
 - name: Set hostname
   ansible.builtin.hostname:
     name: "{{ inventory_hostname }}"
+  become: true
   register: hostname_result
+  when: current_hostname.stdout | trim != inventory_hostname
 
 - name: Display result
   debug:
-    msg: "{{ inventory_hostname }} - Hostname {{ 'configured' if hostname_result.changed else 'already correct' }}"
+    msg: "{{ inventory_hostname }} - Hostname {{ 'configured' if (hostname_result.changed | default(false)) else 'already correct' }}"

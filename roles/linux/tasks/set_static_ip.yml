@@ -20,6 +20,11 @@
     mode: '0755'
   become: true
 
+- name: Check if netplan config exists
+  ansible.builtin.stat:
+    path: /etc/netplan/01-netcfg.yaml
+  register: netplan_file
+
 - name: Generate netplan configuration
   ansible.builtin.template:
     src: netplan.yaml.j2
@@ -29,25 +34,25 @@
     mode: '0600'
   become: true
   register: netplan_config
+  changed_when: netplan_config.changed and needs_ip_config
 
 - name: Apply netplan configuration
   ansible.builtin.command: netplan apply
   become: true
-  when: netplan_config.changed
+  when: netplan_config.changed and needs_ip_config
   async: 10
   poll: 0
-  register: netplan_apply
 
 - name: Wait for network to stabilize
   pause:
     seconds: 5
-  when: netplan_config.changed
+  when: netplan_config.changed and needs_ip_config
 
 - name: Update ansible connection to new IP
   ansible.builtin.set_fact:
     ansible_host: "{{ target_ip }}"
-  when: netplan_config.changed
+  when: netplan_config.changed and needs_ip_config
 
 - name: Display result
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if netplan_config.changed else 'already set to' }} {{ target_ip }}"
+    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if (netplan_config.changed and needs_ip_config) else 'already set to' }} {{ target_ip }}"
