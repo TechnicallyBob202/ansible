@@ -4,16 +4,21 @@
 
 - name: Create DNS delegation for {{ domain_name }} in {{ parent_domain }}
   block:
-    - name: Get child DC FQDN and IP from previous promotion facts
+    - name: Get child DC FQDN and IP from inventory
       set_fact:
-        child_dc_fqdn: "{{ hostvars[groups['child_pdcs'][0]]['pdc_' + domain_netbios.lower() + '_fqdn'] | default('') }}"
-        child_dc_ip: "{{ hostvars[groups['child_pdcs'][0]]['pdc_' + domain_netbios.lower() + '_ip'] | default('') }}"
+        child_dc_fqdn: "{{ groups['child_pdcs'][0] }}.{{ hostvars[groups['child_pdcs'][0]]['domain_name'] }}"
+        child_dc_ip: "{{ hostvars[groups['child_pdcs'][0]]['ansible_host'] }}"
+      when: groups['child_pdcs'] is defined and groups['child_pdcs'] | length > 0
       changed_when: false
 
     - name: Validate child DC facts were captured
-      fail:
-        msg: "Child DC FQDN or IP not found. Promotion may have failed. FQDN={{ child_dc_fqdn }}, IP={{ child_dc_ip }}"
-      when: not child_dc_fqdn or not child_dc_ip
+      assert:
+        that:
+          - child_dc_fqdn is defined
+          - child_dc_fqdn | length > 0
+          - child_dc_ip is defined
+          - child_dc_ip | length > 0
+        fail_msg: "Child DC FQDN or IP not found. FQDN={{ child_dc_fqdn | default('') }}, IP={{ child_dc_ip | default('') }}"
 
     - name: Create delegation in parent DNS zone
       ansible.windows.win_shell: |
