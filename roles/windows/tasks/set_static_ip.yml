@@ -7,17 +7,11 @@
   register: adapter_name
   changed_when: false
 
-- name: Remove existing IP if present (only when needs_ip_config)
+- name: Remove existing IP configuration
   ansible.windows.win_shell: |
     $adapter = "{{ adapter_name.stdout | trim }}"
-    Get-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 | Remove-NetIPAddress -Confirm:$false
-  when: needs_ip_config
-  failed_when: false
-
-- name: Remove existing default gateway (only when needs_ip_config)
-  ansible.windows.win_shell: |
-    $adapter = "{{ adapter_name.stdout | trim }}"
-    Get-NetRoute -InterfaceAlias $adapter -DestinationPrefix "0.0.0.0/0" -ErrorAction SilentlyContinue | Remove-NetRoute -Confirm:$false
+    Remove-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -Confirm:$false
+    Remove-NetRoute -InterfaceAlias $adapter -DestinationPrefix "0.0.0.0/0" -Confirm:$false -ErrorAction SilentlyContinue
   when: needs_ip_config
   failed_when: false
 
