@@ -71,9 +71,18 @@ all:
           proxmox_host: 192.168.33.22
           proxmox_node: semperis-nuc-2
           template_id: 9022
-          vm_cores: 2
-          vm_memory: 4096
-          vm_disk: 80G
+          vm_cores: 8
+          vm_memory: 16384
+          vm_disk: 100G
+          vm_extra_disks:
+            - name: data
+              size: 100G
+              type: scsi
+              storage: local-lvm
+            - name: kube
+              size: 100G
+              type: scsi
+              storage: local-lvm
           proxmox_vm_tags: "dsp"
           role: "Identity Analytics Scanner"
 
