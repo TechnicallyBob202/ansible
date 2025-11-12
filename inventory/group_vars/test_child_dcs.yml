@@ -1,3 +1,4 @@
 dns_servers:
   - 172.16.101.10
   - 172.16.101.11
+domain_netbios: CHILD

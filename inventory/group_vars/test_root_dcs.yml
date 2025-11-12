@@ -1,3 +1,4 @@
 dns_servers:
   - 172.16.100.10
   - 172.16.100.11
+domain_netbios: LAB
