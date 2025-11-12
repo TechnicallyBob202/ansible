@@ -42,44 +42,6 @@
         vm_changed: false
 
 # =============================================================================
-# DNS Delegation Setup (before any child promotions)
-# =============================================================================
-- name: Setup DNS Delegations for Child Domains
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Display delegation setup plan
-      debug:
-        msg:
-          - "Setting up DNS delegations for child domains..."
-          - "This must complete before child domain promotions"
-
-    - name: Check and create delegations for each child domain
-      include_role:
-        name: active_directory
-        tasks_from: check_dns_delegation.yml
-      loop: "{{ groups['child_pdcs'] }}"
-      loop_control:
-        loop_var: child_pdc_host
-      vars:
-        domain_name: "{{ hostvars[child_pdc_host].domain_name }}"
-        parent_domain: "{{ hostvars[child_pdc_host].parent_domain }}"
-        domain_netbios: "{{ hostvars[child_pdc_host].domain_netbios }}"
-
-    - name: Create delegations for missing child domains
-      include_role:
-        name: active_directory
-        tasks_from: create_dns_delegation.yml
-      loop: "{{ groups['child_pdcs'] }}"
-      loop_control:
-        loop_var: child_pdc_host
-      when: not delegation_exists
-      vars:
-        domain_name: "{{ hostvars[child_pdc_host].domain_name }}"
-        parent_domain: "{{ hostvars[child_pdc_host].parent_domain }}"
-        domain_netbios: "{{ hostvars[child_pdc_host].domain_netbios }}"
-
-# =============================================================================
 # Install AD Features
 # =============================================================================
 - name: Install Active Directory Features
@@ -203,8 +165,8 @@
           - "Stage 04 Complete"
           - "========================================="
           - ""
-          - "✓ DNS delegations created in parent zone"
           - "✓ Child domain PDCs promoted"
+          - "✓ DNS delegations created in parent zone"
           - "✓ Child domain replica DCs promoted"
           - "✓ DNS zones created in child domains"
           - "✓ Forwarders configured to parent"

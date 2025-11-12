@@ -82,6 +82,12 @@
   changed_when: false
   when: child_promotion.changed | default(false)
 
+- name: Create DNS delegation in parent domain
+  include_tasks: create_dns_delegation.yml
+  vars:
+    delegation_exists: false
+  when: child_promotion.changed | default(false)
+
 - name: Display child domain PDC promotion result
   debug:
     msg:
@@ -91,3 +97,4 @@
       - "  NetBIOS: {{ domain_netbios }}"
       - "  DNS Zone: created and configured"
       - "  Forwarders: configured to parent"
+      - "  Delegation: {{ 'created' if child_promotion.changed else 'already exists' }}"
