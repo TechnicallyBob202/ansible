@@ -230,7 +230,7 @@
         name: linux
         tasks_from: set_static_ip
       register: ip_result
-      when: needs_ip_config
+      when: needs_ip_config or (secondary_ip is defined)
 
     - name: Consolidate IP changes
       set_fact:
