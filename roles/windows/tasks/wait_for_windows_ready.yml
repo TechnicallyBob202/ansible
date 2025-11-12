@@ -2,16 +2,31 @@
 # Wait for Windows to be fully ready before attempting operations
 # Uses only WinRM/PowerShell - no Linux-based modules
 
-- name: Wait for WinRM to be available
+- name: Wait for WinRM service to be ready
   ansible.windows.win_ping:
     data: "boot_test"
   register: winrm_check
-  retries: 30
+  retries: 60
   delay: 10
   until: winrm_check is succeeded
   changed_when: false
+  ignore_unreachable: true
+
+- name: Fail if WinRM never became ready
+  fail:
+    msg: |
+      {{ inventory_hostname }} - WinRM connection failed after 10 minutes
+
+      This could mean:
+      - Credentials are incorrect
+      - WinRM service is not running
+      - Firewall is blocking connection
+      - VM is not fully booted
+
+      Check manually: Test-WSMan {{ ansible_host }}
+  when: winrm_check is not succeeded
 
 - name: Display Windows readiness status
   debug:
-    msg: "{{ inventory_hostname }} is ready (WinRM responsive)"
+    msg: "{{ inventory_hostname }} is ready (WinRM responsive at {{ ansible_host }})"
   changed_when: false
