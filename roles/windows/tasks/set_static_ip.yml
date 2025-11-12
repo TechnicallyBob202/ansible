@@ -14,23 +14,31 @@
   register: current_ip
   changed_when: false
 
+- name: Remove existing IP configuration if needed
+  ansible.windows.win_shell: |
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    $existing = Get-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -ErrorAction SilentlyContinue
+    if ($existing -and $existing.IPAddress -ne "{{ target_ip }}") {
+      Remove-NetIPAddress -InterfaceAlias $adapter -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+      Remove-NetRoute -InterfaceAlias $adapter -AddressFamily IPv4 -Confirm:$false -ErrorAction SilentlyContinue
+    }
+  when: current_ip.stdout | trim != target_ip
+  changed_when: false
+
 - name: Set static IP address
   ansible.windows.win_shell: |
-    New-NetIPAddress -InterfaceAlias "{{ adapter_name.stdout | trim }}" -IPAddress "{{ target_ip }}" -PrefixLength {{ windows_ip_prefix }} -DefaultGateway {{ windows_gateway }} -ErrorAction SilentlyContinue
+    $adapter = "{{ adapter_name.stdout | trim }}"
+    New-NetIPAddress -InterfaceAlias $adapter -IPAddress "{{ target_ip }}" -PrefixLength {{ windows_ip_prefix }} -DefaultGateway {{ windows_gateway }} -ErrorAction Stop
+    Write-Output "IP set to {{ target_ip }}"
   async: 30
   poll: 0
-  register: ip_change
+  register: ip_change_job
   when: current_ip.stdout | trim != target_ip
 
 - name: Set IP changed flag
   set_fact:
-    ip_changed: "{{ ip_change.changed | default(false) }}"
+    ip_changed: "{{ ip_change_job.changed | default(false) }}"
 
-- name: Wait for IP change
-  pause:
-    seconds: 20
-  when: ip_changed
-
-- name: Display result
+- name: Display IP change status
   debug:
-    msg: "{{ inventory_hostname }} - IP {{ 'configured to' if ip_changed else 'already set to' }} {{ target_ip }}"
+    msg: "{{ inventory_hostname }} - IP {{ 'changing to' if ip_changed else 'already set to' }} {{ target_ip }}"
