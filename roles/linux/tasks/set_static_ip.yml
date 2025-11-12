@@ -54,7 +54,18 @@
   when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
   async: 10
   poll: 0
+  
+- name: Verify secondary NIC configuration
+  ansible.builtin.command: "ip addr show {{ linux_secondary_ifname }}"
+  register: secondary_nic_status
+  become: true
+  when: secondary_ip is defined and linux_secondary_ifname is defined
+  changed_when: false
 
+- name: Display secondary NIC status
+  ansible.builtin.debug:
+    var: secondary_nic_status.stdout_lines
+  when: secondary_ip is defined and linux_secondary_ifname is defined
 - name: Wait for network to stabilize
   pause:
     seconds: 5
