@@ -1,1 +1,17 @@
-          secondary_ip: 172.16.50.15  # Second NIC
+network:
+  version: 2
+  renderer: networkd
+  ethernets:
+    {{ linux_ifname }}:
+      dhcp4: false
+      addresses:
+        - {{ target_ip }}/24
+      gateway4: {{ default_gateway | default('192.168.1.1') }}
+      nameservers:
+        addresses: {{ dns_servers | default(['8.8.8.8', '8.8.4.4']) | to_nice_yaml | indent(10) | trim }}
+{% if secondary_ip is defined and linux_secondary_ifname is defined %}
+    {{ linux_secondary_ifname }}:
+      dhcp4: false
+      addresses:
+        - {{ secondary_ip }}/24
+{% endif %}
