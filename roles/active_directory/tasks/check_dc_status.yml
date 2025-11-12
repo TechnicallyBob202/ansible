@@ -231,8 +231,8 @@
   set_fact:
     forest_pdc_fqdn: "{{ _thisdc_fqdn_cmd.stdout | trim }}"
     forest_pdc_ip:   "{{ _thisdc_ip_cmd.stdout   | trim }}"
-    "pdc_{{ domain_netbios | lower }}_fqdn": "{{ _thisdc_fqdn_cmd.stdout | trim }}"
-    "pdc_{{ domain_netbios | lower }}_ip":   "{{ _thisdc_ip_cmd.stdout   | trim }}"
+    "pdc_{{ netbios_name | lower }}_fqdn": "{{ _thisdc_fqdn_cmd.stdout | trim }}"
+    "pdc_{{ netbios_name | lower }}_ip":   "{{ _thisdc_ip_cmd.stdout   | trim }}"
   delegate_to: localhost
   delegate_facts: true
   when: is_dc_check.rc == 0
