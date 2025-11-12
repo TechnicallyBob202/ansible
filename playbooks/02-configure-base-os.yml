@@ -153,6 +153,17 @@
   gather_facts: false
   serial: 0
   tasks:
+    - name: Check if already a domain controller
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        if ($CS.DomainRole -ge 4) {
+          Write-Output "IS_DC"
+        } else {
+          Write-Output "NOT_DC"
+        }
+      register: dc_check
+      changed_when: false
+
     - name: Set static IP
       include_role:
         name: windows
@@ -173,11 +184,15 @@
         seconds: 10
       when: needs_ip_config
 
-    - name: Configure DNS servers
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      register: dns_result
+    - name: Set DNS servers for domain controllers
+      set_fact:
+        windows_dns_servers: "{{ dns_servers_pre_promo if dc_role is defined else dns_servers | default(['1.1.1.1', '1.0.0.1']) }}"
+      when: dc_check.stdout | trim == 'NOT_DC'
+
+    - name: Set DNS servers for promoted DCs
+      set_fact:
+        windows_dns_servers: "{{ dns_servers_post_promo if dc_role is defined else dns_servers }}"
+      when: dc_check.stdout | trim == 'IS_DC'
 
     - name: Set hostname
       include_role:

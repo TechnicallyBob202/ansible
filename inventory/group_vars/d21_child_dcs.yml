@@ -10,10 +10,12 @@ parent_domain: d2.lab
 parent_domain_netbios: D2
 
 # DNS Configuration (includes parent + child DCs)
-dns_servers:
+dns_servers_pre_promo:
   - 172.16.20.10  # D2-DC01 (parent)
-  - 172.16.21.10  # D21-DC01 (this domain)
-  - 172.16.21.11  # D21-DC02 (this domain)
+  - 172.16.20.11  # D2-DC02 (parent)
+dns_servers_post_promo:
+  - 172.16.21.10  # D21-DC01
+  - 172.16.21.11  # D21-DC02
 
 # Parent Domain Controller (for credentials during child domain creation)
 parent_pdc_host: D2-DC01

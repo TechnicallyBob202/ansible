@@ -6,11 +6,12 @@ domain_name: d2.lab
 netbios_name: D2
 
 # DNS Configuration (parent domain DCs)
-dns_servers:
+dns_servers_pre_promo:
+  - 1.1.1.1
+  - 1.0.0.1
+dns_servers_post_promo:
   - 172.16.20.10  # D2-DC01
   - 172.16.20.11  # D2-DC02
-  - 172.16.21.10  # D21-DC01
-  - 172.16.22.10  # D22-DC01
 
 # Domain Controller for credential references
 domain_pdc_host: D2-DC01
