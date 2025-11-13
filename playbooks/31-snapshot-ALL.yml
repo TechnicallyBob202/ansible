@@ -1,0 +1,23 @@
+---
+# =============================================================================
+# Snapshot ALL VMs (replace if exist, create if missing)
+# =============================================================================
+- name: Snapshot All VMs
+  hosts: all
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Force replacement of existing snapshots
+      set_fact:
+        vm_changed: true
+
+    - name: Snapshot VM
+      include_role:
+        name: proxmox
+        tasks_from: snapshot.yml
+        apply:
+          delegate_to: localhost
+      vars:
+        snapshot_name: "everything-configured"
+        snapshot_description: "After everything is fully configured"
