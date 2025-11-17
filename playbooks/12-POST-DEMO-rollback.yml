@@ -1,0 +1,145 @@
+---
+- name: Revert Domain Controllers to PRE-DEMO Snapshot
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display revert plan
+      debug:
+        msg:
+          - "========================================="
+          - "  Post-Demo Rollback to PRE-DEMO"
+          - "========================================="
+          - ""
+          - "This will revert all domain controllers to:"
+          - "  Snapshot: PRE-DEMO"
+          - ""
+          - "Waiting 10 seconds... Press Ctrl+C to abort"
+
+    - name: Wait before reverting
+      pause:
+        seconds: 10
+
+# =============================================================================
+# PHASE 1: Stop Domain Controllers
+# =============================================================================
+- name: Stop Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Stop VM before revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: stopped
+        force: yes
+      delegate_to: localhost
+      register: stop_result
+
+    - name: Display stop result
+      debug:
+        msg: "{{ inventory_hostname }} - stopped"
+
+# =============================================================================
+# PHASE 2: Revert to PRE-DEMO Snapshot
+# =============================================================================
+- name: Revert to PRE-DEMO Snapshot
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 2
+
+  tasks:
+    - name: Revert snapshot
+      shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm rollback {{ vmid }} PRE-DEMO"
+      delegate_to: localhost
+      register: rollback_result
+
+    - name: Display rollback result
+      debug:
+        msg: "{{ inventory_hostname }} - reverted to PRE-DEMO snapshot"
+
+# =============================================================================
+# PHASE 3: Start Domain Controllers
+# =============================================================================
+- name: Start Domain Controllers
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Start VM after revert
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: started
+      delegate_to: localhost
+      register: start_result
+
+    - name: Display start result
+      debug:
+        msg: "{{ inventory_hostname }} - started"
+
+# =============================================================================
+# PHASE 4: Wait for WinRM and Synchronize Time
+# =============================================================================
+- name: Wait for WinRM and Sync Time
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+
+  tasks:
+    - name: Wait for WinRM to be available
+      ansible.windows.win_ping:
+      retries: 60
+      delay: 10
+      until: ping_result is succeeded
+      register: ping_result
+
+    - name: Force time synchronization with NTP
+      ansible.windows.win_shell: |
+        w32tm /resync /force
+        Start-Sleep -Seconds 5
+        w32tm /query /status
+      register: time_sync_result
+
+    - name: Display time sync result
+      debug:
+        msg: "{{ inventory_hostname }} - time synchronized"
+
+# =============================================================================
+# PHASE 5: Summary
+# =============================================================================
+- name: Display Summary
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+    - name: Display completion message
+      debug:
+        msg:
+          - ""
+          - "========================================="
+          - "  Post-Demo Rollback Complete"
+          - "========================================="
+          - ""
+          - "All domain controllers have been reverted"
+          - "to the PRE-DEMO snapshot"
+          - ""
+          - "All VMs have been restarted"
+          - "Time has been synchronized on all DCs"
+          - ""
+          - "Lab is ready for next demo"
