@@ -21,10 +21,10 @@
         seconds: 10
 
 # =============================================================================
-# PHASE 1: Stop Domain Controllers
+# PHASE 1: Stop All VMs
 # =============================================================================
-- name: Stop Domain Controllers
-  hosts: domain_controllers
+- name: Stop All VMs
+  hosts: domain_controllers:recovery_vms
   gather_facts: false
   serial: 0
 
@@ -50,7 +50,7 @@
 # PHASE 2: Revert to PRE-DEMO Snapshot
 # =============================================================================
 - name: Revert to PRE-DEMO Snapshot
-  hosts: domain_controllers
+  hosts: domain_controllers:recovery_vms
   gather_facts: false
   serial: 2
 
@@ -69,10 +69,10 @@
         msg: "{{ inventory_hostname }} - reverted to PRE-DEMO snapshot"
 
 # =============================================================================
-# PHASE 3: Start Domain Controllers
+# PHASE 3: Start All VMs
 # =============================================================================
-- name: Start Domain Controllers
-  hosts: domain_controllers
+- name: Start All VMs
+  hosts: domain_controllers:recovery_vms
   gather_facts: false
   serial: 0
 
@@ -97,7 +97,7 @@
 # PHASE 4: Wait for WinRM and Synchronize Time
 # =============================================================================
 - name: Wait for WinRM and Sync Time
-  hosts: domain_controllers
+  hosts: domain_controllers:recovery_vms
   gather_facts: false
   serial: 0
 
@@ -136,10 +136,11 @@
           - "  Post-Demo Rollback Complete"
           - "========================================="
           - ""
-          - "All domain controllers have been reverted"
-          - "to the PRE-DEMO snapshot"
+          - "All VMs have been reverted to PRE-DEMO snapshot:"
+          - "  • Domain Controllers"
+          - "  • Recovery VMs"
           - ""
           - "All VMs have been restarted"
-          - "Time has been synchronized on all DCs"
+          - "Time has been synchronized on all VMs"
           - ""
           - "Lab is ready for next demo"
