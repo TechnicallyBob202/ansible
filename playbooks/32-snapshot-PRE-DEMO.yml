@@ -6,7 +6,7 @@
 - name: Snapshot All VMs BEFORE DEMO
   hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
-  serial: 3
+  serial: 1
 
   tasks:
     - name: Force replacement of existing snapshots
