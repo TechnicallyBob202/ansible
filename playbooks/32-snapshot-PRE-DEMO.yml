@@ -1,11 +1,12 @@
 ---
 # =============================================================================
-# Snapshot ALL VMs BEFORE DEMO (replace if exist, create if missing)
+# Snapshot ADFR Management and Recovery VMs BEFORE DEMO
+# (replace if exist, create if missing)
 # =============================================================================
 - name: Snapshot All VMs BEFORE DEMO
-  hosts: all
+  hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
-  serial: 2
+  serial: 3
 
   tasks:
     - name: Force replacement of existing snapshots
