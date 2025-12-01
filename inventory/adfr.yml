@@ -24,9 +24,9 @@ all:
               ansible_host: 172.16.10.11
               dc_role: replica
               vmid: 1011
-              proxmox_host: 192.168.33.22
-              proxmox_node: semperis-nuc-2
-              template_id: 9002
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
               vm_cores: 2
               vm_memory: 4096
               vm_disk: 80G
@@ -47,9 +47,9 @@ all:
               ansible_host: 172.16.20.10
               dc_role: pdc
               vmid: 2010
-              proxmox_host: 192.168.33.21
-              proxmox_node: semperis-nuc-1
-              template_id: 9001
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
               vm_cores: 2
               vm_memory: 4096
               vm_disk: 80G
@@ -77,9 +77,9 @@ all:
               ansible_host: 172.16.21.10
               dc_role: pdc
               vmid: 2110
-              proxmox_host: 192.168.33.21
-              proxmox_node: semperis-nuc-1
-              template_id: 9001
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
               vm_cores: 2
               vm_memory: 4096
               vm_disk: 80G
@@ -109,9 +109,9 @@ all:
               ansible_host: 172.16.22.10
               dc_role: pdc
               vmid: 2210
-              proxmox_host: 192.168.33.21
-              proxmox_node: semperis-nuc-1
-              template_id: 9001
+              proxmox_host: 192.168.33.22
+              proxmox_node: semperis-nuc-2
+              template_id: 9002
               vm_cores: 2
               vm_memory: 4096
               vm_disk: 80G
@@ -167,9 +167,9 @@ all:
         DP2:
           ansible_host: 172.16.30.12
           vmid: 3012
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9011
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9012
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 500G
@@ -196,9 +196,9 @@ all:
         REC02:
           ansible_host: 172.16.11.11
           vmid: 1111
-          proxmox_host: 192.168.33.22
-          proxmox_node: semperis-nuc-2
-          template_id: 9002
+          proxmox_host: 192.168.33.21
+          proxmox_node: semperis-nuc-1
+          template_id: 9001
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 80G
@@ -208,9 +208,9 @@ all:
         REC03:
           ansible_host: 172.16.23.10
           vmid: 2310
-          proxmox_host: 192.168.33.21
-          proxmox_node: semperis-nuc-1
-          template_id: 9001
+          proxmox_host: 192.168.33.22
+          proxmox_node: semperis-nuc-2
+          template_id: 9002
           vm_cores: 2
           vm_memory: 4096
           vm_disk: 80G
