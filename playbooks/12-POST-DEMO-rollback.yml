@@ -64,6 +64,22 @@
       delegate_to: localhost
       register: rollback_result
 
+    - name: Wait for Proxmox to register rollback state
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: current
+      delegate_to: localhost
+      register: vm_state
+      until: vm_state.status == 'stopped'
+      retries: 12
+      delay: 5
+      changed_when: false
+
     - name: Display rollback result
       debug:
         msg: "{{ inventory_hostname }} - reverted to PRE-DEMO snapshot"
@@ -77,20 +93,7 @@
   serial: 0
 
   tasks:
-    - name: Get current VM state
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        state: current
-      delegate_to: localhost
-      register: vm_state
-      changed_when: false
-
-    - name: Start VM if stopped
+    - name: Start VM after revert
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -100,28 +103,10 @@
         node: "{{ proxmox_node }}"
         state: started
       delegate_to: localhost
-      when: vm_state.status != 'running'
-      register: start_result
-
-    - name: Verify VM is running
-      community.general.proxmox_kvm:
-        api_host: "{{ proxmox_host }}"
-        api_user: "{{ proxmox_user }}"
-        api_password: "{{ proxmox_password }}"
-        validate_certs: "{{ proxmox_validate_certs }}"
-        vmid: "{{ vmid }}"
-        node: "{{ proxmox_node }}"
-        state: current
-      delegate_to: localhost
-      register: vm_verify
-      until: vm_verify.status == 'running'
-      retries: 10
-      delay: 5
-      changed_when: false
 
     - name: Display start result
       debug:
-        msg: "{{ inventory_hostname }} - started and verified running"
+        msg: "{{ inventory_hostname }} - started"
 
     - name: Wait for VMs to boot
       pause:
@@ -138,7 +123,7 @@
   serial: 0
 
   tasks:
-    - name: Wait for network interface to be ready
+    - name: Wait for WinRM to be available
       wait_for_connection:
         timeout: 600
         sleep: 10
