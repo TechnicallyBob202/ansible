@@ -24,7 +24,7 @@
 # PHASE 1: Stop All VMs
 # =============================================================================
 - name: Stop All VMs
-  hosts: domain_controllers:recovery_vms
+  hosts: adfr_management:adfr_recovery
   gather_facts: false
   serial: 0
 
@@ -50,7 +50,7 @@
 # PHASE 2: Revert to PRE-DEMO Snapshot
 # =============================================================================
 - name: Revert to PRE-DEMO Snapshot
-  hosts: domain_controllers:recovery_vms
+  hosts: adfr_management:adfr_recovery
   gather_facts: false
   serial: 2
 
@@ -72,7 +72,7 @@
 # PHASE 3: Start All VMs
 # =============================================================================
 - name: Start All VMs
-  hosts: domain_controllers:recovery_vms
+  hosts: adfr_management:adfr_recovery
   gather_facts: false
   serial: 0
 
@@ -97,7 +97,7 @@
 # PHASE 4: Wait for WinRM and Synchronize Time
 # =============================================================================
 - name: Wait for WinRM and Sync Time
-  hosts: domain_controllers:recovery_vms
+  hosts: adfr_management:adfr_recovery
   gather_facts: false
   serial: 0
 
@@ -137,7 +137,7 @@
           - "========================================="
           - ""
           - "All VMs have been reverted to PRE-DEMO snapshot:"
-          - "  • Domain Controllers"
+          - "  • Management Server"
           - "  • Recovery VMs"
           - ""
           - "All VMs have been restarted"

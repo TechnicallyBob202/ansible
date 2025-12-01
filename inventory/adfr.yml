@@ -136,9 +136,9 @@ all:
             parent_domain_netbios: D2
 
     # ============================================
-    # ADFR Infrastructure
+    # ADFR Management Server
     # ============================================
-    adfr_infrastructure:
+    adfr_management:
       hosts:
         ADFR:
           ansible_host: 172.16.30.10
@@ -152,6 +152,11 @@ all:
           proxmox_vm_tags: "adfr"
           role: "ADFR Management Server"
 
+    # ============================================
+    # ADFR Distribution Points
+    # ============================================
+    adfr_distribution_points:
+      hosts:
         DP1:
           ansible_host: 172.16.30.11
           vmid: 3011
@@ -177,7 +182,7 @@ all:
           role: "Distribution Point 2"
 
     # ============================================
-    # Recovery VMs
+    # ADFR Recovery VMs
     # ============================================
     adfr_recovery:
       hosts:
@@ -270,10 +275,9 @@ all:
             D21-DC02:
             D22-DC02:
 
-    infrastructure:
+    adfr_infrastructure:
       children:
-        adfr_infrastructure:
-
-    recovery_vms:
-      children:
+        adfr_management:
+        adfr_distribution_points:
         adfr_recovery:
+        
