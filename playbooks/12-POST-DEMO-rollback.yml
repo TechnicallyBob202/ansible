@@ -1,5 +1,5 @@
 ---
-- name: Revert Domain Controllers to PRE-DEMO Snapshot
+- name: Revert Servers to PRE-DEMO Snapshot
   hosts: localhost
   gather_facts: false
 
@@ -11,7 +11,7 @@
           - "  Post-Demo Rollback to PRE-DEMO"
           - "========================================="
           - ""
-          - "This will revert all domain controllers to:"
+          - "This will revert ADFR management server and recovery VMs to:"
           - "  Snapshot: PRE-DEMO"
           - ""
           - "Waiting 10 seconds... Press Ctrl+C to abort"
@@ -24,7 +24,7 @@
 # PHASE 1: Stop All VMs
 # =============================================================================
 - name: Stop All VMs
-  hosts: adfr_management:adfr_recovery
+  hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
   serial: 0
 
@@ -50,7 +50,7 @@
 # PHASE 2: Revert to PRE-DEMO Snapshot
 # =============================================================================
 - name: Revert to PRE-DEMO Snapshot
-  hosts: adfr_management:adfr_recovery
+  hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
   serial: 2
 
@@ -72,7 +72,7 @@
 # PHASE 3: Start All VMs
 # =============================================================================
 - name: Start All VMs
-  hosts: adfr_management:adfr_recovery
+  hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
   serial: 0
 
@@ -97,7 +97,7 @@
 # PHASE 4: Wait for WinRM and Synchronize Time
 # =============================================================================
 - name: Wait for WinRM and Sync Time
-  hosts: adfr_management:adfr_recovery
+  hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
   serial: 0
 

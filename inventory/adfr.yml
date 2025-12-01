@@ -182,9 +182,9 @@ all:
           role: "Distribution Point 2"
 
     # ============================================
-    # ADFR Recovery VMs
+    # ADFR Recovery VMs for D1.lab
     # ============================================
-    adfr_recovery:
+    adfr_recovery_D1:
       hosts:
         REC01:
           ansible_host: 172.16.11.10
@@ -210,6 +210,11 @@ all:
           proxmox_vm_tags: "adfr"
           role: "Recovery VM"
 
+    # ============================================
+    # ADFR Recovery VMs for D2.lab
+    # ============================================
+    adfr_recovery_D2:
+      hosts:
         REC03:
           ansible_host: 172.16.23.10
           vmid: 2310
@@ -279,5 +284,5 @@ all:
       children:
         adfr_management:
         adfr_distribution_points:
-        adfr_recovery:
-        
+        adfr_recovery_D1:
+        adfr_recovery_D2:
