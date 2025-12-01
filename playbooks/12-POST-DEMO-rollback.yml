@@ -80,6 +80,12 @@
       delay: 5
       changed_when: false
 
+    - name: Wait for rollback
+      pause:
+        seconds: 15
+      run_once: true
+      delegate_to: localhost
+
     - name: Display rollback result
       debug:
         msg: "{{ inventory_hostname }} - reverted to PRE-DEMO snapshot"
