@@ -77,7 +77,20 @@
   serial: 0
 
   tasks:
-    - name: Start VM after revert
+    - name: Get current VM state
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: current
+      delegate_to: localhost
+      register: vm_state
+      changed_when: false
+
+    - name: Start VM if stopped
       community.general.proxmox_kvm:
         api_host: "{{ proxmox_host }}"
         api_user: "{{ proxmox_user }}"
@@ -87,11 +100,34 @@
         node: "{{ proxmox_node }}"
         state: started
       delegate_to: localhost
+      when: vm_state.status != 'running'
       register: start_result
+
+    - name: Verify VM is running
+      community.general.proxmox_kvm:
+        api_host: "{{ proxmox_host }}"
+        api_user: "{{ proxmox_user }}"
+        api_password: "{{ proxmox_password }}"
+        validate_certs: "{{ proxmox_validate_certs }}"
+        vmid: "{{ vmid }}"
+        node: "{{ proxmox_node }}"
+        state: current
+      delegate_to: localhost
+      register: vm_verify
+      until: vm_verify.status == 'running'
+      retries: 10
+      delay: 5
+      changed_when: false
 
     - name: Display start result
       debug:
-        msg: "{{ inventory_hostname }} - started"
+        msg: "{{ inventory_hostname }} - started and verified running"
+
+    - name: Wait for VMs to boot
+      pause:
+        seconds: 30
+      run_once: true
+      delegate_to: localhost
 
 # =============================================================================
 # PHASE 4: Wait for WinRM and Synchronize Time
