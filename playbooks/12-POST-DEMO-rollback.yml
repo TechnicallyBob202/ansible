@@ -102,12 +102,19 @@
   serial: 0
 
   tasks:
-    - name: Wait for WinRM to be available
+    - name: Wait for network interface to be ready
+      wait_for_connection:
+        timeout: 600
+        sleep: 10
+        delay: 30
+      register: connection_result
+
+    - name: Verify WinRM is responsive
       ansible.windows.win_ping:
-      retries: 60
-      delay: 10
-      until: ping_result is succeeded
       register: ping_result
+      retries: 10
+      delay: 5
+      until: ping_result is succeeded
 
     - name: Force time synchronization with NTP
       ansible.windows.win_shell: |
