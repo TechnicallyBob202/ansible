@@ -52,7 +52,7 @@
 - name: Revert to PRE-DEMO Snapshot
   hosts: adfr_management:adfr_recovery_D1
   gather_facts: false
-  serial: 2
+  serial: 3
 
   tasks:
     - name: Revert snapshot
