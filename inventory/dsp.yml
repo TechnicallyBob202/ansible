@@ -125,6 +125,7 @@ all:
 
         root_replicas:
           hosts:
+            D3-DC02:
 
         child_pdcs:
           hosts:
