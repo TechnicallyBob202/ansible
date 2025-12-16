@@ -304,7 +304,7 @@
       ansible.windows.win_reboot:
         reboot_timeout: 300
         post_reboot_delay: 30
-      when: reboot_needed
+      when: reboot_needed or reboot_required | default(false)
 
 # =============================================================================
 # Reboot Linux Hosts if Needed
