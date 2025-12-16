@@ -9,9 +9,9 @@ all:
         d3_dcs:
           hosts:
             D3-DC01:
-              ansible_host: 172.16.50.12
+              ansible_host: 172.16.50.21
               dc_role: pdc
-              vmid: 5012
+              vmid: 5021
               proxmox_host: 192.168.33.21
               proxmox_node: semperis-nuc-1
               template_id: 9001
