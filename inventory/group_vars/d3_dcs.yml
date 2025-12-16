@@ -6,6 +6,13 @@ domain_name: d3.lab
 netbios_name: D3
 
 # DNS Configuration
+dns_servers_pre_promo:
+  - 1.1.1.1
+  - 1.0.0.1
+dns_servers_post_promo:
+  - 172.16.50.12  # D3-DC01
+  - 172.16.50.22  # D3-DC02
+
 dns_servers:
   - 172.16.50.12
 
