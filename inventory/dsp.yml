@@ -19,6 +19,17 @@ all:
               vm_memory: 4096
               vm_disk: 80G
               proxmox_vm_tags: "dsp"
+            D3-DC02:
+              ansible_host: 172.16.50.22
+              dc_role: pdc
+              vmid: 5022
+              proxmox_host: 192.168.33.21
+              proxmox_node: semperis-nuc-1
+              template_id: 9001
+              vm_cores: 2
+              vm_memory: 4096
+              vm_disk: 80G
+              proxmox_vm_tags: "dsp"
 
           vars:
             domain_name: d3.lab
