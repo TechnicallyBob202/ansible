@@ -68,103 +68,47 @@
           vars:
             proxmox_operation: discover_ip
           register: ip_discovery_result
-          ignore_errors: true
 
-        - name: Wait before final retry
-          pause:
-            seconds: 15
-          when: ip_discovery_result.failed | default(false)
-          delegate_to: localhost
-
-        - name: Retry IP discovery (attempt 3)
-          include_role:
-            name: proxmox
-            apply:
-              delegate_to: localhost
-          vars:
-            proxmox_operation: discover_ip
-          register: ip_discovery_result
-          when: ip_discovery_result.failed | default(false)
-
-    - name: Abort if IP discovery failed after retries
-      fail:
-        msg: |
-          CRITICAL: Could not discover IP for {{ inventory_hostname }} (vmid {{ vmid }}) after 3 attempts
-
-          This usually means:
-          - VM is not running
-          - qemu-guest-agent is not installed or not running
-          - VM is still booting (wait a few minutes and try again)
-
-          Manual intervention required before continuing.
-      when: ip_discovery_result.failed | default(false)
-
-    - name: Check if IP already matches
-      set_fact:
-        needs_ip_config: "{{ discovered_ip != target_ip }}"
-
-    - name: Update ansible_host to discovered IP
-      set_fact:
-        ansible_host: "{{ discovered_ip }}"
+    - name: Parse and compare IP addresses
+      include_role:
+        name: proxmox
+        tasks_from: parse_ip_discovery
+      register: ip_comparison
 
     - name: Display IP status
       debug:
-        msg: "{{ inventory_hostname }}: {{ discovered_ip }} → {{ target_ip }} ({{ 'needs config' if needs_ip_config else 'already correct' }})"
+        msg: "{{ ip_comparison.ip_message }}"
 
 # =============================================================================
-# Wait for WinRM Availability (Windows)
+# Build groups for conditional network configuration
 # =============================================================================
-- name: Wait for WinRM Availability (Windows)
-  hosts: windows
+- name: Separate hosts by network config needs
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
-    - name: Wait for Windows to be fully ready
-      include_role:
-        name: windows
-        tasks_from: wait_for_windows_ready.yml
-
-# =============================================================================
-# Wait for SSH Availability (Linux)
-# =============================================================================
-- name: Wait for SSH Availability (Linux)
-  hosts: linux
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Wait for SSH port to be available on discovered IP
-      ansible.builtin.wait_for:
-        host: "{{ discovered_ip }}"
-        port: 22
-        delay: 5
-        timeout: 300
-      delegate_to: localhost
-      register: ssh_port_check
-
-    - name: Show SSH port is available
-      debug:
-        msg: "{{ inventory_hostname }}: SSH port available at {{ discovered_ip }}"
-
-# =============================================================================
-# Configure Static IPs and Network (Windows)
-# =============================================================================
-- name: Configure Windows Network
-  hosts: windows
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check if already a domain controller
-      ansible.windows.win_shell: |
-        $CS = Get-WmiObject Win32_ComputerSystem
-        if ($CS.DomainRole -ge 4) {
-          Write-Output "IS_DC"
-        } else {
-          Write-Output "NOT_DC"
-        }
-      register: dc_check
+    - name: Create group for hosts needing network config
+      group_by:
+        key: "needs_network_config_{{ 'yes' if (hostvars[inventory_hostname].get('needs_ip_config', false) | bool) else 'no' }}"
       changed_when: false
 
-    - name: Set static IP
+# =============================================================================
+# Configure Network (Windows - Only hosts needing config)
+# =============================================================================
+- name: Configure Windows Static IPs
+  hosts: needs_network_config_yes:&windows
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Test WinRM availability (long timeout with retries)
+      ansible.windows.win_ping:
+      retries: 30
+      delay: 10
+      until: ping_test is succeeded
+      register: ping_test
+      failed_when: ping_test is failed
+
+    - name: Set static IP address
       include_role:
         name: windows
         tasks_from: set_static_ip
@@ -172,17 +116,68 @@
 
     - name: Consolidate IP changes
       set_fact:
-        vm_changed: "{{ vm_changed or needs_ip_config }}"
+        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
 
     - name: Update ansible_host to target IP
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
+      when: ip_result.changed | default(false)
 
     - name: Wait for IP to settle
       pause:
         seconds: 10
-      when: needs_ip_config
+      when: ip_result.changed | default(false)
+
+    - name: Test WinRM on new static IP
+      ansible.windows.win_ping:
+      retries: 30
+      delay: 10
+      until: ping_result is succeeded
+      register: ping_result
+      failed_when: ping_result is failed
+
+# =============================================================================
+# CRITICAL: Stop on any connectivity failure
+# =============================================================================
+- name: Stop on Connectivity Failure
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Fail if any hosts unreachable
+      fail:
+        msg: |
+          STOPPING PLAYBOOK: Connectivity failure detected
+
+          One or more hosts cannot be reached via WinRM/SSH.
+          This typically indicates network configuration issues.
+
+          Check the following:
+          1. Static IP addresses were actually configured
+          2. VMs can ping the new IP addresses
+          3. Network cables/bridges are connected
+          4. Firewall rules allow WinRM (5985/5986) or SSH (22)
+
+          Revise network config and retry Stage 2.
+      when:
+        - ansible_unreachable | default(false)
+
+# =============================================================================
+# Configure DNS and Hostname (Windows - All windows hosts)
+# =============================================================================
+- name: Configure Windows DNS and Hostname
+  hosts: windows
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if this is a domain controller
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        if ($CS.DomainRole -lt 4) { exit 1 }
+        exit 0
+      register: dc_check
+      failed_when: false
+      changed_when: false
 
     - name: Determine DNS servers based on DC status
       set_fact:
@@ -210,18 +205,11 @@
       set_fact:
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
 
-    - name: Test WinRM on static IP
-      ansible.windows.win_ping:
-      retries: 30
-      delay: 10
-      until: ping_result is succeeded
-      register: ping_result
-
 # =============================================================================
-# Configure Static IPs and Network (Linux)
+# Configure Network (Linux - Only hosts needing config)
 # =============================================================================
-- name: Configure Linux Network
-  hosts: linux
+- name: Configure Linux Static IPs
+  hosts: needs_network_config_yes:&linux
   gather_facts: false
   serial: 0
   tasks:
@@ -234,32 +222,30 @@
 
     - name: Consolidate IP changes
       set_fact:
-        vm_changed: "{{ vm_changed or (netplan_config.changed | default(false) and needs_ip_config) }}"
+        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+      when: needs_ip_config or (secondary_ip is defined)
 
     - name: Update ansible_host to target IP
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
+      when: (needs_ip_config or (secondary_ip is defined)) and (ip_result.changed | default(false))
 
     - name: Wait for IP to settle
       pause:
         seconds: 10
-      when: needs_ip_config
+      when: (needs_ip_config or (secondary_ip is defined)) and (ip_result.changed | default(false))
 
-    - name: Wait for connection to settle
-      pause:
-        seconds: 5
-      when: needs_ip_config
-
-    - name: Set hostname
+    - name: Update system packages
       include_role:
         name: linux
-        tasks_from: set_hostname
-      register: hostname_result
+        tasks_from: update
+      when: vm_changed
 
-    - name: Consolidate DNS and hostname changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
+    - name: Reboot if changes were made
+      include_role:
+        name: linux
+        tasks_from: reboot
+      when: vm_changed
 
 # =============================================================================
 # Install AD-DS Features (Domain Controllers Only)
@@ -269,6 +255,13 @@
   gather_facts: false
   serial: 0
   tasks:
+    - name: Verify WinRM connectivity before installing features
+      ansible.windows.win_ping:
+      retries: 5
+      delay: 5
+      register: promo_ping_test
+      failed_when: promo_ping_test is failed
+
     - name: Install Active Directory Domain Services features
       include_role:
         name: active_directory
@@ -317,18 +310,12 @@
     - name: Update ansible_host to target IP before reboot
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: needs_ip_config
+      when: needs_ip_config | default(false)
 
-    - name: Update system packages
-      include_role:
-        name: linux
-        tasks_from: update
-      when: vm_changed
-
-    - name: Reboot if changes were made
-      include_role:
-        name: linux
-        tasks_from: reboot
+    - name: Reboot Linux hosts that were modified
+      ansible.builtin.reboot:
+        reboot_timeout: 300
+        post_reboot_delay: 30
       when: vm_changed
 
 # =============================================================================
@@ -397,34 +384,6 @@
         snapshot_name: "stage2-base-configured"
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
 
-# # =============================================================================
-# # Generate mRemoteNG Configuration
-# # =============================================================================
-# - name: Generate mRemoteNG Configuration
-#   hosts: localhost
-#   gather_facts: false
-#   tasks:
-#     - name: Display mRemoteNG generation plan
-#       debug:
-#         msg:
-#           - ""
-#           - "========================================="
-#           - "  Generating mRemoteNG Configuration"
-#           - "========================================="
-#           - ""
-#           - "Detecting inventory type and generating"
-#           - "appropriate mRemoteNG connection file..."
-
-#     - name: Generate mRemoteNG
-#       include_role:
-#         name: utility
-#         tasks_from: generate_mremoteng
-
-#     - name: Commit mRemoteNG to git
-#       include_role:
-#         name: utility
-#         tasks_from: git_commit_docs
-
 # =============================================================================
 # Summary
 # =============================================================================
@@ -451,6 +410,5 @@
           - ""
           - "✓ All Windows/Linux configurations applied"
           - "✓ AD-DS features installed on all domain controllers"
-          - "✓ mRemoteNG configuration generated and committed to git"
           - ""
           - "Next: Run playbooks/03-build-forests.yml to build AD forests"
