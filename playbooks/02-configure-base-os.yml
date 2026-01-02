@@ -98,6 +98,15 @@
   gather_facts: false
   serial: 0
   tasks:
+    - name: Update ansible_host to discovered IP (for hosts needing config)
+      set_fact:
+        ansible_host: "{{ discovered_ip }}"
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
+        - discovered_ip is defined
+        - discovered_ip != ''
+
     - name: Set static IP address
       include_role:
         name: windows
@@ -114,7 +123,7 @@
         - needs_ip_config | default(false)
         - ansible_connection == 'winrm'
 
-    - name: Update ansible_host to target IP
+    - name: Update ansible_host to target IP (after config)
       set_fact:
         ansible_host: "{{ target_ip }}"
       when:
