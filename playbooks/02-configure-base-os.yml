@@ -155,7 +155,7 @@
 # Configure DNS and Hostname (Windows - All windows hosts)
 # =============================================================================
 - name: Configure Windows DNS and Hostname
-  hosts: windows
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -167,6 +167,7 @@
       register: dc_check
       failed_when: false
       changed_when: false
+      when: ansible_connection == 'winrm'
 
     - name: Determine DNS servers based on DC status
       set_fact:
@@ -177,22 +178,26 @@
             else dns_servers if (dns_servers is defined)
             else ['1.1.1.1', '1.0.0.1']
           }}
+      when: ansible_connection == 'winrm'
 
     - name: Configure DNS servers
       include_role:
         name: windows
         tasks_from: set_dns
       register: dns_result
+      when: ansible_connection == 'winrm'
 
     - name: Set hostname
       include_role:
         name: windows
         tasks_from: set_hostname
       register: hostname_result
+      when: ansible_connection == 'winrm'
 
     - name: Consolidate DNS and hostname changes
       set_fact:
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
+      when: ansible_connection == 'winrm'
 
 # =============================================================================
 # Configure Network (Linux - Only hosts needing config)
@@ -254,7 +259,7 @@
 # Install AD-DS Features (Domain Controllers Only)
 # =============================================================================
 - name: Install AD-DS Features on Domain Controllers
-  hosts: domain_controllers
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -264,22 +269,31 @@
       delay: 5
       register: promo_ping_test
       failed_when: promo_ping_test is failed
+      when:
+        - "'domain_controllers' in group_names"
+        - ansible_connection == 'winrm'
 
     - name: Install Active Directory Domain Services features
       include_role:
         name: active_directory
         tasks_from: install_ad_features
       register: adds_install_result
+      when:
+        - "'domain_controllers' in group_names"
+        - ansible_connection == 'winrm'
 
     - name: Consolidate AD-DS changes
       set_fact:
         vm_changed: "{{ vm_changed or (adds_install_result.changed | default(false)) }}"
+      when:
+        - "'domain_controllers' in group_names"
+        - ansible_connection == 'winrm'
 
 # =============================================================================
 # Check for Pending Reboots (Windows)
 # =============================================================================
 - name: Check if reboot is necessary (Windows)
-  hosts: windows
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -287,12 +301,13 @@
       include_role:
         name: windows
         tasks_from: check_reboot_needed
+      when: ansible_connection == 'winrm'
 
 # =============================================================================
 # Reboot Windows Hosts if Needed
 # =============================================================================
 - name: Reboot Windows Hosts
-  hosts: windows
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -300,32 +315,38 @@
       ansible.windows.win_reboot:
         reboot_timeout: 300
         post_reboot_delay: 30
-      when: reboot_needed or reboot_required | default(false)
+      when:
+        - ansible_connection == 'winrm'
+        - (reboot_needed or reboot_required | default(false))
 
 # =============================================================================
 # Reboot Linux Hosts if Needed
 # =============================================================================
 - name: Reboot Linux Hosts
-  hosts: linux
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
     - name: Update ansible_host to target IP before reboot
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: needs_ip_config | default(false)
+      when:
+        - ansible_connection != 'winrm'
+        - needs_ip_config | default(false)
 
     - name: Reboot Linux hosts that were modified
       ansible.builtin.reboot:
         reboot_timeout: 300
         post_reboot_delay: 30
-      when: vm_changed
+      when:
+        - ansible_connection != 'winrm'
+        - vm_changed
 
 # =============================================================================
 # Validate Windows Configuration
 # =============================================================================
 - name: Validate Windows Configuration
-  hosts: windows
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -342,10 +363,14 @@
         } | ConvertTo-Json
       register: network_info
       changed_when: false
+      when: ansible_connection == 'winrm'
 
     - name: Parse network information
       set_fact:
         network_config: "{{ network_info.stdout | from_json }}"
+      when:
+        - ansible_connection == 'winrm'
+        - network_info.stdout is defined
 
     - name: Validate configuration
       debug:
@@ -355,12 +380,15 @@
           - "  Hostname: {{ network_config.Hostname }} ✓"
           - "  DNS: {{ network_config.DNS }}"
           - "  Changed: {{ vm_changed }}"
+      when:
+        - ansible_connection == 'winrm'
+        - network_config is defined
 
 # =============================================================================
 # Validate Linux Configuration
 # =============================================================================
 - name: Validate Linux Configuration
-  hosts: linux
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -368,6 +396,7 @@
       include_role:
         name: linux
         tasks_from: validate
+      when: ansible_connection != 'winrm'
 
 # =============================================================================
 # Snapshot All VMs
