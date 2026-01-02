@@ -98,41 +98,6 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Test WinRM on current/discovered IP (if needs config)
-      block:
-        - name: Temporarily update ansible_host to discovered IP for connection test
-          set_fact:
-            temp_ansible_host: "{{ discovered_ip | default(ansible_host) }}"
-          when: needs_ip_config | default(false)
-
-        - name: Test connectivity on discovered IP
-          ansible.windows.win_ping:
-          vars:
-            ansible_host: "{{ temp_ansible_host | default(ansible_host) }}"
-          retries: 30
-          delay: 10
-          until: ping_discovered is succeeded
-          register: ping_discovered
-          when:
-            - needs_ip_config | default(false)
-            - ansible_connection == 'winrm'
-          failed_when: ping_discovered is failed
-
-      rescue:
-        - name: Connectivity failure on discovered IP
-          fail:
-            msg: |
-              STOPPING: Cannot reach {{ inventory_hostname }} on discovered IP {{ discovered_ip | default('UNKNOWN') }}
-
-              The VM exists and has an IP, but WinRM is not responding. This usually means:
-              - Windows is still booting
-              - WinRM service is not running
-              - Firewall is blocking port 5985
-              - Guest agent is not reporting correct IP
-
-              Wait 2-3 minutes and retry Stage 2.
-          when: needs_ip_config | default(false)
-
     - name: Set static IP address
       include_role:
         name: windows
