@@ -94,7 +94,7 @@
 # Configure Network (Windows - Only hosts needing config)
 # =============================================================================
 - name: Configure Windows Static IPs
-  hosts: needs_network_config_yes:&windows
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -105,26 +105,41 @@
       until: ping_test is succeeded
       register: ping_test
       failed_when: ping_test is failed
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
 
     - name: Set static IP address
       include_role:
         name: windows
         tasks_from: set_static_ip
       register: ip_result
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
 
     - name: Consolidate IP changes
       set_fact:
         vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
 
     - name: Update ansible_host to target IP
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: ip_result.changed | default(false)
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
+        - ip_result.changed | default(false)
 
     - name: Wait for IP to settle
       pause:
         seconds: 10
-      when: ip_result.changed | default(false)
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
+        - ip_result.changed | default(false)
 
     - name: Test WinRM on new static IP
       ansible.windows.win_ping:
@@ -133,6 +148,9 @@
       until: ping_result is succeeded
       register: ping_result
       failed_when: ping_result is failed
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
 
 # =============================================================================
 # CRITICAL: Stop on any connectivity failure
@@ -207,7 +225,7 @@
 # Configure Network (Linux - Only hosts needing config)
 # =============================================================================
 - name: Configure Linux Static IPs
-  hosts: needs_network_config_yes:&linux
+  hosts: all
   gather_facts: false
   serial: 0
   tasks:
@@ -216,34 +234,48 @@
         name: linux
         tasks_from: set_static_ip
       register: ip_result
-      when: needs_ip_config or (secondary_ip is defined)
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
 
     - name: Consolidate IP changes
       set_fact:
         vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
-      when: needs_ip_config or (secondary_ip is defined)
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
 
     - name: Update ansible_host to target IP
       set_fact:
         ansible_host: "{{ target_ip }}"
-      when: (needs_ip_config or (secondary_ip is defined)) and (ip_result.changed | default(false))
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+        - ip_result.changed | default(false)
 
     - name: Wait for IP to settle
       pause:
         seconds: 10
-      when: (needs_ip_config or (secondary_ip is defined)) and (ip_result.changed | default(false))
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+        - ip_result.changed | default(false)
 
     - name: Update system packages
       include_role:
         name: linux
         tasks_from: update
-      when: vm_changed
+      when:
+        - vm_changed
+        - ansible_connection != 'winrm'
 
     - name: Reboot if changes were made
       include_role:
         name: linux
         tasks_from: reboot
-      when: vm_changed
+      when:
+        - vm_changed
+        - ansible_connection != 'winrm'
 
 # =============================================================================
 # Install AD-DS Features (Domain Controllers Only)
