@@ -69,15 +69,13 @@
             proxmox_operation: discover_ip
           register: ip_discovery_result
 
-    - name: Parse and compare IP addresses
-      include_role:
-        name: proxmox
-        tasks_from: parse_ip_discovery
-      register: ip_comparison
+    - name: Determine if IP config is needed
+      set_fact:
+        needs_ip_config: "{{ (discovered_ip | default('')) != target_ip }}"
 
     - name: Display IP status
       debug:
-        msg: "{{ ip_comparison.ip_message }}"
+        msg: "{{ inventory_hostname }}: {{ discovered_ip | default('UNKNOWN') }} → {{ target_ip }} {{ '(already correct)' if not needs_ip_config else '(needs config)' }}"
 
 # =============================================================================
 # Build groups for conditional network configuration
