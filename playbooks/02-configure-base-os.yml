@@ -98,16 +98,40 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Test WinRM availability (long timeout with retries)
-      ansible.windows.win_ping:
-      retries: 30
-      delay: 10
-      until: ping_test is succeeded
-      register: ping_test
-      failed_when: ping_test is failed
-      when:
-        - needs_ip_config | default(false)
-        - ansible_connection == 'winrm'
+    - name: Test WinRM on current/discovered IP (if needs config)
+      block:
+        - name: Temporarily update ansible_host to discovered IP for connection test
+          set_fact:
+            temp_ansible_host: "{{ discovered_ip | default(ansible_host) }}"
+          when: needs_ip_config | default(false)
+
+        - name: Test connectivity on discovered IP
+          ansible.windows.win_ping:
+          vars:
+            ansible_host: "{{ temp_ansible_host | default(ansible_host) }}"
+          retries: 30
+          delay: 10
+          until: ping_discovered is succeeded
+          register: ping_discovered
+          when:
+            - needs_ip_config | default(false)
+            - ansible_connection == 'winrm'
+          failed_when: ping_discovered is failed
+
+      rescue:
+        - name: Connectivity failure on discovered IP
+          fail:
+            msg: |
+              STOPPING: Cannot reach {{ inventory_hostname }} on discovered IP {{ discovered_ip | default('UNKNOWN') }}
+
+              The VM exists and has an IP, but WinRM is not responding. This usually means:
+              - Windows is still booting
+              - WinRM service is not running
+              - Firewall is blocking port 5985
+              - Guest agent is not reporting correct IP
+
+              Wait 2-3 minutes and retry Stage 2.
+          when: needs_ip_config | default(false)
 
     - name: Set static IP address
       include_role:
@@ -133,7 +157,7 @@
         - ansible_connection == 'winrm'
         - ip_result.changed | default(false)
 
-    - name: Wait for IP to settle
+    - name: Wait for IP to settle after static config
       pause:
         seconds: 10
       when:
@@ -145,38 +169,13 @@
       ansible.windows.win_ping:
       retries: 30
       delay: 10
-      until: ping_result is succeeded
-      register: ping_result
-      failed_when: ping_result is failed
+      until: ping_static is succeeded
+      register: ping_static
+      failed_when: ping_static is failed
       when:
         - needs_ip_config | default(false)
         - ansible_connection == 'winrm'
-
-# =============================================================================
-# CRITICAL: Stop on any connectivity failure
-# =============================================================================
-- name: Stop on Connectivity Failure
-  hosts: all
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Fail if any hosts unreachable
-      fail:
-        msg: |
-          STOPPING PLAYBOOK: Connectivity failure detected
-
-          One or more hosts cannot be reached via WinRM/SSH.
-          This typically indicates network configuration issues.
-
-          Check the following:
-          1. Static IP addresses were actually configured
-          2. VMs can ping the new IP addresses
-          3. Network cables/bridges are connected
-          4. Firewall rules allow WinRM (5985/5986) or SSH (22)
-
-          Revise network config and retry Stage 2.
-      when:
-        - ansible_unreachable | default(false)
+        - ip_result.changed | default(false)
 
 # =============================================================================
 # Configure DNS and Hostname (Windows - All windows hosts)
