@@ -110,29 +110,35 @@
         $forwarderIPs = @({{ dns_forwarders_parent | map('quote') | join(',') }})
 
         try {
-          # dnscmd /ZoneAdd syntax for forwarders: dnscmd . /ZoneAdd zonename /DsForwarder IP1 IP2 ...
-          $ipArgs = $forwarderIPs -join " "
-          $cmd = "dnscmd . /ZoneAdd $parentDomain /DsForwarder $ipArgs"
+          # Load DNS Server module (may take a moment after promotion)
+          Import-Module DnsServer -ErrorAction Stop
 
-          $result = Invoke-Expression $cmd 2>&1
+          # Check if conditional forwarder already exists
+          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
 
-          if ($LASTEXITCODE -eq 0 -or $result -like "*already exists*") {
-            Write-Output "Conditional forwarder configured for $parentDomain"
-            Write-Output "Forwarder IPs:"
-            $forwarderIPs | ForEach-Object { Write-Output "  $_" }
-            exit 0
+          if ($existing) {
+            # Update existing
+            Set-DnsServerConditionalForwarderZone -Name $parentDomain -MasterServers $forwarderIPs -PassThru -ErrorAction Stop | Out-Null
+            Write-Output "Conditional forwarder updated for $parentDomain"
           } else {
-            Write-Output "ERROR: Failed to configure forwarder"
-            Write-Output $result
-            exit 1
+            # Create new
+            Add-DnsServerConditionalForwarderZone -Name $parentDomain -MasterServers $forwarderIPs -PassThru -ErrorAction Stop | Out-Null
+            Write-Output "Conditional forwarder created for $parentDomain"
           }
+
+          Write-Output "Forwarder IPs:"
+          $forwarderIPs | ForEach-Object { Write-Output "  $_" }
+          exit 0
         } catch {
-          Write-Output "ERROR: Exception - $_"
+          Write-Output "ERROR: $_"
           exit 1
         }
       register: forwarder_result
       when: dns_forwarders_parent is defined
       failed_when: forwarder_result.rc != 0
+      retries: 3
+      delay: 10
+      until: forwarder_result.rc == 0
 
     - name: Verify forwarder resolution to parent domain
       ansible.windows.win_shell: |
@@ -220,15 +226,16 @@
         $parentDomain = "{{ parent_domain }}"
 
         try {
-          # Use dnscmd to query forwarders
-          $result = dnscmd . /ZoneInfo $parentDomain
+          Import-Module DnsServer -ErrorAction Stop
+          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
 
-          if ($LASTEXITCODE -eq 0) {
+          if ($existing) {
             Write-Output "Conditional forwarder found for $parentDomain"
-            Write-Output $result
+            Write-Output "Forwarders:"
+            $existing.MasterServers | ForEach-Object { Write-Output "  $_" }
             exit 0
           } else {
-            Write-Output "Conditional forwarder not found - waiting for replication from PDC"
+            Write-Output "Conditional forwarder not found yet"
             exit 1
           }
         } catch {
@@ -236,7 +243,7 @@
           exit 1
         }
       register: forwarder_check
-      retries: 5
+      retries: 10
       delay: 10
       until: forwarder_check.rc == 0
       when: dns_forwarders_parent is defined
