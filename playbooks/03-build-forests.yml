@@ -67,38 +67,6 @@
         tasks_from: promote_forest_root.yml
 
 # =============================================================================
-# Update DNS on Root Replica DCs After Promotion
-# =============================================================================
-- name: Update DNS on Root Replica DCs
-  hosts: root_replicas
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Update DNS to post-promotion settings
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      vars:
-        windows_dns_servers: "{{ dns_servers_post_promo }}"
-      when: dns_servers_post_promo is defined
-
-# =============================================================================
-# Update DNS on Root PDCs After Promotion
-# =============================================================================
-- name: Update DNS on Root PDCs
-  hosts: root_pdcs
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Update DNS to post-promotion settings
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      vars:
-        windows_dns_servers: "{{ dns_servers_post_promo }}"
-      when: dns_servers_post_promo is defined
-
-# =============================================================================
 # Promote Forest Root Replica DCs
 # =============================================================================
 - name: Promote Forest Root Replica DCs

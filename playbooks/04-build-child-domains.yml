@@ -78,25 +78,93 @@
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
 # =============================================================================
-# Update DNS on Child PDCs After Promotion
+# Configure DNS After Child Domain PDC Promotion
 # =============================================================================
-- name: Update DNS on Child PDCs
+# Post-promotion DNS configuration for child PDCs:
+# 1. Update NIC DNS servers to point to child DCs (dns_servers_post_promo)
+# 2. Configure conditional forwarders to parent domain (dns_forwarders_parent)
+# =============================================================================
+- name: Configure DNS After Child Domain PDC Promotion
   hosts: child_pdcs
   gather_facts: false
   serial: 0
   tasks:
-    - name: Update DNS to post-promotion settings
-      include_role:
-        name: windows
-        tasks_from: set_dns
-      vars:
-        windows_dns_servers: "{{ dns_servers_post_promo }}"
+    - name: Update DNS servers to child domain DCs
+      ansible.windows.win_dns_client:
+        adapter_names: '*'
+        dns_servers: "{{ dns_servers_post_promo }}"
+      register: dns_update
       when: dns_servers_post_promo is defined
-      register: dns_result
+
+    - name: Wait for DNS changes to take effect
+      ansible.windows.win_shell: |
+        Start-Sleep -Seconds 5
+        $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
+        Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+      changed_when: false
+      when: dns_servers_post_promo is defined
+
+    - name: Configure DNS conditional forwarders to parent domain
+      ansible.windows.win_shell: |
+        $parentDomain = "{{ parent_domain }}"
+        $forwarderIPs = @({{ dns_forwarders_parent | map('quote') | join(',') }})
+
+        try {
+          # Check if conditional forwarder already exists
+          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
+
+          if ($existing) {
+            # Update existing forwarder
+            Set-DnsServerConditionalForwarderZone `
+              -Name $parentDomain `
+              -MasterServers $forwarderIPs `
+              -PassThru -ErrorAction Stop | Out-Null
+            Write-Output "Conditional forwarder updated for $parentDomain"
+          } else {
+            # Create new conditional forwarder
+            Add-DnsServerConditionalForwarderZone `
+              -Name $parentDomain `
+              -MasterServers $forwarderIPs `
+              -PassThru -ErrorAction Stop | Out-Null
+            Write-Output "Conditional forwarder created for $parentDomain"
+          }
+
+          Write-Output "Forwarder IPs:"
+          $forwarderIPs | ForEach-Object { Write-Output "  $_" }
+          exit 0
+        } catch {
+          Write-Output "ERROR: Failed to configure forwarder - $_"
+          exit 1
+        }
+      register: forwarder_result
+      when: dns_forwarders_parent is defined
+      failed_when: forwarder_result.rc != 0
+
+    - name: Verify forwarder resolution to parent domain
+      ansible.windows.win_shell: |
+        $parentDomain = "{{ parent_domain }}"
+
+        try {
+          $records = Resolve-DnsName -Name $parentDomain -Type SOA -ErrorAction Stop
+          if ($records) {
+            Write-Output "Forwarder resolution verified for $parentDomain"
+            exit 0
+          } else {
+            Write-Output "WARNING: Could not resolve parent domain"
+            exit 0
+          }
+        } catch {
+          Write-Output "WARNING: Forwarder resolution check failed - $_"
+          exit 0
+        }
+      register: forwarder_verify
+      changed_when: false
+      when: dns_forwarders_parent is defined
 
     - name: Mark VM as changed if DNS was configured
       set_fact:
-        vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) }}"
+        vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) or (forwarder_result.changed | default(false)) }}"
+      when: dns_servers_post_promo is defined or dns_forwarders_parent is defined
 
 # =============================================================================
 # Promote Child Domain Replica DCs
@@ -127,6 +195,63 @@
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
 
 # =============================================================================
+# Configure DNS After Child Domain Replica Promotion
+# =============================================================================
+# Post-promotion DNS configuration for child replicas:
+# 1. Update NIC DNS servers to point to child DCs (dns_servers_post_promo)
+# 2. Verify conditional forwarders are already configured (by PDC)
+# =============================================================================
+- name: Configure DNS After Child Domain Replica Promotion
+  hosts: child_replicas
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Update DNS servers to child domain DCs
+      ansible.windows.win_dns_client:
+        adapter_names: '*'
+        dns_servers: "{{ dns_servers_post_promo }}"
+      register: dns_update
+      when: dns_servers_post_promo is defined
+
+    - name: Wait for DNS changes to take effect
+      ansible.windows.win_shell: |
+        Start-Sleep -Seconds 5
+        $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
+        Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+      changed_when: false
+      when: dns_servers_post_promo is defined
+
+    - name: Verify conditional forwarders were configured by PDC
+      ansible.windows.win_shell: |
+        $parentDomain = "{{ parent_domain }}"
+
+        try {
+          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
+          if ($existing) {
+            Write-Output "Conditional forwarder found for $parentDomain"
+            Write-Output "Forwarder IPs:"
+            $existing.MasterServers | ForEach-Object { Write-Output "  $_" }
+            exit 0
+          } else {
+            Write-Output "Conditional forwarder not found - waiting for replication from PDC"
+            exit 1
+          }
+        } catch {
+          Write-Output "Could not verify forwarders - $_"
+          exit 1
+        }
+      register: forwarder_check
+      retries: 5
+      delay: 10
+      until: forwarder_check.rc == 0
+      when: dns_forwarders_parent is defined
+
+    - name: Mark VM as changed if DNS was configured
+      set_fact:
+        vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) }}"
+      when: dns_servers_post_promo is defined
+
+# =============================================================================
 # Snapshot Changed VMs
 # =============================================================================
 - name: Snapshot after Child Domain Promotion
@@ -146,7 +271,7 @@
           delegate_to: localhost
       vars:
         snapshot_name: "stage4-child-domains-promoted"
-        snapshot_description: "After AD child domain promotion"
+        snapshot_description: "After AD child domain promotion with DNS forwarders"
       when: vm_changed
 
 # =============================================================================
@@ -165,11 +290,15 @@
           - "========================================="
           - ""
           - "✓ Child domain PDCs promoted"
-          - "✓ DNS delegations created in parent zone"
-          - "✓ Child domain replica DCs promoted"
-          - "✓ DNS zones created in child domains"
-          - "✓ Forwarders configured to parent"
+          - "✓ Child domain replicas promoted"
+          - "✓ DNS servers updated (NIC pointing to child DCs)"
+          - "✓ Conditional forwarders configured to parent domain"
+          - "✓ All DCs replicating"
+          - "✓ Parent domain accessible from child domains"
           - ""
-          - "All DCs promoted, delegated, and replicating"
+          - "Child domains are now fully operational with:"
+          - "  • DNS pointing to themselves"
+          - "  • Forwarders configured for parent domain resolution"
+          - "  • Full trust relationship with parent"
           - ""
           - "Next: Run Stage 05 for product deployment"

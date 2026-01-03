@@ -169,9 +169,14 @@
       changed_when: false
       when: ansible_connection == 'winrm'
 
-    - name: Determine DNS servers
+    - name: Determine DNS servers based on DC type and role
       set_fact:
-        windows_dns_servers: "{{ dns_servers | default(['1.1.1.1', '1.0.0.1']) }}"
+        windows_dns_servers: >-
+          {{
+            dns_servers_pre_promo if (dns_servers_pre_promo is defined)
+            else dns_servers if (dns_servers is defined)
+            else ['1.1.1.1', '1.0.0.1']
+          }}
       when: ansible_connection == 'winrm'
 
     - name: Configure DNS servers
