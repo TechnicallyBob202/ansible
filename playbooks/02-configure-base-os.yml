@@ -21,6 +21,65 @@
           - "  • Snapshot changed VMs"
 
 # =============================================================================
+# Check Current Configuration Status
+# =============================================================================
+- name: Check Current VM Configuration Status
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if VM is already running and accessible
+      ansible.windows.win_ping:
+      register: ping_result
+      failed_when: false
+      changed_when: false
+
+    - name: Get current network configuration if accessible
+      ansible.windows.win_shell: |
+        $nic = Get-NetIPConfiguration -InterfaceAlias 'Ethernet*' | Select-Object -First 1
+        $hostname = $env:COMPUTERNAME
+        $dns = (Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}).ServerAddresses
+
+        Write-Output "Hostname: $hostname"
+        Write-Output "IP: $($nic.IPv4Address.IPAddress)"
+        Write-Output "DNS: $($dns -join ', ')"
+      register: current_config
+      when: ping_result.unreachable is not defined
+      failed_when: false
+      changed_when: false
+
+    - name: Set configuration status facts
+      set_fact:
+        vm_accessible: "{{ ping_result.unreachable is not defined }}"
+        current_hostname: "{{ (current_config.stdout_lines[0] | regex_search('Hostname: (.+)') | regex_replace('Hostname: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
+        current_ip: "{{ (current_config.stdout_lines[1] | regex_search('IP: (.+)') | regex_replace('IP: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
+      changed_when: false
+
+# =============================================================================
+# Display Configuration Status
+# =============================================================================
+- name: Display Configuration Status
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Analyze configuration status
+      set_fact:
+        vms_already_configured: "{{ groups['all'] | map('extract', hostvars, 'current_hostname') | map('equalto', hostvars[item]['inventory_hostname']) | select('equalto', true) | list | length }}"
+        total_vms: "{{ groups['all'] | length }}"
+      vars:
+        item: "{{ groups['all'][0] }}"
+      changed_when: false
+
+    - name: Display VM status summary
+      debug:
+        msg:
+          - "VM Configuration Status:"
+          - "  Total VMs: {{ groups['all'] | length }}"
+          - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | select('equalto', true) | list | length }}"
+          - "  Individual status:"
+          - "    {{ hostvars[groups['all'][0]]['inventory_hostname']|default('') }}: {{ 'Accessible' if hostvars[groups['all'][0]]['vm_accessible'] else 'NOT accessible' }} ({{ hostvars[groups['all'][0]]['current_hostname']|default('UNKNOWN') }}/{{ hostvars[groups['all'][0]]['current_ip']|default('UNKNOWN') }})"
+
+# =============================================================================
 # Initialize Change Tracking
 # =============================================================================
 - name: Initialize Change Tracking
