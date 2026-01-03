@@ -52,6 +52,17 @@
           - "    D22-DC02: {{ hostvars['D22-DC02'].is_domain_controller | default(false) }}"
 
 # =============================================================================
+# Skip remaining plays if all child DCs already promoted
+# =============================================================================
+- name: Set Skip Flag
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check if all child DCs already promoted
+      set_fact:
+        skip_promotion_plays: "{{ (groups['child_domain_dcs'] | map('extract', hostvars, 'is_domain_controller') | list) == ([True] * (groups['child_domain_dcs'] | length)) }}"
+
+# =============================================================================
 # Ensure Windows Ready
 # =============================================================================
 - name: Ensure Windows is Ready
@@ -63,6 +74,7 @@
       include_role:
         name: windows
         tasks_from: wait_for_windows_ready.yml
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Initialize Change Tracking
@@ -75,6 +87,7 @@
     - name: Initialize vm_changed flag
       set_fact:
         vm_changed: false
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Install AD Features
@@ -89,10 +102,12 @@
         name: active_directory
         tasks_from: install_ad_features.yml
       register: features_result
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Mark VM as changed if features were installed
       set_fact:
         vm_changed: "{{ vm_changed or (features_result.changed | default(false)) }}"
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Promote Child Domain PDCs
@@ -107,12 +122,13 @@
         name: active_directory
         tasks_from: promote_child_domain.yml
       register: promotion_result
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
-# =============================================================================
 # Configure DNS After Child Domain PDC Promotion
 # =============================================================================
 # After child domain PDC promotion:
@@ -128,7 +144,7 @@
         adapter_names: '*'
         dns_servers: "{{ dns_servers_post_promo }}"
       register: dns_update
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Wait for DNS changes to take effect
       ansible.windows.win_shell: |
@@ -136,12 +152,12 @@
         $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
         Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
       changed_when: false
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Mark VM as changed if DNS was configured
       set_fact:
         vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) }}"
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Configure DNS on Replicas Before Promotion
@@ -158,7 +174,7 @@
         adapter_names: '*'
         dns_servers: "{{ dns_servers_post_promo }}"
       register: dns_update
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Wait for DNS changes to take effect
       ansible.windows.win_shell: |
@@ -166,11 +182,12 @@
         $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
         Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
       changed_when: false
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Brief pause to let DNS settle
       pause:
         seconds: 10
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Promote Child Domain Replica DCs
@@ -184,21 +201,25 @@
       include_role:
         name: windows
         tasks_from: wait_for_windows_ready.yml
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Promote to replica DC in child domain
       include_role:
         name: active_directory
         tasks_from: promote_replica_dc.yml
       register: promotion_result
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Wait for Windows after replica promotion
       include_role:
         name: windows
         tasks_from: wait_for_windows_ready.yml
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Mark VM as changed if promoted
       set_fact:
         vm_changed: "{{ vm_changed or (promotion_result.changed | default(false)) }}"
+      when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Configure DNS After Child Domain Replica Promotion
@@ -216,7 +237,7 @@
         adapter_names: '*'
         dns_servers: "{{ dns_servers_post_promo }}"
       register: dns_update
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Wait for DNS changes to take effect
       ansible.windows.win_shell: |
@@ -224,12 +245,12 @@
         $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
         Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
       changed_when: false
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
     - name: Mark VM as changed if DNS was configured
       set_fact:
         vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) }}"
-      when: dns_servers_post_promo is defined
+      when: dns_servers_post_promo is defined and not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Snapshot Changed VMs
