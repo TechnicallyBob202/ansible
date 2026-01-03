@@ -21,6 +21,19 @@
           - "  • Snapshot changed VMs"
 
 # =============================================================================
+# Check Current DC Promotion Status
+# =============================================================================
+- name: Check Current DC Promotion Status
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if already promoted
+      include_role:
+        name: active_directory
+        tasks_from: check_dc_status.yml
+
+# =============================================================================
 # Check Current Configuration Status
 # =============================================================================
 - name: Check Current VM Configuration Status
