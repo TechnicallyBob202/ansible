@@ -110,27 +110,24 @@
         $forwarderIPs = @({{ dns_forwarders_parent | map('quote') | join(',') }})
 
         try {
-          # Use dnscmd to configure forwarders (more reliable than PowerShell cmdlets)
-          $forwarderIPsStr = $forwarderIPs -join " "
+          # dnscmd /ZoneAdd syntax for forwarders: dnscmd . /ZoneAdd zonename /DsForwarder IP1 IP2 ...
+          $ipArgs = $forwarderIPs -join " "
+          $cmd = "dnscmd . /ZoneAdd $parentDomain /DsForwarder $ipArgs"
 
-          # Delete existing forwarder if it exists (dnscmd /ZoneDelete doesn't work for forwarders)
-          # Instead, we'll use /ZoneAdd with the /f flag to force update
+          $result = Invoke-Expression $cmd 2>&1
 
-          $result = dnscmd . /ZoneAdd $parentDomain /forwarder $forwarderIPsStr /f
-
-          if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 50) {
-            # 0 = success, 50 = zone already exists (which is fine for forwarder)
+          if ($LASTEXITCODE -eq 0 -or $result -like "*already exists*") {
             Write-Output "Conditional forwarder configured for $parentDomain"
             Write-Output "Forwarder IPs:"
             $forwarderIPs | ForEach-Object { Write-Output "  $_" }
             exit 0
           } else {
-            Write-Output "ERROR: dnscmd returned exit code $LASTEXITCODE"
+            Write-Output "ERROR: Failed to configure forwarder"
             Write-Output $result
             exit 1
           }
         } catch {
-          Write-Output "ERROR: Failed to configure forwarder - $_"
+          Write-Output "ERROR: Exception - $_"
           exit 1
         }
       register: forwarder_result
