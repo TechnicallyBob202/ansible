@@ -28,10 +28,19 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check if already promoted
-      include_role:
-        name: active_directory
-        tasks_from: check_dc_status.yml
+    - name: Check if server is a domain controller
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        if ($CS.DomainRole -ge 4) { exit 0 }
+        exit 1
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set is_domain_controller fact
+      set_fact:
+        is_domain_controller: "{{ dc_check.rc == 0 }}"
+      changed_when: false
 
 # =============================================================================
 # Check Current Configuration Status
@@ -232,11 +241,12 @@
       changed_when: false
       when: ansible_connection == 'winrm'
 
-    - name: Determine DNS servers based on DC type and role
+    - name: Determine DNS servers based on DC promotion status
       set_fact:
         windows_dns_servers: >-
           {{
-            dns_servers_pre_promo if (dns_servers_pre_promo is defined)
+            dns_servers_post_promo if (dns_servers_post_promo is defined and is_domain_controller | default(false))
+            else dns_servers_pre_promo if (dns_servers_pre_promo is defined and not (is_domain_controller | default(false)))
             else dns_servers if (dns_servers is defined)
             else ['1.1.1.1', '1.0.0.1']
           }}
