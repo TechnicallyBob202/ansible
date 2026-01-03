@@ -110,28 +110,25 @@
         $forwarderIPs = @({{ dns_forwarders_parent | map('quote') | join(',') }})
 
         try {
-          # Check if conditional forwarder already exists
-          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
+          # Use dnscmd to configure forwarders (more reliable than PowerShell cmdlets)
+          $forwarderIPsStr = $forwarderIPs -join " "
 
-          if ($existing) {
-            # Update existing forwarder
-            Set-DnsServerConditionalForwarderZone `
-              -Name $parentDomain `
-              -MasterServers $forwarderIPs `
-              -PassThru -ErrorAction Stop | Out-Null
-            Write-Output "Conditional forwarder updated for $parentDomain"
+          # Delete existing forwarder if it exists (dnscmd /ZoneDelete doesn't work for forwarders)
+          # Instead, we'll use /ZoneAdd with the /f flag to force update
+
+          $result = dnscmd . /ZoneAdd $parentDomain /forwarder $forwarderIPsStr /f
+
+          if ($LASTEXITCODE -eq 0 -or $LASTEXITCODE -eq 50) {
+            # 0 = success, 50 = zone already exists (which is fine for forwarder)
+            Write-Output "Conditional forwarder configured for $parentDomain"
+            Write-Output "Forwarder IPs:"
+            $forwarderIPs | ForEach-Object { Write-Output "  $_" }
+            exit 0
           } else {
-            # Create new conditional forwarder
-            Add-DnsServerConditionalForwarderZone `
-              -Name $parentDomain `
-              -MasterServers $forwarderIPs `
-              -PassThru -ErrorAction Stop | Out-Null
-            Write-Output "Conditional forwarder created for $parentDomain"
+            Write-Output "ERROR: dnscmd returned exit code $LASTEXITCODE"
+            Write-Output $result
+            exit 1
           }
-
-          Write-Output "Forwarder IPs:"
-          $forwarderIPs | ForEach-Object { Write-Output "  $_" }
-          exit 0
         } catch {
           Write-Output "ERROR: Failed to configure forwarder - $_"
           exit 1
@@ -226,11 +223,12 @@
         $parentDomain = "{{ parent_domain }}"
 
         try {
-          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
-          if ($existing) {
+          # Use dnscmd to query forwarders
+          $result = dnscmd . /ZoneInfo $parentDomain
+
+          if ($LASTEXITCODE -eq 0) {
             Write-Output "Conditional forwarder found for $parentDomain"
-            Write-Output "Forwarder IPs:"
-            $existing.MasterServers | ForEach-Object { Write-Output "  $_" }
+            Write-Output $result
             exit 0
           } else {
             Write-Output "Conditional forwarder not found - waiting for replication from PDC"
