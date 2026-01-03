@@ -62,22 +62,13 @@
   hosts: localhost
   gather_facts: false
   tasks:
-    - name: Analyze configuration status
-      set_fact:
-        vms_already_configured: "{{ groups['all'] | map('extract', hostvars, 'current_hostname') | map('equalto', hostvars[item]['inventory_hostname']) | select('equalto', true) | list | length }}"
-        total_vms: "{{ groups['all'] | length }}"
-      vars:
-        item: "{{ groups['all'][0] }}"
-      changed_when: false
-
     - name: Display VM status summary
       debug:
         msg:
           - "VM Configuration Status:"
           - "  Total VMs: {{ groups['all'] | length }}"
           - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | select('equalto', true) | list | length }}"
-          - "  Individual status:"
-          - "    {{ hostvars[groups['all'][0]]['inventory_hostname']|default('') }}: {{ 'Accessible' if hostvars[groups['all'][0]]['vm_accessible'] else 'NOT accessible' }} ({{ hostvars[groups['all'][0]]['current_hostname']|default('UNKNOWN') }}/{{ hostvars[groups['all'][0]]['current_ip']|default('UNKNOWN') }})"
+          - "  Will proceed with configuration checks and updates"
 
 # =============================================================================
 # Initialize Change Tracking
