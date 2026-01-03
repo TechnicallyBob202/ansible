@@ -38,7 +38,7 @@
   tasks:
     - name: Check if all child DCs are already promoted
       set_fact:
-        all_child_dcs_promoted: "{{ groups['child_domain_dcs'] | map('extract', hostvars, 'is_domain_controller') | all }}"
+        all_child_dcs_promoted: "{{ (groups['child_domain_dcs'] | map('extract', hostvars, 'is_domain_controller') | list) == ([True] * (groups['child_domain_dcs'] | length)) }}"
 
     - name: Display status
       debug:
