@@ -260,7 +260,18 @@
   gather_facts: false
   serial: 2
   tasks:
-    - name: Create Proxmox snapshot if vm_changed
+    - name: Check if snapshot already exists
+      ansible.builtin.shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm snapshot {{ vmid }} stage4-child-domains-promoted --list 2>/dev/null | grep -q stage4-child-domains-promoted"
+      delegate_to: localhost
+      register: snapshot_check
+      failed_when: false
+      changed_when: false
+
+    - name: Create Proxmox snapshot if vm_changed or snapshot doesn't exist
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
@@ -269,7 +280,7 @@
       vars:
         snapshot_name: "stage4-child-domains-promoted"
         snapshot_description: "After AD child domain promotion with DNS updates"
-      when: vm_changed | default(false)
+      when: vm_changed | default(false) or snapshot_check.rc != 0
 
 # =============================================================================
 # Summary

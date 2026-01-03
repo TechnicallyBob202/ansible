@@ -150,7 +150,18 @@
   gather_facts: false
   serial: 2
   tasks:
-    - name: Create Proxmox snapshot if vm_changed
+    - name: Check if snapshot already exists
+      ansible.builtin.shell: |
+        ssh -i /root/.ssh/ansible_key \
+          -o StrictHostKeyChecking=no \
+          root@{{ proxmox_host }} \
+          "qm snapshot {{ vmid }} stage3-forest-roots-promoted --list 2>/dev/null | grep -q stage3-forest-roots-promoted"
+      delegate_to: localhost
+      register: snapshot_check
+      failed_when: false
+      changed_when: false
+
+    - name: Create Proxmox snapshot if vm_changed or snapshot doesn't exist
       include_role:
         name: proxmox
         tasks_from: snapshot.yml
@@ -159,7 +170,7 @@
       vars:
         snapshot_name: "stage3-forest-roots-promoted"
         snapshot_description: "After forest root promotion"
-      when: vm_changed | default(true)
+      when: vm_changed | default(true) or snapshot_check.rc != 0
 
 # =============================================================================
 # Summary
