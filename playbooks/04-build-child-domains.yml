@@ -80,9 +80,8 @@
 # =============================================================================
 # Configure DNS After Child Domain PDC Promotion
 # =============================================================================
-# Post-promotion DNS configuration for child PDCs:
+# After child domain PDC promotion:
 # 1. Update NIC DNS servers to point to child DCs (dns_servers_post_promo)
-# 2. Configure conditional forwarders to parent domain (dns_forwarders_parent)
 # =============================================================================
 - name: Configure DNS After Child Domain PDC Promotion
   hosts: child_pdcs
@@ -104,67 +103,10 @@
       changed_when: false
       when: dns_servers_post_promo is defined
 
-    - name: Configure DNS conditional forwarders to parent domain
-      ansible.windows.win_shell: |
-        $parentDomain = "{{ parent_domain }}"
-        $forwarderIPs = @({{ dns_forwarders_parent | map('quote') | join(',') }})
-
-        try {
-          # Load DNS Server module (may take a moment after promotion)
-          Import-Module DnsServer -ErrorAction Stop
-
-          # Check if conditional forwarder already exists
-          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
-
-          if ($existing) {
-            # Update existing
-            Set-DnsServerConditionalForwarderZone -Name $parentDomain -MasterServers $forwarderIPs -PassThru -ErrorAction Stop | Out-Null
-            Write-Output "Conditional forwarder updated for $parentDomain"
-          } else {
-            # Create new
-            Add-DnsServerConditionalForwarderZone -Name $parentDomain -MasterServers $forwarderIPs -PassThru -ErrorAction Stop | Out-Null
-            Write-Output "Conditional forwarder created for $parentDomain"
-          }
-
-          Write-Output "Forwarder IPs:"
-          $forwarderIPs | ForEach-Object { Write-Output "  $_" }
-          exit 0
-        } catch {
-          Write-Output "ERROR: $_"
-          exit 1
-        }
-      register: forwarder_result
-      when: dns_forwarders_parent is defined
-      failed_when: forwarder_result.rc != 0
-      retries: 3
-      delay: 10
-      until: forwarder_result.rc == 0
-
-    - name: Verify forwarder resolution to parent domain
-      ansible.windows.win_shell: |
-        $parentDomain = "{{ parent_domain }}"
-
-        try {
-          $records = Resolve-DnsName -Name $parentDomain -Type SOA -ErrorAction Stop
-          if ($records) {
-            Write-Output "Forwarder resolution verified for $parentDomain"
-            exit 0
-          } else {
-            Write-Output "WARNING: Could not resolve parent domain"
-            exit 0
-          }
-        } catch {
-          Write-Output "WARNING: Forwarder resolution check failed - $_"
-          exit 0
-        }
-      register: forwarder_verify
-      changed_when: false
-      when: dns_forwarders_parent is defined
-
     - name: Mark VM as changed if DNS was configured
       set_fact:
-        vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) or (forwarder_result.changed | default(false)) }}"
-      when: dns_servers_post_promo is defined or dns_forwarders_parent is defined
+        vm_changed: "{{ vm_changed or (dns_update.changed | default(false)) }}"
+      when: dns_servers_post_promo is defined
 
 # =============================================================================
 # Promote Child Domain Replica DCs
@@ -197,9 +139,8 @@
 # =============================================================================
 # Configure DNS After Child Domain Replica Promotion
 # =============================================================================
-# Post-promotion DNS configuration for child replicas:
+# After child domain replica promotion:
 # 1. Update NIC DNS servers to point to child DCs (dns_servers_post_promo)
-# 2. Verify conditional forwarders are already configured (by PDC)
 # =============================================================================
 - name: Configure DNS After Child Domain Replica Promotion
   hosts: child_replicas
@@ -220,33 +161,6 @@
         Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
       changed_when: false
       when: dns_servers_post_promo is defined
-
-    - name: Verify conditional forwarders were configured by PDC
-      ansible.windows.win_shell: |
-        $parentDomain = "{{ parent_domain }}"
-
-        try {
-          Import-Module DnsServer -ErrorAction Stop
-          $existing = Get-DnsServerConditionalForwarderZone -Name $parentDomain -ErrorAction SilentlyContinue
-
-          if ($existing) {
-            Write-Output "Conditional forwarder found for $parentDomain"
-            Write-Output "Forwarders:"
-            $existing.MasterServers | ForEach-Object { Write-Output "  $_" }
-            exit 0
-          } else {
-            Write-Output "Conditional forwarder not found yet"
-            exit 1
-          }
-        } catch {
-          Write-Output "Could not verify forwarders - $_"
-          exit 1
-        }
-      register: forwarder_check
-      retries: 10
-      delay: 10
-      until: forwarder_check.rc == 0
-      when: dns_forwarders_parent is defined
 
     - name: Mark VM as changed if DNS was configured
       set_fact:
