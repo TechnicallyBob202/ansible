@@ -17,6 +17,41 @@
           - "Duration: ~30-45 minutes"
 
 # =============================================================================
+# Check Current DC Status
+# =============================================================================
+- name: Check Current Child Domain DC Status
+  hosts: child_domain_dcs
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if already promoted
+      include_role:
+        name: active_directory
+        tasks_from: check_dc_status.yml
+
+# =============================================================================
+# Skip Promotion If Already Complete
+# =============================================================================
+- name: Evaluate Promotion Status
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check if all child DCs are already promoted
+      set_fact:
+        all_child_dcs_promoted: "{{ groups['child_domain_dcs'] | map('extract', hostvars, 'is_domain_controller') | all }}"
+
+    - name: Display status
+      debug:
+        msg:
+          - "Child Domain DC Status:"
+          - "  All promoted: {{ all_child_dcs_promoted }}"
+          - "  Individual status:"
+          - "    D21-DC01: {{ hostvars['D21-DC01'].is_domain_controller | default(false) }}"
+          - "    D21-DC02: {{ hostvars['D21-DC02'].is_domain_controller | default(false) }}"
+          - "    D22-DC01: {{ hostvars['D22-DC01'].is_domain_controller | default(false) }}"
+          - "    D22-DC02: {{ hostvars['D22-DC02'].is_domain_controller | default(false) }}"
+
+# =============================================================================
 # Ensure Windows Ready
 # =============================================================================
 - name: Ensure Windows is Ready
