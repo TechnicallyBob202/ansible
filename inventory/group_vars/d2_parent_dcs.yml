@@ -1,15 +1,11 @@
 ---
-# D2.lab Forest - Parent Domain Configuration
-
-# Domain Identity
+# D2 Forest Root Domain Configuration
 domain_name: d2.lab
-netbios_name: D2
+domain_netbios: D2
 
-# DNS Configuration (parent domain DCs)
-dns_servers_pre_promo:
-  - 172.16.10.10  # D1-DC01
-  - 172.16.10.11  # D1-DC02
-dns_servers_post_promo:
+# DNS servers - point to D2 DCs
+# D2 is a separate forest from D1 with no cross-forest trust
+dns_servers:
   - 172.16.20.10  # D2-DC01
   - 172.16.20.11  # D2-DC02
 
