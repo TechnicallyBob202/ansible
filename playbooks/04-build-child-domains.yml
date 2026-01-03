@@ -109,6 +109,47 @@
       when: dns_servers_post_promo is defined
 
 # =============================================================================
+# Configure DNS on Replicas Before Promotion
+# =============================================================================
+# Replicas need to point to the child PDC to contact it during promotion
+# =============================================================================
+- name: Configure DNS on Child Domain Replicas Before Promotion
+  hosts: child_replicas
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Update DNS to child PDC before replica promotion
+      ansible.windows.win_dns_client:
+        adapter_names: '*'
+        dns_servers: "{{ dns_servers_post_promo }}"
+      register: dns_update
+      when: dns_servers_post_promo is defined
+
+    - name: Wait for DNS changes to take effect
+      ansible.windows.win_shell: |
+        Start-Sleep -Seconds 5
+        $dns = Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}
+        Write-Output "DNS Servers: $($dns.ServerAddresses -join ', ')"
+      changed_when: false
+      when: dns_servers_post_promo is defined
+
+    - name: Verify replica can reach child PDC
+      ansible.windows.win_shell: |
+        $domain = "{{ domain_name }}"
+        try {
+          $pingResult = Test-Connection -ComputerName "{{ groups['child_pdcs'][0] }}" -Count 1 -ErrorAction Stop
+          Write-Output "Replica can reach child PDC"
+          exit 0
+        } catch {
+          Write-Output "Cannot reach child PDC yet"
+          exit 1
+        }
+      retries: 10
+      delay: 10
+      until: pdc_reach.rc == 0
+      register: pdc_reach
+
+# =============================================================================
 # Promote Child Domain Replica DCs
 # =============================================================================
 - name: Promote Child Domain Replica DCs
@@ -208,13 +249,8 @@
           - "✓ Child domain PDCs promoted"
           - "✓ Child domain replicas promoted"
           - "✓ DNS servers updated (NIC pointing to child DCs)"
-          - "✓ Conditional forwarders configured to parent domain"
           - "✓ All DCs replicating"
-          - "✓ Parent domain accessible from child domains"
           - ""
-          - "Child domains are now fully operational with:"
-          - "  • DNS pointing to themselves"
-          - "  • Forwarders configured for parent domain resolution"
-          - "  • Full trust relationship with parent"
+          - "Child domains are now fully operational"
           - ""
           - "Next: Run Stage 05 for product deployment"
