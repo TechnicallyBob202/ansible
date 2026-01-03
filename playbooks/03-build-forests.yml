@@ -51,6 +51,17 @@
           - "    D2-DC02: {{ hostvars['D2-DC02'].is_domain_controller | default(false) }}"
 
 # =============================================================================
+# Skip remaining plays if all DCs already promoted
+# =============================================================================
+- name: Set Skip Flag
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Check if all DCs already promoted
+      set_fact:
+        skip_promotion_plays: "{{ (groups['forest_root_dcs'] | map('extract', hostvars, 'is_domain_controller') | list) == ([True] * (groups['forest_root_dcs'] | length)) }}"
+
+# =============================================================================
 # Ensure Windows Ready
 # =============================================================================
 - name: Ensure Windows is Ready
@@ -62,6 +73,7 @@
       include_role:
         name: windows
         tasks_from: wait_for_windows_ready.yml
+  when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Initialize Change Tracking
@@ -74,6 +86,7 @@
     - name: Set vm_changed to true (always snapshot after promotion)
       set_fact:
         vm_changed: true
+  when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Install AD Features
@@ -87,6 +100,7 @@
       include_role:
         name: active_directory
         tasks_from: install_ad_features.yml
+  when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Promote Forest Root PDCs
@@ -100,6 +114,7 @@
       include_role:
         name: active_directory
         tasks_from: promote_forest_root.yml
+  when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Promote Forest Root Replica DCs
@@ -123,6 +138,7 @@
       include_role:
         name: windows
         tasks_from: wait_for_windows_ready.yml
+  when: not hostvars['localhost'].skip_promotion_plays | default(false)
 
 # =============================================================================
 # Snapshot Changed VMs
