@@ -136,7 +136,6 @@
       set_fact:
         ansible_host: "{{ target_ip }}"
       when:
-        - needs_ip_config | default(false)
         - ansible_connection == 'winrm'
         - ip_result.changed | default(false)
 
