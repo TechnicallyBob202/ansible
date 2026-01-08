@@ -7,7 +7,7 @@ netbios_name: D3
 
 # DNS Configuration
 dns_servers:
-  - 172.16.50.12
+  - 172.16.50.21
 
 # Domain Controller for credential references
 domain_pdc_host: D3-DC01
