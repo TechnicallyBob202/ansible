@@ -11,65 +11,15 @@
           - "========================================="
           - ""
           - "Configuring {{ groups['all'] | length }} VMs:"
-          - "  • Wait for VMs to fully boot"
-          - "  • Discover current IPs"
+          - "  • Discover current IPs (DHCP)"
           - "  • Configure static IPs"
+          - "  • Check VM configuration status"
           - "  • Check DC promotion status"
           - "  • Set DNS servers"
           - "  • Set hostnames"
           - "  • Install AD-DS features (DCs only)"
           - "  • Reboot if needed"
           - "  • Snapshot changed VMs"
-
-# =============================================================================
-# Check Current Configuration Status
-# =============================================================================
-- name: Check Current VM Configuration Status
-  hosts: all
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check if VM is already running and accessible
-      ansible.windows.win_ping:
-      register: ping_result
-      failed_when: false
-      changed_when: false
-
-    - name: Get current network configuration if accessible
-      ansible.windows.win_shell: |
-        $nic = Get-NetIPConfiguration -InterfaceAlias 'Ethernet*' | Select-Object -First 1
-        $hostname = $env:COMPUTERNAME
-        $dns = (Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}).ServerAddresses
-
-        Write-Output "Hostname: $hostname"
-        Write-Output "IP: $($nic.IPv4Address.IPAddress)"
-        Write-Output "DNS: $($dns -join ', ')"
-      register: current_config
-      when: ping_result.unreachable is not defined
-      failed_when: false
-      changed_when: false
-
-    - name: Set configuration status facts
-      set_fact:
-        vm_accessible: "{{ ping_result.unreachable is not defined }}"
-        current_hostname: "{{ (current_config.stdout_lines[0] | regex_search('Hostname: (.+)') | regex_replace('Hostname: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
-        current_ip: "{{ (current_config.stdout_lines[1] | regex_search('IP: (.+)') | regex_replace('IP: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
-      changed_when: false
-
-# =============================================================================
-# Display Configuration Status
-# =============================================================================
-- name: Display Configuration Status
-  hosts: localhost
-  gather_facts: false
-  tasks:
-    - name: Display VM status summary
-      debug:
-        msg:
-          - "VM Configuration Status:"
-          - "  Total VMs: {{ groups['all'] | length }}"
-          - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | select('equalto', true) | list | length }}"
-          - "  Will proceed with configuration checks and updates"
 
 # =============================================================================
 # Initialize Change Tracking
@@ -86,7 +36,7 @@
 # =============================================================================
 # Discover Current IPs from Proxmox
 # =============================================================================
-- name: Discover Current IPs
+- name: Discover Current IPs from Proxmox
   hosts: all
   gather_facts: false
   serial: 0
@@ -131,7 +81,7 @@
 # =============================================================================
 # Build groups for conditional network configuration
 # =============================================================================
-- name: Separate hosts by network config needs
+- name: Build groups for conditional network configuration
   hosts: all
   gather_facts: false
   serial: 0
@@ -142,14 +92,14 @@
       changed_when: false
 
 # =============================================================================
-# Configure Network (Windows - Only hosts needing config)
+# Configure Windows Static IPs
 # =============================================================================
 - name: Configure Windows Static IPs
   hosts: all
   gather_facts: false
   serial: 0
   tasks:
-    - name: Update ansible_host to discovered IP (for hosts needing config)
+    - name: Update ansible_host to discovered DHCP IP (for hosts needing config)
       set_fact:
         ansible_host: "{{ discovered_ip }}"
       when:
@@ -157,6 +107,14 @@
         - ansible_connection == 'winrm'
         - discovered_ip is defined
         - discovered_ip != ''
+
+    - name: Wait for WinRM at discovered DHCP IP
+      include_role:
+        name: windows
+        tasks_from: wait_for_windows_ready.yml
+      when:
+        - needs_ip_config | default(false)
+        - ansible_connection == 'winrm'
 
     - name: Set static IP address
       include_role:
@@ -174,7 +132,7 @@
         - needs_ip_config | default(false)
         - ansible_connection == 'winrm'
 
-    - name: Update ansible_host to target IP (after config)
+    - name: Update ansible_host to target static IP (after config)
       set_fact:
         ansible_host: "{{ target_ip }}"
       when:
@@ -203,7 +161,61 @@
         - ip_result.changed | default(false)
 
 # =============================================================================
-# Check Current DC Promotion Status (AFTER static IP, BEFORE DNS)
+# Check Current VM Configuration Status (NOW on static IPs)
+# =============================================================================
+- name: Check Current VM Configuration Status
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if VM is already running and accessible
+      ansible.windows.win_ping:
+      register: ping_result
+      failed_when: false
+      changed_when: false
+      when: ansible_connection == 'winrm'
+
+    - name: Get current network configuration if accessible
+      ansible.windows.win_shell: |
+        $nic = Get-NetIPConfiguration -InterfaceAlias 'Ethernet*' | Select-Object -First 1
+        $hostname = $env:COMPUTERNAME
+        $dns = (Get-DnsClientServerAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*"}).ServerAddresses
+
+        Write-Output "Hostname: $hostname"
+        Write-Output "IP: $($nic.IPv4Address.IPAddress)"
+        Write-Output "DNS: $($dns -join ', ')"
+      register: current_config
+      when:
+        - ansible_connection == 'winrm'
+        - ping_result.unreachable is not defined
+      failed_when: false
+      changed_when: false
+
+    - name: Set configuration status facts
+      set_fact:
+        vm_accessible: "{{ ping_result.unreachable is not defined }}"
+        current_hostname: "{{ (current_config.stdout_lines[0] | regex_search('Hostname: (.+)') | regex_replace('Hostname: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
+        current_ip: "{{ (current_config.stdout_lines[1] | regex_search('IP: (.+)') | regex_replace('IP: ', '')) if current_config.rc == 0 else 'UNKNOWN' }}"
+      changed_when: false
+      when: ansible_connection == 'winrm'
+
+# =============================================================================
+# Display Configuration Status
+# =============================================================================
+- name: Display Configuration Status
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Display VM status summary
+      debug:
+        msg:
+          - "VM Configuration Status:"
+          - "  Total VMs: {{ groups['all'] | length }}"
+          - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | select('equalto', true) | list | length }}"
+          - "  Will proceed with DC status checks"
+
+# =============================================================================
+# Check Current DC Promotion Status
 # =============================================================================
 - name: Check Current DC Promotion Status
   hosts: domain_controllers
@@ -225,7 +237,7 @@
       changed_when: false
 
 # =============================================================================
-# Configure DNS and Hostname (Windows - All windows hosts)
+# Configure Windows DNS and Hostname
 # =============================================================================
 - name: Configure Windows DNS and Hostname
   hosts: all
@@ -261,62 +273,6 @@
       set_fact:
         vm_changed: "{{ vm_changed or (dns_result.changed | default(false)) or (hostname_result.changed | default(false)) }}"
       when: ansible_connection == 'winrm'
-
-# =============================================================================
-# Configure Network (Linux - Only hosts needing config)
-# =============================================================================
-- name: Configure Linux Static IPs
-  hosts: all
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Set static IP
-      include_role:
-        name: linux
-        tasks_from: set_static_ip
-      register: ip_result
-      when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
-        - ansible_connection != 'winrm'
-
-    - name: Consolidate IP changes
-      set_fact:
-        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
-      when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
-        - ansible_connection != 'winrm'
-
-    - name: Update ansible_host to target IP
-      set_fact:
-        ansible_host: "{{ target_ip }}"
-      when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
-        - ansible_connection != 'winrm'
-        - ip_result.changed | default(false)
-
-    - name: Wait for IP to settle
-      pause:
-        seconds: 10
-      when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
-        - ansible_connection != 'winrm'
-        - ip_result.changed | default(false)
-
-    - name: Update system packages
-      include_role:
-        name: linux
-        tasks_from: update
-      when:
-        - vm_changed
-        - ansible_connection != 'winrm'
-
-    - name: Reboot if changes were made
-      include_role:
-        name: linux
-        tasks_from: reboot
-      when:
-        - vm_changed
-        - ansible_connection != 'winrm'
 
 # =============================================================================
 # Install AD-DS Features (Domain Controllers Only)
@@ -369,7 +325,7 @@
 # =============================================================================
 # Reboot Windows Hosts if Needed
 # =============================================================================
-- name: Reboot Windows Hosts
+- name: Reboot Windows Hosts if Needed
   hosts: all
   gather_facts: false
   serial: 0
@@ -383,20 +339,70 @@
         - (reboot_needed or reboot_required | default(false))
 
 # =============================================================================
-# Reboot Linux Hosts if Needed
+# Configure Linux Static IPs
 # =============================================================================
-- name: Reboot Linux Hosts
+- name: Configure Linux Static IPs
   hosts: all
   gather_facts: false
   serial: 0
   tasks:
-    - name: Update ansible_host to target IP before reboot
+    - name: Update ansible_host to discovered DHCP IP (for hosts needing config)
+      set_fact:
+        ansible_host: "{{ discovered_ip }}"
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+        - discovered_ip is defined
+        - discovered_ip != ''
+
+    - name: Set static IP
+      include_role:
+        name: linux
+        tasks_from: set_static_ip
+      register: ip_result
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+
+    - name: Consolidate IP changes
+      set_fact:
+        vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+
+    - name: Update ansible_host to target static IP
       set_fact:
         ansible_host: "{{ target_ip }}"
       when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
         - ansible_connection != 'winrm'
-        - needs_ip_config | default(false)
+        - ip_result.changed | default(false)
 
+    - name: Wait for IP to settle
+      pause:
+        seconds: 10
+      when:
+        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - ansible_connection != 'winrm'
+        - ip_result.changed | default(false)
+
+    - name: Update system packages
+      include_role:
+        name: linux
+        tasks_from: update
+      when:
+        - vm_changed
+        - ansible_connection != 'winrm'
+
+# =============================================================================
+# Reboot Linux Hosts if Needed
+# =============================================================================
+- name: Reboot Linux Hosts if Needed
+  hosts: all
+  gather_facts: false
+  serial: 0
+  tasks:
     - name: Reboot Linux hosts that were modified
       ansible.builtin.reboot:
         reboot_timeout: 300
@@ -480,7 +486,7 @@
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
 
 # =============================================================================
-# Summary
+# Display Summary
 # =============================================================================
 - name: Display Summary
   hosts: localhost
