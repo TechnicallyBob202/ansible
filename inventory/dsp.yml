@@ -83,7 +83,7 @@ all:
       vars:
         ansible_python_interpreter: /usr/bin/python3
         ansible_connection: ssh
-        ansible_user: hsadministrator
+        ansible_user: blyons
         ansible_ssh_private_key_file: /root/.ssh/semperis_admin
         ansible_port: 22
         ansible_ssh_common_args: '-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'
@@ -98,7 +98,7 @@ all:
           template_id: 9025
           vm_cores: 8
           vm_memory: 16384
-          vm_disk: 100G
+          #vm_disk: 100G
           proxmox_vm_tags: "dsp"
           role: "Identity Analytics Scanner"
 
