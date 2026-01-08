@@ -14,33 +14,12 @@
           - "  • Wait for VMs to fully boot"
           - "  • Discover current IPs"
           - "  • Configure static IPs"
+          - "  • Check DC promotion status"
           - "  • Set DNS servers"
           - "  • Set hostnames"
           - "  • Install AD-DS features (DCs only)"
           - "  • Reboot if needed"
           - "  • Snapshot changed VMs"
-
-# =============================================================================
-# Check Current DC Promotion Status
-# =============================================================================
-- name: Check Current DC Promotion Status
-  hosts: domain_controllers
-  gather_facts: false
-  serial: 0
-  tasks:
-    - name: Check if server is a domain controller
-      ansible.windows.win_shell: |
-        $CS = Get-WmiObject Win32_ComputerSystem
-        if ($CS.DomainRole -ge 4) { exit 0 }
-        exit 1
-      register: dc_check
-      failed_when: false
-      changed_when: false
-
-    - name: Set is_domain_controller fact
-      set_fact:
-        is_domain_controller: "{{ dc_check.rc == 0 }}"
-      changed_when: false
 
 # =============================================================================
 # Check Current Configuration Status
@@ -224,6 +203,28 @@
         - ip_result.changed | default(false)
 
 # =============================================================================
+# Check Current DC Promotion Status (AFTER static IP, BEFORE DNS)
+# =============================================================================
+- name: Check Current DC Promotion Status
+  hosts: domain_controllers
+  gather_facts: false
+  serial: 0
+  tasks:
+    - name: Check if server is a domain controller
+      ansible.windows.win_shell: |
+        $CS = Get-WmiObject Win32_ComputerSystem
+        if ($CS.DomainRole -ge 4) { exit 0 }
+        exit 1
+      register: dc_check
+      failed_when: false
+      changed_when: false
+
+    - name: Set is_domain_controller fact
+      set_fact:
+        is_domain_controller: "{{ dc_check.rc == 0 }}"
+      changed_when: false
+
+# =============================================================================
 # Configure DNS and Hostname (Windows - All windows hosts)
 # =============================================================================
 - name: Configure Windows DNS and Hostname
@@ -231,16 +232,6 @@
   gather_facts: false
   serial: 0
   tasks:
-    - name: Check if this is a domain controller
-      ansible.windows.win_shell: |
-        $CS = Get-WmiObject Win32_ComputerSystem
-        if ($CS.DomainRole -lt 4) { exit 1 }
-        exit 0
-      register: dc_check
-      failed_when: false
-      changed_when: false
-      when: ansible_connection == 'winrm'
-
     - name: Determine DNS servers based on DC promotion status
       set_fact:
         windows_dns_servers: >-
@@ -478,27 +469,15 @@
   gather_facts: false
   serial: 2
   tasks:
-    - name: Check if snapshot already exists
-      ansible.builtin.shell: |
-        ssh -i /root/.ssh/ansible_key \
-          -o StrictHostKeyChecking=no \
-          root@{{ proxmox_host }} \
-          "qm snapshot {{ vmid }} stage2-base-configured --list 2>/dev/null | grep -q stage2-base-configured"
-      delegate_to: localhost
-      register: snapshot_check
-      failed_when: false
-      changed_when: false
-
-    - name: Create Proxmox snapshot if vm_changed or snapshot doesn't exist
+    - name: Snapshot VM
       include_role:
         name: proxmox
-        tasks_from: snapshot.yml
+        tasks_from: snapshot
         apply:
           delegate_to: localhost
       vars:
         snapshot_name: "stage2-base-configured"
         snapshot_description: "After base OS configuration (IP, DNS, hostname, AD-DS features)"
-      when: vm_changed | default(false) or snapshot_check.rc != 0
 
 # =============================================================================
 # Summary
