@@ -210,7 +210,7 @@
         msg:
           - "VM Configuration Status:"
           - "  Total VMs: {{ groups['all'] | length }}"
-          - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | select('equalto', true) | list | length }}"
+          - "  Accessible: {{ groups['all'] | map('extract', hostvars, 'vm_accessible') | reject('undefined') | select('equalto', true) | list | length }}"
           - "  Will proceed with DC status checks"
 
 # =============================================================================
