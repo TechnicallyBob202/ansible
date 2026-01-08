@@ -38,6 +38,12 @@
     delay: 60
   when: replica_promotion.changed | default(false)
 
+- name: Wait for WinRM to be ready after promotion
+  include_role:
+    name: windows
+    tasks_from: wait_for_windows_ready.yml
+  when: replica_promotion.changed | default(false)
+  
 - name: Verify replica DC is fully ready after promotion
   include_tasks: check_dc_status.yml
   when: replica_promotion.changed | default(false)
