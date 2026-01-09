@@ -97,7 +97,7 @@ all:
           proxmox_node: semperis-nuc-1
           template_id: 9025
           vm_cores: 8
-          vm_memory: 16384
+          vm_memory: 32768
           #vm_disk: 100G
           proxmox_vm_tags: "dsp"
           role: "Identity Analytics Scanner"
