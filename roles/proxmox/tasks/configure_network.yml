@@ -1,38 +1,6 @@
 ---
 # Configure VM network settings
 
-- name: Debug secondary_nic variable
-  ansible.builtin.debug:
-    msg: "secondary_nic is {{ secondary_nic | default('NOT DEFINED') }} (type: {{ secondary_nic | type_debug }})"
-
-- name: Add secondary network interface
-  community.general.proxmox_nic:
-    api_host: "{{ proxmox_host }}"
-    api_user: "{{ proxmox_user }}"
-    api_password: "{{ proxmox_password }}"
-    validate_certs: "{{ proxmox_validate_certs }}"
-    vmid: "{{ vmid }}"
-    interface: net1
-    bridge: "{{ proxmox_network_bridge | default('vmbr0') }}"
-    tag: "{{ proxmox_network_vlan | default(omit) }}"
-    firewall: false
-  register: secondary_nic_config
-  when:
-    - secondary_nic is defined
-    - secondary_nic | bool
-
-- name: Debug secondary NIC result
-  ansible.builtin.debug:
-    var: secondary_nic_config
-  when: secondary_nic is defined and secondary_nic | bool
-
-- name: Display secondary NIC addition result
-  ansible.builtin.debug:
-    msg: "{{ inventory_hostname }} - Secondary NIC {{ 'added/configured' if (secondary_nic_config.changed | default(false)) else 'already present' }}"
-  when:
-    - secondary_nic is defined
-    - secondary_nic | bool
-
 - name: Configure VM VLAN tag
   community.general.proxmox_nic:
     api_host: "{{ proxmox_host }}"
