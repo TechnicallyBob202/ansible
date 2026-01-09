@@ -11,23 +11,10 @@
   ansible.builtin.set_fact:
     linux_ifname: "{{ detected_interface.stdout | trim }}"
 
-- name: Detect secondary network interface (if exists)
-  ansible.builtin.shell: |
-    ip -o link show | awk -F': ' '{print $2}' | grep -E '^(eth|ens|enp)' | sed -n '2p'
-  register: detected_secondary_interface
-  changed_when: false
-
-- name: Set secondary interface fact
-  ansible.builtin.set_fact:
-    linux_secondary_ifname: "{{ detected_secondary_interface.stdout | trim }}"
-  when: detected_secondary_interface.stdout | length > 0
-
 - name: Display detected interfaces
   ansible.builtin.debug:
     msg:
       - "Primary interface: {{ linux_ifname }}"
-      - "Secondary interface: {{ linux_secondary_ifname | default('not detected') }}"
-      - "Secondary IP requested: {{ secondary_ip | default('not defined') }}"
 
 - name: Ensure netplan directory exists
   ansible.builtin.file:
@@ -51,29 +38,16 @@
 - name: Apply netplan configuration
   ansible.builtin.command: netplan apply
   become: true
-  when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
+  when: netplan_config.changed
   async: 10
   poll: 0
 
 - name: Wait for network to stabilize
   pause:
     seconds: 5
-  when: netplan_config.changed or (secondary_ip is defined and linux_secondary_ifname is defined)
+  when: netplan_config.changed
 
 - name: Display result
   ansible.builtin.debug:
     msg:
       - "{{ inventory_hostname }} - Primary IP {{ 'configured to' if netplan_config.changed else 'already set to' }} {{ target_ip }}"
-      - "{{ inventory_hostname }} - Secondary IP {{ secondary_ip if (secondary_ip is defined and linux_secondary_ifname is defined) else 'not configured' }}"
-
-- name: Verify secondary NIC configuration
-  ansible.builtin.command: "ip addr show {{ linux_secondary_ifname }}"
-  register: secondary_nic_status
-  become: true
-  when: secondary_ip is defined and linux_secondary_ifname is defined
-  changed_when: false
-
-- name: Display secondary NIC status
-  ansible.builtin.debug:
-    var: secondary_nic_status.stdout_lines
-  when: secondary_ip is defined and linux_secondary_ifname is defined

@@ -349,7 +349,7 @@
       set_fact:
         ansible_host: "{{ discovered_ip }}"
       when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - (needs_ip_config | default(false))
         - ansible_connection != 'winrm'
         - discovered_ip is defined
         - discovered_ip != ''
@@ -360,21 +360,21 @@
         tasks_from: set_static_ip
       register: ip_result
       when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - (needs_ip_config | default(false))
         - ansible_connection != 'winrm'
 
     - name: Consolidate IP changes
       set_fact:
         vm_changed: "{{ vm_changed or (ip_result.changed | default(false)) }}"
       when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - (needs_ip_config | default(false))
         - ansible_connection != 'winrm'
 
     - name: Update ansible_host to target static IP
       set_fact:
         ansible_host: "{{ target_ip }}"
       when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - (needs_ip_config | default(false))
         - ansible_connection != 'winrm'
         - ip_result.changed | default(false)
 
@@ -382,7 +382,7 @@
       pause:
         seconds: 10
       when:
-        - (needs_ip_config | default(false)) or (secondary_ip is defined)
+        - (needs_ip_config | default(false))
         - ansible_connection != 'winrm'
         - ip_result.changed | default(false)
 
